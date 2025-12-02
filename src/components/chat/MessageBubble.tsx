@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, Copy, Check } from 'lucide-react';
 import type { Message } from '@/types';
 import SourceCard from './SourceCard';
 
@@ -13,7 +13,18 @@ interface MessageBubbleProps {
 
 export default function MessageBubble({ message }: MessageBubbleProps) {
   const [sourcesExpanded, setSourcesExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
   const isUser = message.role === 'user';
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(message.content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
 
   const formatTime = (date: Date) => {
     return new Date(date).toLocaleTimeString('en-US', {
@@ -60,8 +71,21 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
           </div>
         )}
 
-        <div className={`text-xs mt-2 ${isUser ? 'text-blue-200' : 'text-gray-500'}`}>
-          {formatTime(message.timestamp)}
+        <div className={`flex items-center justify-between gap-2 mt-2 ${isUser ? 'text-blue-200' : 'text-gray-500'}`}>
+          <span className="text-xs">{formatTime(message.timestamp)}</span>
+          {!isUser && (
+            <button
+              onClick={handleCopy}
+              className="p-1 rounded hover:bg-gray-200 transition-colors"
+              title={copied ? 'Copied!' : 'Copy response'}
+            >
+              {copied ? (
+                <Check size={14} className="text-green-600" />
+              ) : (
+                <Copy size={14} className="text-gray-400 hover:text-gray-600" />
+              )}
+            </button>
+          )}
         </div>
       </div>
     </div>
