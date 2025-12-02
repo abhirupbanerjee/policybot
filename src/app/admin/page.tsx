@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Upload, RefreshCw, Trash2, FileText, AlertCircle, Users, UserPlus, Shield, User } from 'lucide-react';
 import Button from '@/components/ui/Button';
@@ -46,6 +46,7 @@ export default function AdminPage() {
   const [updatingRole, setUpdatingRole] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load documents
   const loadDocuments = useCallback(async () => {
@@ -380,19 +381,24 @@ export default function AdminPage() {
                     {documents.length} documents, {totalChunks} chunks indexed
                   </p>
                 </div>
-                <label className="cursor-pointer">
+                <>
                   <input
+                    ref={fileInputRef}
                     type="file"
                     accept=".pdf,application/pdf"
                     onChange={handleUpload}
                     disabled={uploading}
                     className="hidden"
                   />
-                  <Button disabled={uploading} loading={uploading}>
+                  <Button
+                    disabled={uploading}
+                    loading={uploading}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
                     <Upload size={18} className="mr-2" />
                     {uploadProgress || 'Upload Document'}
                   </Button>
-                </label>
+                </>
               </div>
             </div>
 
