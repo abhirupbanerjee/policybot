@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import type { Message } from '@/types';
+import { getLLMSettings } from './storage';
 
 let openaiClient: OpenAI | null = null;
 
@@ -38,6 +39,9 @@ export async function generateResponse(
   context: string,
   userMessage: string
 ): Promise<string> {
+  // Get LLM settings from storage
+  const llmSettings = await getLLMSettings();
+
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
     { role: 'system', content: systemPrompt },
   ];
@@ -59,10 +63,10 @@ export async function generateResponse(
 
   const openai = getOpenAI();
   const response = await openai.chat.completions.create({
-    model: 'gpt-4o-mini',
+    model: llmSettings.model,
     messages,
-    temperature: 0.3,
-    max_tokens: 1500,
+    temperature: llmSettings.temperature,
+    max_tokens: llmSettings.maxTokens,
   });
 
   return response.choices[0].message.content || '';

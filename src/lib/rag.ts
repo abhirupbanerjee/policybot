@@ -2,48 +2,25 @@ import { createEmbeddings, generateResponse } from './openai';
 import { queryDocuments } from './chroma';
 import { getCachedQuery, cacheQuery, hashQuery } from './redis';
 import { extractTextFromPDF, chunkText } from './ingest';
-import { readFileBuffer } from './storage';
+import { readFileBuffer, getSystemPrompt, getRAGSettings, getAcronymMappings } from './storage';
 import type { Message, Source, RetrievedChunk, RAGResponse } from '@/types';
-
-// Retrieval configuration
-const TOP_K_CHUNKS = 15; // Number of chunks to retrieve per query
-const MAX_CONTEXT_CHUNKS = 12; // Maximum chunks to include in final context
-const SIMILARITY_THRESHOLD = 0.3; // Minimum similarity score to include
-
-const SYSTEM_PROMPT = `You are a helpful policy assistant for government staff. Your role is to:
-
-1. Answer questions based ONLY on the provided context from policy documents
-2. When comparing documents for compliance, clearly identify areas of alignment and gaps
-3. Always cite which document and section your answer comes from
-4. If the context doesn't contain enough information to answer, say so clearly
-5. Be concise, professional, and accurate
-
-When citing sources, use this format: [Document Name, Page X]
-
-If a user asks you to compare their uploaded document against policies:
-- Identify specific sections that align with policies
-- Point out any gaps or areas that don't meet policy requirements
-- Suggest improvements if applicable`;
 
 /**
  * Generate expanded queries to improve retrieval coverage
  */
-async function expandQueries(originalQuery: string): Promise<string[]> {
+async function expandQueries(originalQuery: string, enabled: boolean): Promise<string[]> {
   const queries = [originalQuery];
+
+  if (!enabled) {
+    return queries;
+  }
 
   // Extract key terms and create variations
   const lowerQuery = originalQuery.toLowerCase();
 
-  // Add acronym expansions common in government/policy docs
-  const acronymExpansions: Record<string, string> = {
-    'ea': 'enterprise architecture',
-    'dta': 'digital transformation agency',
-    'it': 'information technology',
-    'ict': 'information and communication technology',
-    'hr': 'human resources',
-    'kpi': 'key performance indicator',
-    'sla': 'service level agreement',
-  };
+  // Get acronym mappings from storage
+  const acronymConfig = await getAcronymMappings();
+  const acronymExpansions = acronymConfig.mappings;
 
   for (const [acronym, expansion] of Object.entries(acronymExpansions)) {
     if (lowerQuery.includes(acronym)) {
@@ -79,8 +56,13 @@ function deduplicateChunks(chunks: RetrievedChunk[]): RetrievedChunk[] {
 export async function buildContext(
   queryEmbedding: number[],
   userDocPaths: string[] = [],
-  additionalEmbeddings: number[][] = []
+  additionalEmbeddings: number[][] = [],
+  settings?: { topKChunks: number; maxContextChunks: number; similarityThreshold: number }
 ): Promise<{ globalChunks: RetrievedChunk[]; userChunks: RetrievedChunk[] }> {
+  // Use provided settings or fetch from storage
+  const ragSettings = settings || await getRAGSettings();
+  const { topKChunks, maxContextChunks, similarityThreshold } = ragSettings;
+
   // Collect all embeddings (original + expanded queries)
   const allEmbeddings = [queryEmbedding, ...additionalEmbeddings];
 
@@ -88,7 +70,7 @@ export async function buildContext(
   const allGlobalChunks: RetrievedChunk[] = [];
 
   for (const embedding of allEmbeddings) {
-    const globalResults = await queryDocuments(embedding, TOP_K_CHUNKS, { source: 'global' });
+    const globalResults = await queryDocuments(embedding, topKChunks, { source: 'global' });
 
     const chunks: RetrievedChunk[] = globalResults.documents.map((doc, i) => ({
       id: globalResults.ids[i],
@@ -104,8 +86,8 @@ export async function buildContext(
 
   // Deduplicate and filter by similarity threshold
   const globalChunks = deduplicateChunks(allGlobalChunks)
-    .filter(chunk => chunk.score >= SIMILARITY_THRESHOLD)
-    .slice(0, MAX_CONTEXT_CHUNKS);
+    .filter(chunk => chunk.score >= similarityThreshold)
+    .slice(0, maxContextChunks);
 
   // Process user documents if provided
   const userChunks: RetrievedChunk[] = [];
@@ -127,7 +109,7 @@ export async function buildContext(
         // Calculate similarity with query
         for (let i = 0; i < chunkTexts.length; i++) {
           const similarity = cosineSimilarity(queryEmbedding, chunkEmbeddings[i]);
-          if (similarity >= SIMILARITY_THRESHOLD) {
+          if (similarity >= similarityThreshold) {
             userChunks.push({
               id: chunks[i].id,
               text: chunks[i].text,
@@ -211,8 +193,12 @@ export async function ragQuery(
   conversationHistory: Message[] = [],
   userDocPaths: string[] = []
 ): Promise<RAGResponse> {
-  // Check cache (only for queries without user documents)
-  if (userDocPaths.length === 0) {
+  // Get RAG settings
+  const ragSettings = await getRAGSettings();
+  const { cacheEnabled, cacheTTLSeconds, queryExpansionEnabled } = ragSettings;
+
+  // Check cache (only for queries without user documents and if caching is enabled)
+  if (cacheEnabled && userDocPaths.length === 0) {
     const queryHash = hashQuery(userMessage);
     const cached = await getCachedQuery(queryHash);
     if (cached) {
@@ -224,8 +210,8 @@ export async function ragQuery(
     }
   }
 
-  // Expand query for better retrieval
-  const expandedQueries = await expandQueries(userMessage);
+  // Expand query for better retrieval (if enabled)
+  const expandedQueries = await expandQueries(userMessage, queryExpansionEnabled);
 
   // Create embeddings for all queries
   const allQueryEmbeddings = await createEmbeddings(expandedQueries);
@@ -236,15 +222,19 @@ export async function ragQuery(
   const { globalChunks, userChunks } = await buildContext(
     primaryEmbedding,
     userDocPaths,
-    additionalEmbeddings
+    additionalEmbeddings,
+    ragSettings
   );
 
   // Format context for LLM
   const context = formatContext(globalChunks, userChunks);
 
+  // Get system prompt from storage
+  const systemPromptConfig = await getSystemPrompt();
+
   // Generate response
   const answer = await generateResponse(
-    SYSTEM_PROMPT,
+    systemPromptConfig.prompt,
     conversationHistory,
     context,
     userMessage
@@ -255,10 +245,10 @@ export async function ragQuery(
 
   const response: RAGResponse = { answer, sources };
 
-  // Cache response (only for queries without user documents)
-  if (userDocPaths.length === 0) {
+  // Cache response (only for queries without user documents and if caching is enabled)
+  if (cacheEnabled && userDocPaths.length === 0) {
     const queryHash = hashQuery(userMessage);
-    await cacheQuery(queryHash, JSON.stringify(response));
+    await cacheQuery(queryHash, JSON.stringify(response), cacheTTLSeconds);
   }
 
   return response;

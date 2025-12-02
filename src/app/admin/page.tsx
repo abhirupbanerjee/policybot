@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Upload, RefreshCw, Trash2, FileText, AlertCircle, Users, UserPlus, Shield, User } from 'lucide-react';
+import { ArrowLeft, Upload, RefreshCw, Trash2, FileText, AlertCircle, Users, UserPlus, Shield, User, Settings, Save } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import Spinner from '@/components/ui/Spinner';
@@ -16,7 +16,47 @@ interface AllowedUser {
   addedBy: string;
 }
 
-type TabType = 'documents' | 'users';
+interface SystemPromptConfig {
+  prompt: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+
+interface RAGSettings {
+  topKChunks: number;
+  maxContextChunks: number;
+  similarityThreshold: number;
+  chunkSize: number;
+  chunkOverlap: number;
+  queryExpansionEnabled: boolean;
+  cacheEnabled: boolean;
+  cacheTTLSeconds: number;
+  updatedAt: string;
+  updatedBy: string;
+}
+
+interface LLMSettings {
+  model: string;
+  temperature: number;
+  maxTokens: number;
+  updatedAt: string;
+  updatedBy: string;
+}
+
+interface AcronymMappings {
+  mappings: Record<string, string>;
+  updatedAt: string;
+  updatedBy: string;
+}
+
+interface AvailableModel {
+  id: string;
+  name: string;
+  description: string;
+}
+
+type TabType = 'documents' | 'users' | 'settings';
+type SettingsSection = 'prompt' | 'rag' | 'llm' | 'acronyms';
 
 export default function AdminPage() {
   const router = useRouter();
@@ -44,6 +84,28 @@ export default function AdminPage() {
   const [deletingUser, setDeletingUser] = useState(false);
   const [editingUser, setEditingUser] = useState<AllowedUser | null>(null);
   const [updatingRole, setUpdatingRole] = useState(false);
+
+  // System prompt state
+  const [systemPrompt, setSystemPrompt] = useState<SystemPromptConfig | null>(null);
+  const [editedPrompt, setEditedPrompt] = useState('');
+  const [promptLoading, setPromptLoading] = useState(true);
+  const [savingPrompt, setSavingPrompt] = useState(false);
+  const [promptModified, setPromptModified] = useState(false);
+
+  // RAG/LLM settings state
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>('prompt');
+  const [ragSettings, setRagSettings] = useState<RAGSettings | null>(null);
+  const [editedRag, setEditedRag] = useState<Omit<RAGSettings, 'updatedAt' | 'updatedBy'> | null>(null);
+  const [llmSettings, setLlmSettings] = useState<LLMSettings | null>(null);
+  const [editedLlm, setEditedLlm] = useState<Omit<LLMSettings, 'updatedAt' | 'updatedBy'> | null>(null);
+  const [acronymMappings, setAcronymMappings] = useState<AcronymMappings | null>(null);
+  const [editedAcronyms, setEditedAcronyms] = useState<string>('');
+  const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
+  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [ragModified, setRagModified] = useState(false);
+  const [llmModified, setLlmModified] = useState(false);
+  const [acronymsModified, setAcronymsModified] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
   const [refreshingAll, setRefreshingAll] = useState(false);
@@ -99,10 +161,86 @@ export default function AdminPage() {
     }
   }, [router]);
 
+  // Load system prompt
+  const loadSystemPrompt = useCallback(async () => {
+    try {
+      const response = await fetch('/api/admin/system-prompt');
+
+      if (response.status === 403) {
+        router.push('/');
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error('Failed to load system prompt');
+      }
+
+      const data = await response.json();
+      setSystemPrompt(data);
+      setEditedPrompt(data.prompt);
+      setPromptModified(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load system prompt');
+    } finally {
+      setPromptLoading(false);
+    }
+  }, [router]);
+
+  // Load RAG/LLM settings
+  const loadSettings = useCallback(async () => {
+    try {
+      const response = await fetch('/api/admin/settings');
+
+      if (response.status === 403) {
+        router.push('/');
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error('Failed to load settings');
+      }
+
+      const data = await response.json();
+      setRagSettings(data.rag);
+      setEditedRag({
+        topKChunks: data.rag.topKChunks,
+        maxContextChunks: data.rag.maxContextChunks,
+        similarityThreshold: data.rag.similarityThreshold,
+        chunkSize: data.rag.chunkSize,
+        chunkOverlap: data.rag.chunkOverlap,
+        queryExpansionEnabled: data.rag.queryExpansionEnabled,
+        cacheEnabled: data.rag.cacheEnabled,
+        cacheTTLSeconds: data.rag.cacheTTLSeconds,
+      });
+      setLlmSettings(data.llm);
+      setEditedLlm({
+        model: data.llm.model,
+        temperature: data.llm.temperature,
+        maxTokens: data.llm.maxTokens,
+      });
+      setAcronymMappings(data.acronyms);
+      setEditedAcronyms(
+        Object.entries(data.acronyms.mappings)
+          .map(([k, v]) => `${k}=${v}`)
+          .join('\n')
+      );
+      setAvailableModels(data.availableModels);
+      setRagModified(false);
+      setLlmModified(false);
+      setAcronymsModified(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load settings');
+    } finally {
+      setSettingsLoading(false);
+    }
+  }, [router]);
+
   useEffect(() => {
     loadDocuments();
     loadUsers();
-  }, [loadDocuments, loadUsers]);
+    loadSystemPrompt();
+    loadSettings();
+  }, [loadDocuments, loadUsers, loadSystemPrompt, loadSettings]);
 
   // Document handlers
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -309,6 +447,230 @@ export default function AdminPage() {
     }
   };
 
+  // System prompt handlers
+  const handlePromptChange = (value: string) => {
+    setEditedPrompt(value);
+    setPromptModified(value !== systemPrompt?.prompt);
+  };
+
+  const handleSavePrompt = async () => {
+    if (!promptModified || !editedPrompt.trim()) return;
+
+    setSavingPrompt(true);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/admin/system-prompt', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt: editedPrompt }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to save system prompt');
+      }
+
+      const result = await response.json();
+      setSystemPrompt(result.config);
+      setPromptModified(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save system prompt');
+    } finally {
+      setSavingPrompt(false);
+    }
+  };
+
+  const handleResetPrompt = () => {
+    if (systemPrompt) {
+      setEditedPrompt(systemPrompt.prompt);
+      setPromptModified(false);
+    }
+  };
+
+  // RAG settings handlers
+  const handleRagChange = <K extends keyof Omit<RAGSettings, 'updatedAt' | 'updatedBy'>>(
+    key: K,
+    value: Omit<RAGSettings, 'updatedAt' | 'updatedBy'>[K]
+  ) => {
+    if (!editedRag) return;
+    const updated = { ...editedRag, [key]: value };
+    setEditedRag(updated);
+    setRagModified(
+      JSON.stringify(updated) !== JSON.stringify({
+        topKChunks: ragSettings?.topKChunks,
+        maxContextChunks: ragSettings?.maxContextChunks,
+        similarityThreshold: ragSettings?.similarityThreshold,
+        chunkSize: ragSettings?.chunkSize,
+        chunkOverlap: ragSettings?.chunkOverlap,
+        queryExpansionEnabled: ragSettings?.queryExpansionEnabled,
+        cacheEnabled: ragSettings?.cacheEnabled,
+        cacheTTLSeconds: ragSettings?.cacheTTLSeconds,
+      })
+    );
+  };
+
+  const handleSaveRag = async () => {
+    if (!ragModified || !editedRag) return;
+
+    setSavingSettings(true);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/admin/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'rag', settings: editedRag }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to save RAG settings');
+      }
+
+      const result = await response.json();
+      setRagSettings(result.settings);
+      setRagModified(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save RAG settings');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const handleResetRag = () => {
+    if (ragSettings) {
+      setEditedRag({
+        topKChunks: ragSettings.topKChunks,
+        maxContextChunks: ragSettings.maxContextChunks,
+        similarityThreshold: ragSettings.similarityThreshold,
+        chunkSize: ragSettings.chunkSize,
+        chunkOverlap: ragSettings.chunkOverlap,
+        queryExpansionEnabled: ragSettings.queryExpansionEnabled,
+        cacheEnabled: ragSettings.cacheEnabled,
+        cacheTTLSeconds: ragSettings.cacheTTLSeconds,
+      });
+      setRagModified(false);
+    }
+  };
+
+  // LLM settings handlers
+  const handleLlmChange = <K extends keyof Omit<LLMSettings, 'updatedAt' | 'updatedBy'>>(
+    key: K,
+    value: Omit<LLMSettings, 'updatedAt' | 'updatedBy'>[K]
+  ) => {
+    if (!editedLlm) return;
+    const updated = { ...editedLlm, [key]: value };
+    setEditedLlm(updated);
+    setLlmModified(
+      JSON.stringify(updated) !== JSON.stringify({
+        model: llmSettings?.model,
+        temperature: llmSettings?.temperature,
+        maxTokens: llmSettings?.maxTokens,
+      })
+    );
+  };
+
+  const handleSaveLlm = async () => {
+    if (!llmModified || !editedLlm) return;
+
+    setSavingSettings(true);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/admin/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'llm', settings: editedLlm }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to save LLM settings');
+      }
+
+      const result = await response.json();
+      setLlmSettings(result.settings);
+      setLlmModified(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save LLM settings');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const handleResetLlm = () => {
+    if (llmSettings) {
+      setEditedLlm({
+        model: llmSettings.model,
+        temperature: llmSettings.temperature,
+        maxTokens: llmSettings.maxTokens,
+      });
+      setLlmModified(false);
+    }
+  };
+
+  // Acronym handlers
+  const handleAcronymsChange = (value: string) => {
+    setEditedAcronyms(value);
+    const originalText = Object.entries(acronymMappings?.mappings || {})
+      .map(([k, v]) => `${k}=${v}`)
+      .join('\n');
+    setAcronymsModified(value !== originalText);
+  };
+
+  const parseAcronyms = (text: string): Record<string, string> => {
+    const mappings: Record<string, string> = {};
+    const lines = text.split('\n').filter(l => l.trim());
+    for (const line of lines) {
+      const [key, ...valueParts] = line.split('=');
+      if (key && valueParts.length > 0) {
+        mappings[key.trim().toLowerCase()] = valueParts.join('=').trim();
+      }
+    }
+    return mappings;
+  };
+
+  const handleSaveAcronyms = async () => {
+    if (!acronymsModified) return;
+
+    setSavingSettings(true);
+    setError(null);
+
+    try {
+      const mappings = parseAcronyms(editedAcronyms);
+      const response = await fetch('/api/admin/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'acronyms', settings: { mappings } }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to save acronym mappings');
+      }
+
+      const result = await response.json();
+      setAcronymMappings(result.settings);
+      setAcronymsModified(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save acronym mappings');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const handleResetAcronyms = () => {
+    if (acronymMappings) {
+      setEditedAcronyms(
+        Object.entries(acronymMappings.mappings)
+          .map(([k, v]) => `${k}=${v}`)
+          .join('\n')
+      );
+      setAcronymsModified(false);
+    }
+  };
+
   // Utility functions
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
@@ -380,6 +742,17 @@ export default function AdminPage() {
             >
               <Users size={16} className="inline mr-2" />
               Users
+            </button>
+            <button
+              onClick={() => setActiveTab('settings')}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'settings'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <Settings size={16} className="inline mr-2" />
+              Settings
             </button>
           </nav>
         </div>
@@ -624,6 +997,373 @@ export default function AdminPage() {
                 </table>
               </div>
             )}
+          </div>
+        )}
+
+        {/* Settings Tab */}
+        {activeTab === 'settings' && (
+          <div className="flex gap-6">
+            {/* Settings Navigation */}
+            <div className="w-48 shrink-0">
+              <nav className="bg-white rounded-lg border shadow-sm p-2 space-y-1">
+                <button
+                  onClick={() => setSettingsSection('prompt')}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    settingsSection === 'prompt'
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  System Prompt
+                </button>
+                <button
+                  onClick={() => setSettingsSection('llm')}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    settingsSection === 'llm'
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  LLM Settings
+                </button>
+                <button
+                  onClick={() => setSettingsSection('rag')}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    settingsSection === 'rag'
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  RAG Settings
+                </button>
+                <button
+                  onClick={() => setSettingsSection('acronyms')}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    settingsSection === 'acronyms'
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  Acronym Mappings
+                </button>
+              </nav>
+            </div>
+
+            {/* Settings Content */}
+            <div className="flex-1">
+              {/* System Prompt Section */}
+              {settingsSection === 'prompt' && (
+                <div className="bg-white rounded-lg border shadow-sm">
+                  <div className="px-6 py-4 border-b">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h2 className="font-semibold text-gray-900">System Prompt</h2>
+                        <p className="text-sm text-gray-500">
+                          Define the AI assistant&apos;s behavior and instructions
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {promptModified && (
+                          <Button variant="secondary" onClick={handleResetPrompt} disabled={savingPrompt}>
+                            Reset
+                          </Button>
+                        )}
+                        <Button onClick={handleSavePrompt} disabled={!promptModified || savingPrompt} loading={savingPrompt}>
+                          <Save size={18} className="mr-2" />
+                          Save
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                  {promptLoading ? (
+                    <div className="px-6 py-12 flex justify-center"><Spinner size="lg" /></div>
+                  ) : (
+                    <div className="p-6">
+                      <textarea
+                        value={editedPrompt}
+                        onChange={(e) => handlePromptChange(e.target.value)}
+                        rows={16}
+                        className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
+                        placeholder="Enter the system prompt..."
+                      />
+                      {systemPrompt && (
+                        <p className="mt-2 text-xs text-gray-500">
+                          Last updated: {formatDate(systemPrompt.updatedAt)} by {systemPrompt.updatedBy}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* LLM Settings Section */}
+              {settingsSection === 'llm' && (
+                <div className="bg-white rounded-lg border shadow-sm">
+                  <div className="px-6 py-4 border-b">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h2 className="font-semibold text-gray-900">LLM Settings</h2>
+                        <p className="text-sm text-gray-500">Configure the language model parameters</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {llmModified && (
+                          <Button variant="secondary" onClick={handleResetLlm} disabled={savingSettings}>
+                            Reset
+                          </Button>
+                        )}
+                        <Button onClick={handleSaveLlm} disabled={!llmModified || savingSettings} loading={savingSettings}>
+                          <Save size={18} className="mr-2" />
+                          Save
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                  {settingsLoading ? (
+                    <div className="px-6 py-12 flex justify-center"><Spinner size="lg" /></div>
+                  ) : editedLlm && (
+                    <div className="p-6 space-y-6">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Model</label>
+                        <select
+                          value={editedLlm.model}
+                          onChange={(e) => handleLlmChange('model', e.target.value)}
+                          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        >
+                          {availableModels.map((model) => (
+                            <option key={model.id} value={model.id}>{model.name}</option>
+                          ))}
+                        </select>
+                        <p className="mt-1 text-xs text-gray-500">
+                          {availableModels.find(m => m.id === editedLlm.model)?.description}
+                        </p>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                          Temperature: {editedLlm.temperature}
+                        </label>
+                        <input
+                          type="range"
+                          min="0"
+                          max="2"
+                          step="0.1"
+                          value={editedLlm.temperature}
+                          onChange={(e) => handleLlmChange('temperature', parseFloat(e.target.value))}
+                          className="w-full"
+                        />
+                        <div className="flex justify-between text-xs text-gray-500 mt-1">
+                          <span>0 (Deterministic)</span>
+                          <span>2 (Creative)</span>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Max Tokens</label>
+                        <input
+                          type="number"
+                          min="100"
+                          max="16000"
+                          value={editedLlm.maxTokens}
+                          onChange={(e) => handleLlmChange('maxTokens', parseInt(e.target.value) || 2000)}
+                          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                        <p className="mt-1 text-xs text-gray-500">Maximum length of generated responses (100-16000)</p>
+                      </div>
+                      {llmSettings && (
+                        <p className="text-xs text-gray-500 pt-4 border-t">
+                          Last updated: {formatDate(llmSettings.updatedAt)} by {llmSettings.updatedBy}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* RAG Settings Section */}
+              {settingsSection === 'rag' && (
+                <div className="bg-white rounded-lg border shadow-sm">
+                  <div className="px-6 py-4 border-b">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h2 className="font-semibold text-gray-900">RAG Settings</h2>
+                        <p className="text-sm text-gray-500">Configure retrieval and chunking parameters</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {ragModified && (
+                          <Button variant="secondary" onClick={handleResetRag} disabled={savingSettings}>
+                            Reset
+                          </Button>
+                        )}
+                        <Button onClick={handleSaveRag} disabled={!ragModified || savingSettings} loading={savingSettings}>
+                          <Save size={18} className="mr-2" />
+                          Save
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                  {settingsLoading ? (
+                    <div className="px-6 py-12 flex justify-center"><Spinner size="lg" /></div>
+                  ) : editedRag && (
+                    <div className="p-6 space-y-6">
+                      <div className="grid grid-cols-2 gap-6">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Top K Chunks</label>
+                          <input
+                            type="number"
+                            min="1"
+                            max="50"
+                            value={editedRag.topKChunks}
+                            onChange={(e) => handleRagChange('topKChunks', parseInt(e.target.value) || 15)}
+                            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                          />
+                          <p className="mt-1 text-xs text-gray-500">Chunks retrieved per query (1-50)</p>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Max Context Chunks</label>
+                          <input
+                            type="number"
+                            min="1"
+                            max="30"
+                            value={editedRag.maxContextChunks}
+                            onChange={(e) => handleRagChange('maxContextChunks', parseInt(e.target.value) || 12)}
+                            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                          />
+                          <p className="mt-1 text-xs text-gray-500">Max chunks sent to LLM (1-30)</p>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Similarity Threshold: {editedRag.similarityThreshold}
+                          </label>
+                          <input
+                            type="range"
+                            min="0"
+                            max="1"
+                            step="0.05"
+                            value={editedRag.similarityThreshold}
+                            onChange={(e) => handleRagChange('similarityThreshold', parseFloat(e.target.value))}
+                            className="w-full"
+                          />
+                          <div className="flex justify-between text-xs text-gray-500 mt-1">
+                            <span>0 (All)</span>
+                            <span>1 (Exact)</span>
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Cache TTL (seconds)</label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="86400"
+                            value={editedRag.cacheTTLSeconds}
+                            onChange={(e) => handleRagChange('cacheTTLSeconds', parseInt(e.target.value) || 3600)}
+                            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                          />
+                          <p className="mt-1 text-xs text-gray-500">Response cache duration (0-86400)</p>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Chunk Size</label>
+                          <input
+                            type="number"
+                            min="100"
+                            max="2000"
+                            value={editedRag.chunkSize}
+                            onChange={(e) => handleRagChange('chunkSize', parseInt(e.target.value) || 500)}
+                            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                          />
+                          <p className="mt-1 text-xs text-gray-500">Characters per chunk (100-2000)</p>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Chunk Overlap</label>
+                          <input
+                            type="number"
+                            min="0"
+                            max={editedRag.chunkSize / 2}
+                            value={editedRag.chunkOverlap}
+                            onChange={(e) => handleRagChange('chunkOverlap', parseInt(e.target.value) || 50)}
+                            className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                          />
+                          <p className="mt-1 text-xs text-gray-500">Overlap between chunks</p>
+                        </div>
+                      </div>
+                      <div className="flex gap-6 pt-4 border-t">
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={editedRag.queryExpansionEnabled}
+                            onChange={(e) => handleRagChange('queryExpansionEnabled', e.target.checked)}
+                            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span className="text-sm text-gray-700">Query Expansion (acronyms)</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={editedRag.cacheEnabled}
+                            onChange={(e) => handleRagChange('cacheEnabled', e.target.checked)}
+                            className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span className="text-sm text-gray-700">Response Caching</span>
+                        </label>
+                      </div>
+                      <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                        <p className="text-sm text-yellow-800">
+                          Chunk size/overlap changes only affect new documents. Use &quot;Refresh All&quot; on the Documents tab to reindex existing documents.
+                        </p>
+                      </div>
+                      {ragSettings && (
+                        <p className="text-xs text-gray-500 pt-4 border-t">
+                          Last updated: {formatDate(ragSettings.updatedAt)} by {ragSettings.updatedBy}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Acronym Mappings Section */}
+              {settingsSection === 'acronyms' && (
+                <div className="bg-white rounded-lg border shadow-sm">
+                  <div className="px-6 py-4 border-b">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h2 className="font-semibold text-gray-900">Acronym Mappings</h2>
+                        <p className="text-sm text-gray-500">Define acronym expansions for query enhancement</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {acronymsModified && (
+                          <Button variant="secondary" onClick={handleResetAcronyms} disabled={savingSettings}>
+                            Reset
+                          </Button>
+                        )}
+                        <Button onClick={handleSaveAcronyms} disabled={!acronymsModified || savingSettings} loading={savingSettings}>
+                          <Save size={18} className="mr-2" />
+                          Save
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                  {settingsLoading ? (
+                    <div className="px-6 py-12 flex justify-center"><Spinner size="lg" /></div>
+                  ) : (
+                    <div className="p-6">
+                      <textarea
+                        value={editedAcronyms}
+                        onChange={(e) => handleAcronymsChange(e.target.value)}
+                        rows={12}
+                        className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
+                        placeholder="ea=enterprise architecture&#10;it=information technology"
+                      />
+                      <p className="mt-2 text-sm text-gray-500">
+                        One mapping per line in format: acronym=expansion. Used to expand queries for better retrieval.
+                      </p>
+                      {acronymMappings && (
+                        <p className="mt-4 text-xs text-gray-500">
+                          Last updated: {formatDate(acronymMappings.updatedAt)} by {acronymMappings.updatedBy}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         )}
       </main>

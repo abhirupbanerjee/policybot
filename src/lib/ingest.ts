@@ -4,17 +4,26 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { createEmbeddings } from './openai';
 import { addDocuments, deleteDocumentsByFilter } from './chroma';
-import { readJson, writeJson, readFileBuffer, getGlobalDocsDir, deleteFile, fileExists } from './storage';
+import { readJson, writeJson, readFileBuffer, getGlobalDocsDir, deleteFile, fileExists, getRAGSettings } from './storage';
 import type { DocumentChunk, GlobalDocument, DocumentRegistry } from '@/types';
 
-const CHUNK_SIZE = 500;
-const CHUNK_OVERLAP = 50;
+// Create splitter with configurable settings
+async function createSplitter(chunkSize?: number, chunkOverlap?: number): Promise<RecursiveCharacterTextSplitter> {
+  if (chunkSize !== undefined && chunkOverlap !== undefined) {
+    return new RecursiveCharacterTextSplitter({
+      chunkSize,
+      chunkOverlap,
+      separators: ['\n\n', '\n', '. ', ' ', ''],
+    });
+  }
 
-const splitter = new RecursiveCharacterTextSplitter({
-  chunkSize: CHUNK_SIZE,
-  chunkOverlap: CHUNK_OVERLAP,
-  separators: ['\n\n', '\n', '. ', ' ', ''],
-});
+  const settings = await getRAGSettings();
+  return new RecursiveCharacterTextSplitter({
+    chunkSize: settings.chunkSize,
+    chunkOverlap: settings.chunkOverlap,
+    separators: ['\n\n', '\n', '. ', ' ', ''],
+  });
+}
 
 export interface PageText {
   pageNumber: number;
@@ -63,6 +72,9 @@ export async function chunkText(
   userId?: string,
   pages?: PageText[]
 ): Promise<DocumentChunk[]> {
+  // Get splitter with current settings
+  const splitter = await createSplitter();
+
   // If we have page information, chunk each page separately to preserve page numbers
   if (pages && pages.length > 0) {
     const allChunks: DocumentChunk[] = [];

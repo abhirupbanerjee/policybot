@@ -107,3 +107,212 @@ export async function writeFileBuffer(filePath: string, buffer: Buffer): Promise
   await ensureDir(dir);
   await fs.writeFile(filePath, buffer);
 }
+
+// System prompt storage
+export function getConfigDir(): string {
+  return path.join(DATA_DIR, 'config');
+}
+
+export interface SystemPromptConfig {
+  prompt: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+
+const DEFAULT_SYSTEM_PROMPT = `You are a helpful policy assistant for government staff. Your role is to:
+
+1. Answer questions based ONLY on the provided context from policy documents
+2. When comparing documents for compliance, clearly identify areas of alignment and gaps
+3. Always cite which document and section your answer comes from
+4. If the context doesn't contain enough information to answer, say so clearly
+5. Be concise, professional, and accurate
+
+When citing sources, use this format: [Document Name, Page X]
+
+If a user asks you to compare their uploaded document against policies:
+- Identify specific sections that align with policies
+- Point out any gaps or areas that don't meet policy requirements
+- Suggest improvements if applicable`;
+
+export async function getSystemPrompt(): Promise<SystemPromptConfig> {
+  const configPath = path.join(getConfigDir(), 'system-prompt.json');
+  const config = await readJson<SystemPromptConfig>(configPath);
+
+  if (!config) {
+    return {
+      prompt: DEFAULT_SYSTEM_PROMPT,
+      updatedAt: new Date().toISOString(),
+      updatedBy: 'system',
+    };
+  }
+
+  return config;
+}
+
+export async function saveSystemPrompt(prompt: string, updatedBy: string): Promise<SystemPromptConfig> {
+  const configPath = path.join(getConfigDir(), 'system-prompt.json');
+  const config: SystemPromptConfig = {
+    prompt,
+    updatedAt: new Date().toISOString(),
+    updatedBy,
+  };
+
+  await writeJson(configPath, config);
+  return config;
+}
+
+// RAG Settings
+export interface RAGSettings {
+  // Retrieval settings
+  topKChunks: number;           // Number of chunks to retrieve per query
+  maxContextChunks: number;     // Maximum chunks to include in final context
+  similarityThreshold: number;  // Minimum similarity score (0-1)
+
+  // Chunking settings
+  chunkSize: number;            // Characters per chunk
+  chunkOverlap: number;         // Overlap between chunks
+
+  // Query settings
+  queryExpansionEnabled: boolean;
+
+  // Cache settings
+  cacheEnabled: boolean;
+  cacheTTLSeconds: number;
+
+  // Metadata
+  updatedAt: string;
+  updatedBy: string;
+}
+
+export const DEFAULT_RAG_SETTINGS: Omit<RAGSettings, 'updatedAt' | 'updatedBy'> = {
+  topKChunks: 15,
+  maxContextChunks: 12,
+  similarityThreshold: 0.3,
+  chunkSize: 500,
+  chunkOverlap: 50,
+  queryExpansionEnabled: true,
+  cacheEnabled: true,
+  cacheTTLSeconds: 3600,
+};
+
+export async function getRAGSettings(): Promise<RAGSettings> {
+  const configPath = path.join(getConfigDir(), 'rag-settings.json');
+  const config = await readJson<RAGSettings>(configPath);
+
+  if (!config) {
+    return {
+      ...DEFAULT_RAG_SETTINGS,
+      updatedAt: new Date().toISOString(),
+      updatedBy: 'system',
+    };
+  }
+
+  return config;
+}
+
+export async function saveRAGSettings(settings: Omit<RAGSettings, 'updatedAt' | 'updatedBy'>, updatedBy: string): Promise<RAGSettings> {
+  const configPath = path.join(getConfigDir(), 'rag-settings.json');
+  const config: RAGSettings = {
+    ...settings,
+    updatedAt: new Date().toISOString(),
+    updatedBy,
+  };
+
+  await writeJson(configPath, config);
+  return config;
+}
+
+// LLM Settings
+export interface LLMSettings {
+  model: string;
+  temperature: number;
+  maxTokens: number;
+
+  // Metadata
+  updatedAt: string;
+  updatedBy: string;
+}
+
+export const DEFAULT_LLM_SETTINGS: Omit<LLMSettings, 'updatedAt' | 'updatedBy'> = {
+  model: 'gpt-4o',
+  temperature: 0.3,
+  maxTokens: 2000,
+};
+
+export const AVAILABLE_MODELS = [
+  { id: 'gpt-4o', name: 'GPT-4o (Recommended)', description: 'Most capable, best for complex queries' },
+  { id: 'gpt-4o-mini', name: 'GPT-4o Mini', description: 'Faster and cheaper, good for simple queries' },
+  { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', description: 'Previous generation, high capability' },
+  { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', description: 'Fastest and cheapest, basic capability' },
+];
+
+export async function getLLMSettings(): Promise<LLMSettings> {
+  const configPath = path.join(getConfigDir(), 'llm-settings.json');
+  const config = await readJson<LLMSettings>(configPath);
+
+  if (!config) {
+    return {
+      ...DEFAULT_LLM_SETTINGS,
+      updatedAt: new Date().toISOString(),
+      updatedBy: 'system',
+    };
+  }
+
+  return config;
+}
+
+export async function saveLLMSettings(settings: Omit<LLMSettings, 'updatedAt' | 'updatedBy'>, updatedBy: string): Promise<LLMSettings> {
+  const configPath = path.join(getConfigDir(), 'llm-settings.json');
+  const config: LLMSettings = {
+    ...settings,
+    updatedAt: new Date().toISOString(),
+    updatedBy,
+  };
+
+  await writeJson(configPath, config);
+  return config;
+}
+
+// Acronym Mappings
+export interface AcronymMappings {
+  mappings: Record<string, string>;
+  updatedAt: string;
+  updatedBy: string;
+}
+
+export const DEFAULT_ACRONYM_MAPPINGS: Record<string, string> = {
+  'ea': 'enterprise architecture',
+  'dta': 'digital transformation agency',
+  'it': 'information technology',
+  'ict': 'information and communication technology',
+  'hr': 'human resources',
+  'kpi': 'key performance indicator',
+  'sla': 'service level agreement',
+};
+
+export async function getAcronymMappings(): Promise<AcronymMappings> {
+  const configPath = path.join(getConfigDir(), 'acronym-mappings.json');
+  const config = await readJson<AcronymMappings>(configPath);
+
+  if (!config) {
+    return {
+      mappings: DEFAULT_ACRONYM_MAPPINGS,
+      updatedAt: new Date().toISOString(),
+      updatedBy: 'system',
+    };
+  }
+
+  return config;
+}
+
+export async function saveAcronymMappings(mappings: Record<string, string>, updatedBy: string): Promise<AcronymMappings> {
+  const configPath = path.join(getConfigDir(), 'acronym-mappings.json');
+  const config: AcronymMappings = {
+    mappings,
+    updatedAt: new Date().toISOString(),
+    updatedBy,
+  };
+
+  await writeJson(configPath, config);
+  return config;
+}
