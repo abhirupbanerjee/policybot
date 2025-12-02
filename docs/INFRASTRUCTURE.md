@@ -96,9 +96,20 @@ REDIS_URL=redis://redis:6379
 # Auth
 NEXTAUTH_URL=https://policybot.abhirup.app
 NEXTAUTH_SECRET=generate-32-char-random-string
+
+# Azure AD OAuth
 AZURE_AD_CLIENT_ID=your-azure-client-id
 AZURE_AD_CLIENT_SECRET=your-azure-client-secret
 AZURE_AD_TENANT_ID=your-azure-tenant-id
+
+# Google OAuth
+GOOGLE_CLIENT_ID=your-google-client-id
+GOOGLE_CLIENT_SECRET=your-google-client-secret
+
+# Access Control
+ACCESS_MODE=allowlist
+# ALLOWED_DOMAINS=example.com,company.org  # Only used when ACCESS_MODE=domain
+
 AUTH_DISABLED=false
 
 # Admin
@@ -172,8 +183,6 @@ volumes:
 Full stack with Traefik for TLS.
 
 ```yaml
-version: '3.8'
-
 services:
   traefik:
     image: traefik:v3.0
@@ -222,7 +231,7 @@ services:
       - app_data:/app/data
     depends_on:
       chroma:
-        condition: service_healthy
+        condition: service_started
       redis:
         condition: service_healthy
     networks:
@@ -237,11 +246,7 @@ services:
     environment:
       - ANONYMIZED_TELEMETRY=false
       - ALLOW_RESET=false
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
+      - IS_PERSISTENT=TRUE
     networks:
       - policy-bot-network
     restart: unless-stopped
@@ -276,6 +281,8 @@ volumes:
     name: policy-bot-redis-data
 ```
 
+**Note**: ChromaDB no longer uses a healthcheck as the Python-based check was unreliable. The app uses `service_started` dependency instead.
+
 ---
 
 ## Dockerfile
@@ -287,7 +294,7 @@ Multi-stage build for production.
 FROM node:20-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci --only=production
+RUN npm ci
 
 # Stage 2: Builder
 FROM node:20-alpine AS builder
@@ -297,6 +304,9 @@ COPY . .
 
 # Build-time environment variables
 ENV NEXT_TELEMETRY_DISABLED=1
+
+# Create public directory if it doesn't exist
+RUN mkdir -p public
 
 RUN npm run build
 
@@ -328,6 +338,8 @@ ENV HOSTNAME="0.0.0.0"
 
 CMD ["node", "server.js"]
 ```
+
+**Note**: Uses `npm ci` (not `npm ci --only=production`) because TypeScript and other devDependencies are required during the build stage.
 
 ---
 
@@ -646,7 +658,8 @@ fi
 
 - [ ] Generate strong `NEXTAUTH_SECRET` (32+ characters)
 - [ ] Configure Azure AD app registration
-- [ ] Set domain whitelist (`abhirup.app`, `gov.gd`)
+- [ ] Configure Google OAuth credentials (optional)
+- [ ] Set `ACCESS_MODE` (allowlist or domain)
 - [ ] Add admin emails to `ADMIN_EMAILS`
 - [ ] Verify `.env` is in `.gitignore`
 
@@ -654,7 +667,9 @@ fi
 
 - [ ] Verify TLS certificate is valid
 - [ ] Test Azure AD login flow
+- [ ] Test Google OAuth login flow (if configured)
 - [ ] Verify admin access control
+- [ ] Add initial users to allowlist (if ACCESS_MODE=allowlist)
 - [ ] Test file upload limits
 - [ ] Check CORS settings
 
@@ -664,6 +679,7 @@ fi
 - [ ] Review container logs weekly
 - [ ] Update base images monthly
 - [ ] Rotate secrets quarterly
+- [ ] Review user allowlist regularly
 
 ---
 

@@ -63,8 +63,8 @@ Policy Bot is a RAG-based (Retrieval-Augmented Generation) chatbot designed to h
 | Transcription | OpenAI whisper-1 | Voice-to-text |
 | Vector DB | ChromaDB | Document embeddings storage |
 | Cache | Redis | Query caching, sessions |
-| Auth | NextAuth + Azure AD | SSO Authentication |
-| Storage | Local Filesystem | Thread data, uploaded PDFs |
+| Auth | NextAuth + Azure AD + Google | Multi-provider SSO |
+| Storage | Local Filesystem | Thread data, uploaded PDFs, user allowlist |
 | Deployment | Docker, Traefik | Containerization, TLS |
 
 ---
@@ -172,36 +172,54 @@ User Access
     │ No Session
     ▼
 ┌─────────────────┐
-│ Redirect to     │
-│ Azure AD Login  │
+│ Show Sign-In    │
+│ (Azure AD or    │
+│  Google OAuth)  │
 └─────────────────┘
     │
     ▼
 ┌─────────────────┐
-│ Domain Check    │──── Invalid Domain ────▶ Deny Access
-│ (abhirup.app,   │
-│  gov.gd)        │
+│ Access Check    │──── Not Allowed ────▶ Deny Access
+│                 │
+│ Allowlist Mode: │
+│  Check user in  │
+│  allowed-users  │
+│                 │
+│ Domain Mode:    │
+│  Check email    │
+│  domain         │
 └─────────────────┘
-    │ Valid
+    │ Allowed
     ▼
 ┌─────────────────┐
 │ Create Session  │
-│ Check Admin     │
+│ Assign Role     │
+│ (admin/user)    │
 └─────────────────┘
 ```
+
+### Access Control Modes
+
+| Mode | Configuration | Description |
+|------|---------------|-------------|
+| **Allowlist** | `ACCESS_MODE=allowlist` | Only users explicitly added to `allowed-users.json` can sign in |
+| **Domain** | `ACCESS_MODE=domain` | Any user from allowed email domains can sign in |
 
 ---
 
 ## User Roles & Permissions
 
 ### Admin Users
-- Identified by email in `ADMIN_EMAILS` environment variable
+- Identified by `role: 'admin'` in allowed-users.json
+- Initially seeded from `ADMIN_EMAILS` environment variable
 - Can access `/admin` page
 - Full CRUD on global policy documents
+- Manage users (add, remove, change roles)
 - Re-index documents in ChromaDB
 - All standard user capabilities
 
 ### Non-Admin Users
+- Identified by `role: 'user'` in allowed-users.json
 - Query global policy documents
 - Create/delete their own threads
 - Upload PDFs for compliance checking (max 3 per thread, 5MB each)
@@ -299,9 +317,11 @@ User Access
 ## Security Considerations
 
 ### Authentication
-- Azure AD SSO with domain whitelist
+- Multi-provider OAuth (Azure AD and Google)
+- Two access control modes: allowlist (specific users) or domain-based
 - Session-based authentication via NextAuth
-- Admin role determined by email list (simple but effective)
+- Role-based access control (admin/user) stored in allowed-users.json
+- Admin users initially seeded from ADMIN_EMAILS environment variable
 
 ### Data Isolation
 - Users can only access their own threads

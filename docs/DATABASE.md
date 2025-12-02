@@ -24,10 +24,12 @@ data/
 │               ├── document1.pdf
 │               ├── document2.pdf
 │               └── document3.pdf
-└── global-docs/
-    ├── Leave_Policy.pdf
-    ├── Travel_Guidelines.pdf
-    └── HR_Handbook.pdf
+├── global-docs/
+│   ├── registry.json
+│   ├── Leave_Policy.pdf
+│   ├── Travel_Guidelines.pdf
+│   └── HR_Handbook.pdf
+└── allowed-users.json
 ```
 
 ### Thread Metadata Schema
@@ -154,6 +156,51 @@ interface GlobalDocument {
   ]
 }
 ```
+
+### Allowed Users Registry
+
+**File**: `data/allowed-users.json`
+
+```typescript
+interface AllowedUsersRegistry {
+  users: AllowedUser[];
+}
+
+interface AllowedUser {
+  email: string;           // User email (unique identifier)
+  name?: string;           // Optional display name
+  role: 'admin' | 'user';  // User role
+  addedAt: Date;           // When user was added
+  addedBy: string;         // Email of admin who added (or 'system')
+}
+```
+
+**Example**:
+```json
+{
+  "users": [
+    {
+      "email": "admin@example.com",
+      "name": "Admin User",
+      "role": "admin",
+      "addedAt": "2024-12-02T12:00:00.000Z",
+      "addedBy": "system"
+    },
+    {
+      "email": "user@example.com",
+      "name": "Regular User",
+      "role": "user",
+      "addedAt": "2024-12-02T13:00:00.000Z",
+      "addedBy": "admin@example.com"
+    }
+  ]
+}
+```
+
+**Notes**:
+- Users from `ADMIN_EMAILS` environment variable are auto-seeded as admins on first access
+- Email lookups are case-insensitive
+- Used when `ACCESS_MODE=allowlist`
 
 ---
 
@@ -403,6 +450,20 @@ export interface ApiError {
   error: string;
   details?: string;
   code?: string;
+}
+
+// ============ User Management Types ============
+
+export interface AllowedUser {
+  email: string;
+  name?: string;
+  role: 'admin' | 'user';
+  addedAt: Date;
+  addedBy: string;
+}
+
+export interface UsersListResponse {
+  users: AllowedUser[];
 }
 ```
 

@@ -15,9 +15,18 @@ All endpoints except `/api/auth/*` require authentication.
 ### Authentication Flow
 
 1. User navigates to protected route
-2. Redirected to Azure AD login if no session
+2. Redirected to Azure AD or Google login if no session
 3. After successful login, session cookie is set
 4. All subsequent requests include session cookie
+
+### Access Control Modes
+
+Policy Bot supports two access control modes via `ACCESS_MODE` environment variable:
+
+| Mode | Description |
+|------|-------------|
+| `allowlist` (default) | Only users in the allowlist can sign in |
+| `domain` | Any user from allowed email domains can sign in |
 
 ### Auth Bypass (Development Only)
 
@@ -40,7 +49,8 @@ NextAuth.js handles all authentication routes.
 | `/api/auth/signin` | GET | Sign-in page |
 | `/api/auth/signout` | POST | Sign out user |
 | `/api/auth/session` | GET | Get current session |
-| `/api/auth/callback/azure-ad` | GET | OAuth callback |
+| `/api/auth/callback/azure-ad` | GET | Azure AD OAuth callback |
+| `/api/auth/callback/google` | GET | Google OAuth callback |
 
 ---
 
@@ -575,6 +585,171 @@ Reindex an existing document (re-extract and re-embed).
 ```bash
 curl -X POST /api/admin/documents/doc-001/reindex \
   -H "Cookie: next-auth.session-token=..."
+```
+
+---
+
+### 7. Admin - User Management
+
+#### `GET /api/admin/users`
+
+List all users in the allowlist.
+
+**Authentication**: Required (admin only)
+
+**Response** `200 OK`:
+```typescript
+{
+  users: [
+    {
+      email: string;
+      name?: string;
+      role: "admin" | "user";
+      addedAt: string;    // ISO 8601
+      addedBy: string;    // Email of admin who added
+    }
+  ];
+}
+```
+
+**Error Responses**:
+
+| Status | Error | Description |
+|--------|-------|-------------|
+| 401 | `"Unauthorized"` | No valid session |
+| 403 | `"Admin access required"` | User is not an admin |
+
+**Example**:
+```bash
+curl -X GET /api/admin/users \
+  -H "Cookie: next-auth.session-token=..."
+```
+
+---
+
+#### `POST /api/admin/users`
+
+Add a new user to the allowlist.
+
+**Authentication**: Required (admin only)
+
+**Request Body**:
+```typescript
+{
+  email: string;           // Required: user's email
+  role: "admin" | "user";  // Required: user role
+  name?: string;           // Optional: display name
+}
+```
+
+**Response** `200 OK`:
+```typescript
+{
+  user: {
+    email: string;
+    name?: string;
+    role: "admin" | "user";
+    addedAt: string;
+    addedBy: string;
+  };
+  message: "User added successfully";
+}
+```
+
+**Error Responses**:
+
+| Status | Error | Description |
+|--------|-------|-------------|
+| 400 | `"Email is required"` | Missing email in request |
+| 400 | `"Role must be \"admin\" or \"user\""` | Invalid role value |
+| 401 | `"Unauthorized"` | No valid session |
+| 403 | `"Admin access required"` | User is not an admin |
+
+**Example**:
+```bash
+curl -X POST /api/admin/users \
+  -H "Content-Type: application/json" \
+  -H "Cookie: next-auth.session-token=..." \
+  -d '{"email": "user@example.com", "role": "user", "name": "John Doe"}'
+```
+
+---
+
+#### `DELETE /api/admin/users`
+
+Remove a user from the allowlist.
+
+**Authentication**: Required (admin only)
+
+**Query Parameters**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `email` | string | Yes | Email of user to remove |
+
+**Response** `200 OK`:
+```typescript
+{
+  message: "User removed successfully";
+}
+```
+
+**Error Responses**:
+
+| Status | Error | Description |
+|--------|-------|-------------|
+| 400 | `"Email is required"` | Missing email parameter |
+| 400 | `"Cannot remove yourself"` | Admin tried to remove own account |
+| 401 | `"Unauthorized"` | No valid session |
+| 403 | `"Admin access required"` | User is not an admin |
+| 404 | `"User not found"` | User not in allowlist |
+
+**Example**:
+```bash
+curl -X DELETE "/api/admin/users?email=user@example.com" \
+  -H "Cookie: next-auth.session-token=..."
+```
+
+---
+
+#### `PATCH /api/admin/users`
+
+Update a user's role.
+
+**Authentication**: Required (admin only)
+
+**Request Body**:
+```typescript
+{
+  email: string;           // Required: user's email
+  role: "admin" | "user";  // Required: new role
+}
+```
+
+**Response** `200 OK`:
+```typescript
+{
+  message: "User role updated successfully";
+}
+```
+
+**Error Responses**:
+
+| Status | Error | Description |
+|--------|-------|-------------|
+| 400 | `"Email is required"` | Missing email in request |
+| 400 | `"Role must be \"admin\" or \"user\""` | Invalid role value |
+| 400 | `"Cannot change your own role"` | Admin tried to demote self |
+| 401 | `"Unauthorized"` | No valid session |
+| 403 | `"Admin access required"` | User is not an admin |
+| 404 | `"User not found"` | User not in allowlist |
+
+**Example**:
+```bash
+curl -X PATCH /api/admin/users \
+  -H "Content-Type: application/json" \
+  -H "Cookie: next-auth.session-token=..." \
+  -d '{"email": "user@example.com", "role": "admin"}'
 ```
 
 ---
