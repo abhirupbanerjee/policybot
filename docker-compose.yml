@@ -63,11 +63,13 @@ services:
     environment:
       - ANONYMIZED_TELEMETRY=false
       - ALLOW_RESET=false
+      - IS_PERSISTENT=TRUE
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/heartbeat')\" || exit 1"]
       interval: 30s
       timeout: 10s
-      retries: 3
+      retries: 5
+      start_period: 30s
     networks:
       - policy-bot-network
     restart: unless-stopped
