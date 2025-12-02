@@ -1,0 +1,102 @@
+version: '3.8'
+
+services:
+  traefik:
+    image: traefik:v3.0
+    container_name: policy-bot-traefik
+    command:
+      - "--api.insecure=false"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - letsencrypt:/letsencrypt
+    networks:
+      - policy-bot-network
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: policy-bot-app
+    environment:
+      - NODE_ENV=production
+      - CHROMA_HOST=chroma
+      - CHROMA_PORT=8000
+      - REDIS_URL=redis://redis:6379
+      - DATA_DIR=/app/data
+    env_file:
+      - .env
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.app.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.app.entrypoints=websecure"
+      - "traefik.http.routers.app.tls.certresolver=letsencrypt"
+      - "traefik.http.services.app.loadbalancer.server.port=3000"
+    volumes:
+      - app_data:/app/data
+    depends_on:
+      chroma:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - policy-bot-network
+    restart: unless-stopped
+
+  chroma:
+    image: chromadb/chroma:latest
+    container_name: policy-bot-chroma
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      - ANONYMIZED_TELEMETRY=false
+      - ALLOW_RESET=false
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - policy-bot-network
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: policy-bot-redis
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - policy-bot-network
+    restart: unless-stopped
+
+networks:
+  policy-bot-network:
+    name: policy-bot-network
+
+volumes:
+  letsencrypt:
+    name: policy-bot-letsencrypt
+  app_data:
+    name: policy-bot-app-data
+  chroma_data:
+    name: policy-bot-chroma-data
+  redis_data:
+    name: policy-bot-redis-data

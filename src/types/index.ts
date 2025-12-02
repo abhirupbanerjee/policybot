@@ -1,0 +1,228 @@
+// ============ Core Types ============
+
+export interface User {
+  id: string;
+  email: string;
+  name: string;
+  image?: string;
+  isAdmin: boolean;
+}
+
+// ============ Thread Types ============
+
+export interface Thread {
+  id: string;
+  userId: string;
+  title: string;
+  createdAt: Date;
+  updatedAt: Date;
+  uploadCount: number;
+}
+
+export interface ThreadWithMessages extends Thread {
+  messages: Message[];
+  uploads: string[];
+}
+
+// ============ Message Types ============
+
+export interface Message {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  sources?: Source[];
+  attachments?: string[];
+  timestamp: Date;
+}
+
+export interface Source {
+  documentName: string;
+  pageNumber: number;
+  chunkText: string;
+  score: number;
+}
+
+// ============ Document Types ============
+
+export interface GlobalDocument {
+  id: string;
+  filename: string;
+  filepath: string;
+  size: number;
+  chunkCount: number;
+  uploadedAt: Date;
+  uploadedBy: string;
+  status: 'processing' | 'ready' | 'error';
+  errorMessage?: string;
+}
+
+export interface DocumentChunk {
+  id: string;
+  text: string;
+  metadata: ChunkMetadata;
+  embedding?: number[];
+}
+
+export interface ChunkMetadata {
+  documentId: string;
+  documentName: string;
+  pageNumber: number;
+  chunkIndex: number;
+  source: 'global' | 'user';
+  threadId?: string;
+  userId?: string;
+}
+
+// ============ API Request Types ============
+
+export interface ChatRequest {
+  message: string;
+  threadId: string;
+}
+
+export interface TranscribeRequest {
+  audio: File;
+}
+
+export interface CreateThreadRequest {
+  title?: string;
+}
+
+export interface UpdateThreadRequest {
+  title?: string;
+}
+
+// ============ API Response Types ============
+
+export interface ChatResponse {
+  message: Message;
+  threadId: string;
+}
+
+export interface TranscribeResponse {
+  text: string;
+  duration: number;
+}
+
+export interface ThreadListResponse {
+  threads: Thread[];
+  total: number;
+}
+
+export type ThreadResponse = ThreadWithMessages;
+
+export interface DeleteThreadResponse {
+  success: boolean;
+  deleted: {
+    threadId: string;
+    messageCount: number;
+    uploadCount: number;
+  };
+}
+
+export interface UploadResponse {
+  filename: string;
+  size: number;
+  uploadCount: number;
+}
+
+export interface AdminDocumentsResponse {
+  documents: GlobalDocument[];
+  totalChunks: number;
+}
+
+export interface AdminUploadResponse {
+  id: string;
+  filename: string;
+  size: number;
+  status: 'processing';
+  message: string;
+}
+
+export interface AdminDeleteResponse {
+  success: boolean;
+  deleted: {
+    id: string;
+    filename: string;
+    chunksRemoved: number;
+  };
+}
+
+// ============ Error Types ============
+
+export interface ApiError {
+  error: string;
+  details?: string;
+  code?: ErrorCode;
+}
+
+export type ErrorCode =
+  | 'AUTH_REQUIRED'
+  | 'ADMIN_REQUIRED'
+  | 'NOT_FOUND'
+  | 'VALIDATION_ERROR'
+  | 'FILE_TOO_LARGE'
+  | 'UPLOAD_LIMIT'
+  | 'INVALID_FILE_TYPE'
+  | 'SERVICE_ERROR'
+  | 'RATE_LIMITED';
+
+// ============ Storage Types ============
+
+export interface ThreadMetadata {
+  id: string;
+  userId: string;
+  title: string;
+  createdAt: string;
+  updatedAt: string;
+  uploadCount: number;
+}
+
+export interface StoredMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  sources?: Source[];
+  attachments?: string[];
+  timestamp: string;
+}
+
+export interface DocumentRegistry {
+  documents: GlobalDocument[];
+}
+
+// ============ RAG Types ============
+
+export interface RAGContext {
+  query: string;
+  globalChunks: RetrievedChunk[];
+  userChunks: RetrievedChunk[];
+  conversationHistory: Message[];
+}
+
+export interface RetrievedChunk {
+  id: string;
+  text: string;
+  documentName: string;
+  pageNumber: number;
+  score: number;
+  source: 'global' | 'user';
+}
+
+export interface RAGResponse {
+  answer: string;
+  sources: Source[];
+}
+
+// ============ Session Types ============
+
+export interface SessionUser {
+  name?: string | null;
+  email?: string | null;
+  image?: string | null;
+}
+
+export interface Session {
+  user?: SessionUser;
+  expires: string;
+}
