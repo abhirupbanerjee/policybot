@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, MessageSquare, Trash2, Menu, X } from 'lucide-react';
+import { Plus, MessageSquare, Trash2, Menu, X, Settings, LogOut } from 'lucide-react';
+import { useSession, signOut } from 'next-auth/react';
+import Link from 'next/link';
 import type { Thread } from '@/types';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
@@ -17,11 +19,14 @@ export default function ThreadSidebar({
   onThreadCreated,
   selectedThreadId,
 }: ThreadSidebarProps) {
+  const { data: session } = useSession();
   const [threads, setThreads] = useState<Thread[]>([]);
   const [loading, setLoading] = useState(true);
   const [isOpen, setIsOpen] = useState(false);
   const [deleteThread, setDeleteThread] = useState<Thread | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  const isAdmin = (session?.user as { role?: string })?.role === 'admin';
 
   const loadThreads = useCallback(async () => {
     try {
@@ -179,7 +184,7 @@ export default function ThreadSidebar({
         </div>
 
         {/* Thread List */}
-        <div className="flex-1 overflow-y-auto px-2">
+        <div className="flex-1 overflow-y-auto px-2 pb-4">
           {loading ? (
             <div className="flex items-center justify-center h-32">
               <div className="animate-pulse text-gray-400">Loading...</div>
@@ -235,6 +240,42 @@ export default function ThreadSidebar({
                 </div>
               </div>
             ))
+          )}
+        </div>
+
+        {/* Footer with user info and admin link */}
+        <div className="border-t p-4 space-y-2">
+          {isAdmin && (
+            <Link
+              href="/admin"
+              className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              onClick={() => setIsOpen(false)}
+            >
+              <Settings size={16} />
+              Admin Dashboard
+            </Link>
+          )}
+          {session?.user && (
+            <div className="flex items-center justify-between px-3 py-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-medium text-sm shrink-0">
+                  {session.user.name?.[0] || session.user.email?.[0]?.toUpperCase()}
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-900 truncate">
+                    {session.user.name || session.user.email?.split('@')[0]}
+                  </p>
+                  <p className="text-xs text-gray-500 truncate">{session.user.email}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => signOut({ callbackUrl: '/auth/signin' })}
+                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg"
+                title="Sign out"
+              >
+                <LogOut size={16} />
+              </button>
+            </div>
           )}
         </div>
       </aside>
