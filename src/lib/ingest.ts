@@ -16,11 +16,41 @@ const splitter = new RecursiveCharacterTextSplitter({
   separators: ['\n\n', '\n', '. ', ' ', ''],
 });
 
-export async function extractTextFromPDF(buffer: Buffer): Promise<{ text: string; numPages: number }> {
-  const data = await pdf(buffer);
+export interface PageText {
+  pageNumber: number;
+  text: string;
+}
+
+export async function extractTextFromPDF(buffer: Buffer): Promise<{ text: string; numPages: number; pages: PageText[] }> {
+  const pages: PageText[] = [];
+
+  // Custom page render to capture text per page
+  const data = await pdf(buffer, {
+    pagerender: function(pageData: { pageIndex: number; getTextContent: () => Promise<{ items: Array<{ str: string }> }> }) {
+      return pageData.getTextContent().then(function(textContent) {
+        const pageText = textContent.items
+          .map((item) => item.str)
+          .join(' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        pages.push({
+          pageNumber: pageData.pageIndex + 1, // 1-indexed
+          text: pageText,
+        });
+
+        return pageText;
+      });
+    }
+  });
+
+  // Sort pages by page number (in case they were processed out of order)
+  pages.sort((a, b) => a.pageNumber - b.pageNumber);
+
   return {
     text: data.text,
     numPages: data.numpages,
+    pages,
   };
 }
 
@@ -30,8 +60,41 @@ export async function chunkText(
   documentName: string,
   source: 'global' | 'user' = 'global',
   threadId?: string,
-  userId?: string
+  userId?: string,
+  pages?: PageText[]
 ): Promise<DocumentChunk[]> {
+  // If we have page information, chunk each page separately to preserve page numbers
+  if (pages && pages.length > 0) {
+    const allChunks: DocumentChunk[] = [];
+    let chunkIndex = 0;
+
+    for (const page of pages) {
+      if (!page.text.trim()) continue;
+
+      const pageChunks = await splitter.splitText(page.text);
+
+      for (const chunkText of pageChunks) {
+        allChunks.push({
+          id: `${documentId}-chunk-${chunkIndex}`,
+          text: chunkText,
+          metadata: {
+            documentId,
+            documentName,
+            pageNumber: page.pageNumber,
+            chunkIndex,
+            source,
+            threadId,
+            userId,
+          },
+        });
+        chunkIndex++;
+      }
+    }
+
+    return allChunks;
+  }
+
+  // Fallback: chunk without page info (all page 1)
   const chunks = await splitter.splitText(text);
 
   return chunks.map((chunk, index) => ({
@@ -40,7 +103,7 @@ export async function chunkText(
     metadata: {
       documentId,
       documentName,
-      pageNumber: 1, // Simplified - could enhance with page boundary detection
+      pageNumber: 1,
       chunkIndex: index,
       source,
       threadId,
@@ -82,8 +145,8 @@ export async function ingestDocument(
 
   try {
     // Extract and chunk text
-    const { text } = await extractTextFromPDF(buffer);
-    const chunks = await chunkText(text, docId, filename, 'global');
+    const { text, pages } = await extractTextFromPDF(buffer);
+    const chunks = await chunkText(text, docId, filename, 'global', undefined, undefined, pages);
 
     if (chunks.length === 0) {
       throw new Error('No text content extracted from PDF');
@@ -189,8 +252,8 @@ export async function reindexDocument(docId: string): Promise<GlobalDocument | n
   try {
     // Re-extract and chunk
     const buffer = await readFileBuffer(pdfPath);
-    const { text } = await extractTextFromPDF(buffer);
-    const chunks = await chunkText(text, docId, doc.filename, 'global');
+    const { text, pages } = await extractTextFromPDF(buffer);
+    const chunks = await chunkText(text, docId, doc.filename, 'global', undefined, undefined, pages);
 
     // Create embeddings in batches
     const batchSize = 100;
