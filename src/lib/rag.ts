@@ -1,9 +1,14 @@
-import { createEmbedding, generateResponse } from './openai';
+import { createEmbedding, createEmbeddings, generateResponse } from './openai';
 import { queryDocuments } from './chroma';
 import { getCachedQuery, cacheQuery, hashQuery } from './redis';
 import { extractTextFromPDF, chunkText } from './ingest';
 import { readFileBuffer } from './storage';
 import type { Message, Source, RetrievedChunk, RAGResponse } from '@/types';
+
+// Retrieval configuration
+const TOP_K_CHUNKS = 15; // Number of chunks to retrieve per query
+const MAX_CONTEXT_CHUNKS = 12; // Maximum chunks to include in final context
+const SIMILARITY_THRESHOLD = 0.3; // Minimum similarity score to include
 
 const SYSTEM_PROMPT = `You are a helpful policy assistant for government staff. Your role is to:
 
@@ -20,21 +25,87 @@ If a user asks you to compare their uploaded document against policies:
 - Point out any gaps or areas that don't meet policy requirements
 - Suggest improvements if applicable`;
 
+/**
+ * Generate expanded queries to improve retrieval coverage
+ */
+async function expandQueries(originalQuery: string): Promise<string[]> {
+  const queries = [originalQuery];
+
+  // Extract key terms and create variations
+  const lowerQuery = originalQuery.toLowerCase();
+
+  // Add acronym expansions common in government/policy docs
+  const acronymExpansions: Record<string, string> = {
+    'ea': 'enterprise architecture',
+    'dta': 'digital transformation agency',
+    'it': 'information technology',
+    'ict': 'information and communication technology',
+    'hr': 'human resources',
+    'kpi': 'key performance indicator',
+    'sla': 'service level agreement',
+  };
+
+  for (const [acronym, expansion] of Object.entries(acronymExpansions)) {
+    if (lowerQuery.includes(acronym)) {
+      queries.push(originalQuery.replace(new RegExp(acronym, 'gi'), expansion));
+    }
+    if (lowerQuery.includes(expansion)) {
+      queries.push(originalQuery.replace(new RegExp(expansion, 'gi'), acronym.toUpperCase()));
+    }
+  }
+
+  return queries.slice(0, 3); // Limit to 3 query variations
+}
+
+/**
+ * Deduplicate chunks based on document and page, keeping highest scored
+ */
+function deduplicateChunks(chunks: RetrievedChunk[]): RetrievedChunk[] {
+  const seen = new Map<string, RetrievedChunk>();
+
+  for (const chunk of chunks) {
+    const key = chunk.id;
+    const existing = seen.get(key);
+
+    if (!existing || chunk.score > existing.score) {
+      seen.set(key, chunk);
+    }
+  }
+
+  return Array.from(seen.values())
+    .sort((a, b) => b.score - a.score);
+}
+
 export async function buildContext(
   queryEmbedding: number[],
-  userDocPaths: string[] = []
+  userDocPaths: string[] = [],
+  additionalEmbeddings: number[][] = []
 ): Promise<{ globalChunks: RetrievedChunk[]; userChunks: RetrievedChunk[] }> {
-  // Query global policy documents
-  const globalResults = await queryDocuments(queryEmbedding, 5, { source: 'global' });
+  // Collect all embeddings (original + expanded queries)
+  const allEmbeddings = [queryEmbedding, ...additionalEmbeddings];
 
-  const globalChunks: RetrievedChunk[] = globalResults.documents.map((doc, i) => ({
-    id: globalResults.ids[i],
-    text: doc,
-    documentName: globalResults.metadatas[i]?.documentName || 'Unknown',
-    pageNumber: globalResults.metadatas[i]?.pageNumber || 1,
-    score: 1 - (globalResults.distances[i] || 0), // Convert distance to similarity
-    source: 'global' as const,
-  }));
+  // Query with each embedding and collect results
+  const allGlobalChunks: RetrievedChunk[] = [];
+
+  for (const embedding of allEmbeddings) {
+    const globalResults = await queryDocuments(embedding, TOP_K_CHUNKS, { source: 'global' });
+
+    const chunks: RetrievedChunk[] = globalResults.documents.map((doc, i) => ({
+      id: globalResults.ids[i],
+      text: doc,
+      documentName: globalResults.metadatas[i]?.documentName || 'Unknown',
+      pageNumber: globalResults.metadatas[i]?.pageNumber || 1,
+      score: 1 - (globalResults.distances[i] || 0), // Convert distance to similarity
+      source: 'global' as const,
+    }));
+
+    allGlobalChunks.push(...chunks);
+  }
+
+  // Deduplicate and filter by similarity threshold
+  const globalChunks = deduplicateChunks(allGlobalChunks)
+    .filter(chunk => chunk.score >= SIMILARITY_THRESHOLD)
+    .slice(0, MAX_CONTEXT_CHUNKS);
 
   // Process user documents if provided
   const userChunks: RetrievedChunk[] = [];
@@ -42,30 +113,61 @@ export async function buildContext(
   for (const docPath of userDocPaths) {
     try {
       const buffer = await readFileBuffer(docPath);
-      const { text } = await extractTextFromPDF(buffer);
+      const { text, pages } = await extractTextFromPDF(buffer);
       const filename = docPath.split('/').pop() || 'user-document.pdf';
 
-      // Create temporary chunks from user document
-      const chunks = await chunkText(text, 'user-temp', filename, 'user');
+      // Create temporary chunks from user document with page info
+      const chunks = await chunkText(text, 'user-temp', filename, 'user', undefined, undefined, pages);
 
-      // Find most relevant chunks (simple text matching for now)
-      // In production, you might want to embed these too
-      for (const chunk of chunks.slice(0, 3)) {
-        userChunks.push({
-          id: chunk.id,
-          text: chunk.text,
-          documentName: filename,
-          pageNumber: chunk.metadata.pageNumber,
-          score: 0.8, // Placeholder score
-          source: 'user',
-        });
+      // Get embeddings for user document chunks
+      const chunkTexts = chunks.slice(0, 10).map(c => c.text); // Limit to first 10 chunks
+      if (chunkTexts.length > 0) {
+        const chunkEmbeddings = await createEmbeddings(chunkTexts);
+
+        // Calculate similarity with query
+        for (let i = 0; i < chunkTexts.length; i++) {
+          const similarity = cosineSimilarity(queryEmbedding, chunkEmbeddings[i]);
+          if (similarity >= SIMILARITY_THRESHOLD) {
+            userChunks.push({
+              id: chunks[i].id,
+              text: chunks[i].text,
+              documentName: filename,
+              pageNumber: chunks[i].metadata.pageNumber,
+              score: similarity,
+              source: 'user',
+            });
+          }
+        }
       }
     } catch (error) {
       console.error(`Failed to process user document: ${docPath}`, error);
     }
   }
 
-  return { globalChunks, userChunks };
+  // Sort user chunks by relevance
+  userChunks.sort((a, b) => b.score - a.score);
+
+  return { globalChunks, userChunks: userChunks.slice(0, 5) };
+}
+
+/**
+ * Calculate cosine similarity between two vectors
+ */
+function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length !== b.length) return 0;
+
+  let dotProduct = 0;
+  let normA = 0;
+  let normB = 0;
+
+  for (let i = 0; i < a.length; i++) {
+    dotProduct += a[i] * b[i];
+    normA += a[i] * a[i];
+    normB += b[i] * b[i];
+  }
+
+  const denominator = Math.sqrt(normA) * Math.sqrt(normB);
+  return denominator === 0 ? 0 : dotProduct / denominator;
 }
 
 function formatContext(globalChunks: RetrievedChunk[], userChunks: RetrievedChunk[]): string {
@@ -122,11 +224,20 @@ export async function ragQuery(
     }
   }
 
-  // Create query embedding
-  const queryEmbedding = await createEmbedding(userMessage);
+  // Expand query for better retrieval
+  const expandedQueries = await expandQueries(userMessage);
 
-  // Build context from documents
-  const { globalChunks, userChunks } = await buildContext(queryEmbedding, userDocPaths);
+  // Create embeddings for all queries
+  const allQueryEmbeddings = await createEmbeddings(expandedQueries);
+  const primaryEmbedding = allQueryEmbeddings[0];
+  const additionalEmbeddings = allQueryEmbeddings.slice(1);
+
+  // Build context from documents using multiple query embeddings
+  const { globalChunks, userChunks } = await buildContext(
+    primaryEmbedding,
+    userDocPaths,
+    additionalEmbeddings
+  );
 
   // Format context for LLM
   const context = formatContext(globalChunks, userChunks);

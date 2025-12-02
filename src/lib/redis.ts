@@ -59,3 +59,12 @@ export async function invalidateQueryCache(): Promise<void> {
     console.error('Failed to invalidate query cache:', error);
   }
 }
+
+export async function clearAllCache(): Promise<void> {
+  try {
+    const redis = await getRedisClient();
+    await redis.flushAll();
+  } catch (error) {
+    console.error('Failed to clear all cache:', error);
+  }
+}

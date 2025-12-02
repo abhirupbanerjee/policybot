@@ -1,11 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ChevronDown, ChevronRight, Copy, Check } from 'lucide-react';
 import type { Message } from '@/types';
 import SourceCard from './SourceCard';
+
+const MAX_SOURCES_DISPLAYED = 5;
 
 interface MessageBubbleProps {
   message: Message;
@@ -13,8 +15,21 @@ interface MessageBubbleProps {
 
 export default function MessageBubble({ message }: MessageBubbleProps) {
   const [sourcesExpanded, setSourcesExpanded] = useState(false);
+  const [showAllSources, setShowAllSources] = useState(false);
   const [copied, setCopied] = useState(false);
   const isUser = message.role === 'user';
+
+  // Sort sources by score (highest first) and limit to top sources
+  const sortedSources = useMemo(() => {
+    if (!message.sources) return [];
+    return [...message.sources].sort((a, b) => b.score - a.score);
+  }, [message.sources]);
+
+  const displayedSources = showAllSources
+    ? sortedSources
+    : sortedSources.slice(0, MAX_SOURCES_DISPLAYED);
+
+  const hasMoreSources = sortedSources.length > MAX_SOURCES_DISPLAYED;
 
   const handleCopy = async () => {
     try {
@@ -49,7 +64,7 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
           </ReactMarkdown>
         </div>
 
-        {message.sources && message.sources.length > 0 && (
+        {sortedSources.length > 0 && (
           <div className={`mt-3 pt-3 border-t ${isUser ? 'border-blue-500' : 'border-gray-300'}`}>
             <button
               onClick={() => setSourcesExpanded(!sourcesExpanded)}
@@ -58,14 +73,24 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
               }`}
             >
               {sourcesExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-              Sources ({message.sources.length})
+              Sources ({sortedSources.length})
             </button>
 
             {sourcesExpanded && (
               <div className="mt-2 space-y-2">
-                {message.sources.map((source, i) => (
+                {displayedSources.map((source, i) => (
                   <SourceCard key={i} source={source} />
                 ))}
+                {hasMoreSources && (
+                  <button
+                    onClick={() => setShowAllSources(!showAllSources)}
+                    className="w-full text-center py-2 text-xs text-gray-500 hover:text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
+                  >
+                    {showAllSources
+                      ? 'Show less'
+                      : `Show ${sortedSources.length - MAX_SOURCES_DISPLAYED} more sources`}
+                  </button>
+                )}
               </div>
             )}
           </div>

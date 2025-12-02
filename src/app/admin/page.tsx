@@ -46,6 +46,7 @@ export default function AdminPage() {
   const [updatingRole, setUpdatingRole] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
+  const [refreshingAll, setRefreshingAll] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load documents
@@ -190,6 +191,34 @@ export default function AdminPage() {
       setError(err instanceof Error ? err.message : 'Reindex failed');
     } finally {
       setReindexing(null);
+    }
+  };
+
+  const handleRefreshAll = async () => {
+    if (!confirm('This will clear the response cache and reindex all documents. This may take a few minutes. Continue?')) {
+      return;
+    }
+
+    setRefreshingAll(true);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/admin/refresh', {
+        method: 'POST',
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Refresh failed');
+      }
+
+      const result = await response.json();
+      await loadDocuments();
+      alert(`Refresh complete! Cache cleared, ${result.documentsReindexed} documents reindexed.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Refresh failed');
+    } finally {
+      setRefreshingAll(false);
     }
   };
 
@@ -381,7 +410,17 @@ export default function AdminPage() {
                     {documents.length} documents, {totalChunks} chunks indexed
                   </p>
                 </div>
-                <>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="secondary"
+                    disabled={refreshingAll || documents.length === 0}
+                    loading={refreshingAll}
+                    onClick={handleRefreshAll}
+                    title="Clear cache and reindex all documents"
+                  >
+                    <RefreshCw size={18} className={`mr-2 ${refreshingAll ? 'animate-spin' : ''}`} />
+                    {refreshingAll ? 'Refreshing...' : 'Refresh All'}
+                  </Button>
                   <input
                     ref={fileInputRef}
                     type="file"
@@ -398,7 +437,7 @@ export default function AdminPage() {
                     <Upload size={18} className="mr-2" />
                     {uploadProgress || 'Upload Document'}
                   </Button>
-                </>
+                </div>
               </div>
             </div>
 
