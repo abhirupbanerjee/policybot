@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   traefik:
     image: traefik:v3.0
@@ -48,7 +46,7 @@ services:
       - app_data:/app/data
     depends_on:
       chroma:
-        condition: service_healthy
+        condition: service_started
       redis:
         condition: service_healthy
     networks:
@@ -64,12 +62,6 @@ services:
       - ANONYMIZED_TELEMETRY=false
       - ALLOW_RESET=false
       - IS_PERSISTENT=TRUE
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/v1/heartbeat')\" || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 30s
     networks:
       - policy-bot-network
     restart: unless-stopped
