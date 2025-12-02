@@ -1,4 +1,4 @@
-import { createEmbedding, createEmbeddings, generateResponse } from './openai';
+import { createEmbeddings, generateResponse } from './openai';
 import { queryDocuments } from './chroma';
 import { getCachedQuery, cacheQuery, hashQuery } from './redis';
 import { extractTextFromPDF, chunkText } from './ingest';
