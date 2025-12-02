@@ -22,8 +22,10 @@ A Retrieval-Augmented Generation (RAG) chatbot that helps government staff query
 - **Document Registry** - Monitor processing status (processing/ready/error)
 - **Bulk Ingestion** - Upload documents up to 50MB with automatic reindexing
 
-### Security
-- **Azure AD SSO** - Enterprise authentication with domain whitelisting
+### Security & Access Control
+- **Multi-Provider Auth** - Azure AD and Google OAuth support
+- **User Allowlist** - Control exactly who can access the application
+- **Role-Based Access** - Admin and user roles with different permissions
 - **Thread Isolation** - Users can only access their own conversations and uploads
 - **Non-Root Containers** - Secure Docker deployment
 
@@ -119,13 +121,14 @@ A Retrieval-Augmented Generation (RAG) chatbot that helps government staff query
 ### Authentication
 - **NextAuth.js** - Authentication framework
 - **Azure AD** - Enterprise SSO provider
+- **Google OAuth** - Consumer authentication option
 
 ## Getting Started
 
 ### Prerequisites
 - Docker and Docker Compose
 - OpenAI API key
-- Azure AD application (for production auth)
+- Azure AD and/or Google OAuth credentials (for production auth)
 
 ### Development Setup
 
@@ -168,6 +171,9 @@ NEXTAUTH_URL=https://policybot.example.com
 AZURE_AD_CLIENT_ID=...
 AZURE_AD_CLIENT_SECRET=...
 AZURE_AD_TENANT_ID=...
+GOOGLE_CLIENT_ID=...
+GOOGLE_CLIENT_SECRET=...
+ACCESS_MODE=allowlist
 ADMIN_EMAILS=admin@example.com
 ```
 
@@ -199,7 +205,10 @@ policy-bot/
 │   │   ├── redis.ts            # Redis client
 │   │   ├── openai.ts           # OpenAI integration
 │   │   ├── ingest.ts           # Document ingestion
-│   │   └── threads.ts          # Thread operations
+│   │   ├── threads.ts          # Thread operations
+│   │   ├── users.ts            # User management
+│   │   ├── auth.ts             # Authentication helpers
+│   │   └── auth-options.ts     # NextAuth configuration
 │   └── types/                  # TypeScript definitions
 ├── docs/                       # Documentation
 ├── docker-compose.yml          # Production stack
@@ -221,6 +230,119 @@ policy-bot/
 | GET | `/api/admin/documents` | List global documents |
 | POST | `/api/admin/documents` | Upload global document |
 | DELETE | `/api/admin/documents/{id}` | Delete global document |
+| GET | `/api/admin/users` | List allowed users |
+| POST | `/api/admin/users` | Add user to allowlist |
+| DELETE | `/api/admin/users?email=...` | Remove user from allowlist |
+| PATCH | `/api/admin/users` | Update user role |
+
+## User Management
+
+Policy Bot supports two access control modes configured via `ACCESS_MODE` environment variable.
+
+### Allowlist Mode (Default)
+
+Only users explicitly added to the allowlist can sign in. This is the most secure option for controlled access.
+
+```env
+ACCESS_MODE=allowlist
+```
+
+### Domain Mode
+
+Any user with an email from allowed domains can sign in.
+
+```env
+ACCESS_MODE=domain
+ALLOWED_DOMAINS=example.com,company.org
+```
+
+### Managing Users via API
+
+All user management endpoints require admin authentication.
+
+#### List All Users
+```bash
+curl https://your-domain.com/api/admin/users \
+  -H "Cookie: <session-cookie>"
+```
+
+#### Add a User
+```bash
+curl -X POST https://your-domain.com/api/admin/users \
+  -H "Content-Type: application/json" \
+  -H "Cookie: <session-cookie>" \
+  -d '{
+    "email": "user@example.com",
+    "role": "user",
+    "name": "John Doe"
+  }'
+```
+
+Roles:
+- `admin` - Full access including user management and document administration
+- `user` - Can use chat and upload documents to threads
+
+#### Remove a User
+```bash
+curl -X DELETE "https://your-domain.com/api/admin/users?email=user@example.com" \
+  -H "Cookie: <session-cookie>"
+```
+
+#### Change User Role
+```bash
+curl -X PATCH https://your-domain.com/api/admin/users \
+  -H "Content-Type: application/json" \
+  -H "Cookie: <session-cookie>" \
+  -d '{
+    "email": "user@example.com",
+    "role": "admin"
+  }'
+```
+
+### User Data Storage
+
+Users are stored in `data/allowed-users.json`:
+
+```json
+{
+  "users": [
+    {
+      "email": "admin@example.com",
+      "name": "Admin User",
+      "role": "admin",
+      "addedAt": "2024-12-02T12:00:00.000Z",
+      "addedBy": "system"
+    },
+    {
+      "email": "user@example.com",
+      "name": "Regular User",
+      "role": "user",
+      "addedAt": "2024-12-02T13:00:00.000Z",
+      "addedBy": "admin@example.com"
+    }
+  ]
+}
+```
+
+### Initial Setup
+
+On first deployment, users from `ADMIN_EMAILS` environment variable are automatically added as admins. You can then use the API to add more users.
+
+## OAuth Provider Setup
+
+### Azure AD
+
+1. Go to Azure Portal > App registrations > New registration
+2. Set redirect URI: `https://your-domain.com/api/auth/callback/azure-ad`
+3. Create a client secret under "Certificates & secrets"
+4. Copy Application (client) ID, Directory (tenant) ID, and client secret to `.env`
+
+### Google
+
+1. Go to Google Cloud Console > APIs & Services > Credentials
+2. Create OAuth 2.0 Client ID (Web application)
+3. Add authorized redirect URI: `https://your-domain.com/api/auth/callback/google`
+4. Copy Client ID and Client Secret to `.env`
 
 ## Documentation
 

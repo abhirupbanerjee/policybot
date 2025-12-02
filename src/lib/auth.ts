@@ -1,13 +1,14 @@
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth-options';
+import { getUserRole } from '@/lib/users';
 import type { User } from '@/types';
 
-const ADMIN_EMAILS = (process.env.ADMIN_EMAILS || '').split(',').map(e => e.trim().toLowerCase());
 const AUTH_DISABLED = process.env.AUTH_DISABLED === 'true';
 
-export function isAdmin(email: string | null | undefined): boolean {
+export async function isAdmin(email: string | null | undefined): Promise<boolean> {
   if (!email) return false;
-  return ADMIN_EMAILS.includes(email.toLowerCase());
+  const role = await getUserRole(email);
+  return role === 'admin';
 }
 
 export async function getCurrentUser(): Promise<User | null> {
@@ -31,7 +32,7 @@ export async function getCurrentUser(): Promise<User | null> {
     email: session.user.email,
     name: session.user.name || 'User',
     image: session.user.image || undefined,
-    isAdmin: isAdmin(session.user.email),
+    isAdmin: await isAdmin(session.user.email),
   };
 }
 
