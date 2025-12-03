@@ -58,8 +58,11 @@ export async function generateResponse(
   // Add conversation history (last 5 messages)
   const recentHistory = conversationHistory.slice(-5);
   for (const msg of recentHistory) {
+    // Skip tool messages in non-tool-calling flow
+    if (msg.role === 'tool') continue;
+
     messages.push({
-      role: msg.role,
+      role: msg.role as 'user' | 'assistant',
       content: msg.content,
     });
   }

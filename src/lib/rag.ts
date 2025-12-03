@@ -271,7 +271,8 @@ function extractWebSourcesFromHistory(
   for (const msg of history) {
     if (msg.role === 'tool') {
       try {
-        const toolResult = JSON.parse(msg.content);
+        const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+        const toolResult = JSON.parse(content);
 
         if (toolResult.results && Array.isArray(toolResult.results)) {
           for (const result of toolResult.results) {
