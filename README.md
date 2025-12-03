@@ -6,6 +6,7 @@ A Retrieval-Augmented Generation (RAG) chatbot that helps government staff query
 
 ### Chat & Query
 - **Natural Language Q&A** - Ask questions about policy documents in plain English
+- **Web Search Integration** - Automatic web search via Tavily API when needed (see [Web Search](docs/web-search.md))
 - **Source Citations** - Every response includes document names, page numbers, and relevance scores
 - **Conversation Threads** - Organize discussions into separate threads with titles
 - **Multi-Turn Context** - Maintains conversation history for follow-up questions
@@ -21,6 +22,8 @@ A Retrieval-Augmented Generation (RAG) chatbot that helps government staff query
 - **Admin Panel** - Dedicated UI for managing global policy documents
 - **Document Registry** - Monitor processing status (processing/ready/error)
 - **Bulk Ingestion** - Upload documents up to 50MB with automatic reindexing
+- **Web Search Configuration** - Enable/disable and configure Tavily web search settings
+- **LLM & RAG Settings** - Configure model, temperature, chunk sizes, and caching
 
 ### Security & Access Control
 - **Multi-Provider Auth** - Azure AD and Google OAuth support
@@ -52,20 +55,22 @@ A Retrieval-Augmented Generation (RAG) chatbot that helps government staff query
 └───────┬─────────────────┬─────────────────┬─────────────────────┘
         │                 │                 │
         ▼                 ▼                 ▼
-┌───────────────┐ ┌───────────────┐ ┌───────────────┐
-│   ChromaDB    │ │     Redis     │ │   OpenAI API  │
-│ Vector Search │ │ Query Cache   │ │ GPT + Embed   │
-└───────────────┘ └───────────────┘ └───────────────┘
+┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐
+│   ChromaDB    │ │     Redis     │ │   OpenAI API  │ │  Tavily API   │
+│ Vector Search │ │ Query Cache   │ │ GPT + Embed   │ │  Web Search   │
+└───────────────┘ └───────────────┘ └───────────────┘ └───────────────┘
 ```
 
 ### RAG Pipeline Flow
 1. **Query** - User submits question via chat or voice
-2. **Cache Check** - Redis checks for cached response (1-hour TTL)
+2. **Cache Check** - Redis checks for cached response (configurable TTL)
 3. **Embedding** - Query converted to vector using `text-embedding-3-large` (3072 dimensions)
 4. **Search** - ChromaDB performs semantic search across policy documents
 5. **Context Building** - Top results combined with conversation history
-6. **Generation** - GPT-5 Mini generates response with citations (configurable via admin panel)
-7. **Cache & Return** - Response cached and returned with source metadata
+6. **Generation** - GPT generates response with OpenAI function calling
+7. **Web Search** (if needed) - LLM automatically triggers Tavily web search for current information
+8. **Combined Response** - Merges policy documents and web sources with [WEB] tags
+9. **Cache & Return** - Response cached and returned with source metadata
 
 ## Infrastructure
 
@@ -156,6 +161,9 @@ DATA_DIR=./data
 # Optional - Mistral OCR for advanced PDF extraction
 MISTRAL_API_KEY=your-mistral-api-key
 
+# Optional - Tavily Web Search (configure via admin panel after setup)
+# TAVILY_API_KEY is stored in data/config/tavily-settings.json
+
 # Embedding configuration (defaults shown)
 EMBEDDING_MODEL=text-embedding-3-large
 EMBEDDING_DIMENSIONS=3072
@@ -225,10 +233,13 @@ policy-bot/
 │   │   ├── layout/             # Layout components
 │   │   └── ui/                 # Shared UI components
 │   ├── lib/                    # Core utilities
-│   │   ├── rag.ts              # RAG pipeline
+│   │   ├── rag.ts              # RAG pipeline with web search
+│   │   ├── tools.ts            # Generic tool framework
+│   │   ├── tools/
+│   │   │   └── tavily.ts       # Tavily web search tool
 │   │   ├── chroma.ts           # ChromaDB client
-│   │   ├── redis.ts            # Redis client
-│   │   ├── openai.ts           # OpenAI integration (GPT-5 support)
+│   │   ├── redis.ts            # Redis client (RAG + Tavily cache)
+│   │   ├── openai.ts           # OpenAI integration (GPT-5 + function calling)
 │   │   ├── mistral-ocr.ts      # Mistral OCR integration
 │   │   ├── ingest.ts           # Document ingestion (with OCR)
 │   │   ├── storage.ts          # File system and settings
@@ -261,8 +272,8 @@ policy-bot/
 | POST | `/api/admin/users` | Add user to allowlist |
 | DELETE | `/api/admin/users?email=...` | Remove user from allowlist |
 | PATCH | `/api/admin/users` | Update user role |
-| GET | `/api/admin/settings` | Get LLM and RAG settings |
-| POST | `/api/admin/settings` | Update LLM model, temperature, RAG parameters |
+| GET | `/api/admin/settings` | Get LLM, RAG, and Tavily settings |
+| PUT | `/api/admin/settings` | Update LLM, RAG, Tavily, or acronym settings |
 | GET | `/api/admin/system-prompt` | Get system prompt |
 | POST | `/api/admin/system-prompt` | Update system prompt |
 | POST | `/api/admin/refresh` | Re-index document with current settings |
@@ -414,6 +425,7 @@ On first deployment, users from `ADMIN_EMAILS` environment variable are automati
 - [API Specification](docs/API_SPECIFICATION.md)
 - [Infrastructure Guide](docs/INFRASTRUCTURE.md)
 - [Database Schema](docs/DATABASE.md)
+- [Web Search Integration](docs/web-search.md)
 
 ## License
 

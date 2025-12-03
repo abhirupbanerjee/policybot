@@ -45,16 +45,17 @@ Policy Bot is a RAG-based (Retrieval-Augmented Generation) chatbot designed to h
 │                           OPENAI API                                    │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐          │
 │  │  gpt-5-mini     │  │ text-embedding- │  │   whisper-1     │          │
-│  │  (Chat)         │  │ 3-large (3072d) │  │  (Transcribe)   │          │
+│  │  (Chat + Tools) │  │ 3-large (3072d) │  │  (Transcribe)   │          │
 │  └─────────────────┘  └─────────────────┘  └─────────────────┘          │
 └─────────────────────────────────────────────────────────────────────────┘
            │
            ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                           MISTRAL API                                   │
-│  ┌─────────────────┐                                                     │
-│  │ mistral-ocr     │  (Primary PDF extraction with fallback to pdf-parse)│
-│  └─────────────────┘                                                     │
+│                      EXTERNAL APIS                                      │
+│  ┌─────────────────┐  ┌─────────────────┐                               │
+│  │ mistral-ocr     │  │  Tavily API     │                               │
+│  │ (PDF extract)   │  │  (Web Search)   │                               │
+│  └─────────────────┘  └─────────────────┘                               │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -66,13 +67,14 @@ Policy Bot is a RAG-based (Retrieval-Augmented Generation) chatbot designed to h
 |-------|------------|---------|
 | Frontend | Next.js 15, React, Tailwind CSS | UI Framework |
 | Backend | Next.js API Routes | REST API |
-| LLM | OpenAI GPT-5 Mini (configurable) | Chat completions |
+| LLM | OpenAI GPT-5 Mini (configurable) | Chat completions with function calling |
 | LLM Alternatives | OpenAI GPT-5, GPT-4.1 Mini | Advanced reasoning / Fast queries |
 | Embeddings | OpenAI text-embedding-3-large | Vector embeddings (3072d) |
 | Transcription | OpenAI whisper-1 | Voice-to-text |
 | OCR | Mistral OCR (fallback: pdf-parse) | PDF text extraction |
+| Web Search | Tavily API (optional) | Real-time web search via function calling |
 | Vector DB | ChromaDB | Document embeddings storage |
-| Cache | Redis | Query caching, sessions |
+| Cache | Redis | Query caching (RAG + Tavily), sessions |
 | Auth | NextAuth + Azure AD + Google | Multi-provider SSO |
 | Storage | Local Filesystem | Thread data, uploaded PDFs, user allowlist |
 | Deployment | Docker, Traefik | Containerization, TLS |
@@ -112,17 +114,21 @@ User Query
 └─────────────────┘
     │
     ▼
-┌─────────────────┐
-│ Generate with   │
-│ gpt-4o-mini     │
-└─────────────────┘
+┌─────────────────────────────────────────────┐
+│ Generate with OpenAI (function calling)     │
+│ - GPT decides if web search needed          │
+│ - Calls Tavily tool if enabled              │
+│ - Combines RAG + Web sources                │
+└─────────────────────────────────────────────┘
     │
     ▼
 ┌─────────────────┐
 │ Cache Response  │
-│ Return + Sources│
+│ Return + Sources│  ◀── Sources tagged with [WEB] if from Tavily
 └─────────────────┘
 ```
+
+**Web Search Integration**: If Tavily is enabled in admin settings, the LLM can automatically trigger web searches using OpenAI function calling. Results are cached separately in Redis with configurable TTL (60 seconds to 1 month).
 
 ### 2. Document Ingestion
 

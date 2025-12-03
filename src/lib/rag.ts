@@ -1,4 +1,4 @@
-import { createEmbeddings, generateResponse, generateResponseWithTools } from './openai';
+import { createEmbeddings, generateResponseWithTools } from './openai';
 import type { OpenAI } from 'openai';
 import { queryDocuments } from './chroma';
 import { getCachedQuery, cacheQuery, hashQuery } from './redis';

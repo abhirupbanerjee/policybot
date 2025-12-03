@@ -1,4 +1,3 @@
-import type { OpenAI } from 'openai';
 import { getTavilySettings } from '../storage';
 import { hashQuery, getCachedQuery, cacheQuery } from '../redis';
 import type { ToolDefinition } from '../tools';

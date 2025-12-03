@@ -7,6 +7,7 @@ import { tavilyWebSearch } from './tools/tavily';
  */
 export interface ToolDefinition {
   definition: OpenAI.Chat.ChatCompletionTool;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   execute: (args: any) => Promise<string>;
 }
 
