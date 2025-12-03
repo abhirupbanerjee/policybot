@@ -1,4 +1,5 @@
-import { createEmbeddings, generateResponse } from './openai';
+import { createEmbeddings, generateResponse, generateResponseWithTools } from './openai';
+import type { OpenAI } from 'openai';
 import { queryDocuments } from './chroma';
 import { getCachedQuery, cacheQuery, hashQuery } from './redis';
 import { extractTextFromPDF, chunkText } from './ingest';
@@ -232,16 +233,21 @@ export async function ragQuery(
   // Get system prompt from storage
   const systemPromptConfig = await getSystemPrompt();
 
-  // Generate response
-  const answer = await generateResponse(
+  // Generate response with tools (web search)
+  const { content: answer, fullHistory } = await generateResponseWithTools(
     systemPromptConfig.prompt,
     conversationHistory,
     context,
-    userMessage
+    userMessage,
+    true // Enable tools (web search)
   );
 
-  // Extract sources
+  // Extract sources from RAG
   const sources = extractSources(globalChunks, userChunks);
+
+  // Extract web sources from tool call results
+  const webSources = extractWebSourcesFromHistory(fullHistory);
+  sources.push(...webSources);
 
   const response: RAGResponse = { answer, sources };
 
@@ -252,4 +258,37 @@ export async function ragQuery(
   }
 
   return response;
+}
+
+/**
+ * Extract web search sources from tool call history
+ */
+function extractWebSourcesFromHistory(
+  history: OpenAI.Chat.ChatCompletionMessageParam[]
+): Source[] {
+  const webSources: Source[] = [];
+
+  for (const msg of history) {
+    if (msg.role === 'tool') {
+      try {
+        const toolResult = JSON.parse(msg.content);
+
+        if (toolResult.results && Array.isArray(toolResult.results)) {
+          for (const result of toolResult.results) {
+            webSources.push({
+              documentName: `[WEB] ${result.title || result.url}`,
+              pageNumber: 0, // N/A for web results
+              chunkText: result.content?.substring(0, 200) || '',
+              score: result.score || 0,
+            });
+          }
+        }
+      } catch (error) {
+        // Ignore JSON parse errors
+        console.warn('Failed to parse tool result as web search:', error);
+      }
+    }
+  }
+
+  return webSources;
 }

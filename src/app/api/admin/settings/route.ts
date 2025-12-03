@@ -7,12 +7,15 @@ import {
   saveLLMSettings,
   getAcronymMappings,
   saveAcronymMappings,
+  getTavilySettings,
+  saveTavilySettings,
   AVAILABLE_MODELS,
   DEFAULT_RAG_SETTINGS,
   DEFAULT_LLM_SETTINGS,
   DEFAULT_ACRONYM_MAPPINGS,
+  DEFAULT_TAVILY_SETTINGS,
 } from '@/lib/storage';
-import { invalidateQueryCache } from '@/lib/redis';
+import { invalidateQueryCache, invalidateTavilyCache } from '@/lib/redis';
 import type { ApiError } from '@/types';
 
 export async function GET() {
@@ -32,21 +35,24 @@ export async function GET() {
       );
     }
 
-    const [ragSettings, llmSettings, acronymMappings] = await Promise.all([
+    const [ragSettings, llmSettings, acronymMappings, tavilySettings] = await Promise.all([
       getRAGSettings(),
       getLLMSettings(),
       getAcronymMappings(),
+      getTavilySettings(),
     ]);
 
     return NextResponse.json({
       rag: ragSettings,
       llm: llmSettings,
       acronyms: acronymMappings,
+      tavily: tavilySettings,
       availableModels: AVAILABLE_MODELS,
       defaults: {
         rag: DEFAULT_RAG_SETTINGS,
         llm: DEFAULT_LLM_SETTINGS,
         acronyms: DEFAULT_ACRONYM_MAPPINGS,
+        tavily: DEFAULT_TAVILY_SETTINGS,
       },
     });
   } catch (error) {
@@ -206,6 +212,89 @@ export async function PUT(request: NextRequest) {
         }
 
         result = await saveAcronymMappings(mappings as Record<string, string>, user.email);
+        break;
+      }
+
+      case 'tavily': {
+        const {
+          apiKey,
+          enabled,
+          defaultTopic,
+          defaultSearchDepth,
+          maxResults,
+          includeDomains,
+          excludeDomains,
+          cacheTTLSeconds,
+        } = settings;
+
+        // Validate API key
+        if (typeof apiKey !== 'string') {
+          return NextResponse.json<ApiError>(
+            { error: 'API key must be a string', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Validate enabled flag
+        if (typeof enabled !== 'boolean') {
+          return NextResponse.json<ApiError>(
+            { error: 'Enabled must be a boolean', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Validate topic
+        if (!['general', 'news', 'finance'].includes(defaultTopic)) {
+          return NextResponse.json<ApiError>(
+            { error: 'Topic must be general, news, or finance', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Validate search depth
+        if (!['basic', 'advanced'].includes(defaultSearchDepth)) {
+          return NextResponse.json<ApiError>(
+            { error: 'Search depth must be basic or advanced', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Validate max results
+        if (typeof maxResults !== 'number' || maxResults < 1 || maxResults > 20) {
+          return NextResponse.json<ApiError>(
+            { error: 'Max results must be between 1 and 20', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Validate cache TTL (1 minute to 1 month)
+        if (typeof cacheTTLSeconds !== 'number' || cacheTTLSeconds < 60 || cacheTTLSeconds > 2592000) {
+          return NextResponse.json<ApiError>(
+            { error: 'Cache TTL must be between 60 seconds and 2592000 seconds (1 month)', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Validate domains
+        if (!Array.isArray(includeDomains) || !includeDomains.every(d => typeof d === 'string')) {
+          return NextResponse.json<ApiError>(
+            { error: 'Include domains must be an array of strings', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        if (!Array.isArray(excludeDomains) || !excludeDomains.every(d => typeof d === 'string')) {
+          return NextResponse.json<ApiError>(
+            { error: 'Exclude domains must be an array of strings', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        result = await saveTavilySettings(settings, user.email);
+
+        // Invalidate Tavily cache when settings change
+        await invalidateTavilyCache();
+
         break;
       }
 

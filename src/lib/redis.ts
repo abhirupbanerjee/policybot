@@ -38,10 +38,12 @@ export async function cacheQuery(
   }
 }
 
-export async function getCachedQuery(queryHash: string): Promise<string | null> {
+export async function getCachedQuery(key: string): Promise<string | null> {
   try {
     const redis = await getRedisClient();
-    return await redis.get(`query:${queryHash}`);
+    // Support both prefixed keys (tavily:xxx) and unprefixed (xxx for backward compat with query:xxx)
+    const fullKey = key.includes(':') ? key : `query:${key}`;
+    return await redis.get(fullKey);
   } catch (error) {
     console.error('Failed to get cached query:', error);
     return null;
@@ -60,10 +62,24 @@ export async function invalidateQueryCache(): Promise<void> {
   }
 }
 
+export async function invalidateTavilyCache(): Promise<void> {
+  try {
+    const redis = await getRedisClient();
+    const keys = await redis.keys('tavily:*');
+    if (keys.length > 0) {
+      await redis.del(keys);
+      console.log(`Invalidated ${keys.length} Tavily cache entries`);
+    }
+  } catch (error) {
+    console.error('Failed to invalidate Tavily cache:', error);
+  }
+}
+
 export async function clearAllCache(): Promise<void> {
   try {
     const redis = await getRedisClient();
     await redis.flushAll();
+    console.log('Cleared all cache (RAG + Tavily)');
   } catch (error) {
     console.error('Failed to clear all cache:', error);
   }

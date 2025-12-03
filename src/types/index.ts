@@ -26,10 +26,23 @@ export interface ThreadWithMessages extends Thread {
 
 // ============ Message Types ============
 
+// Tool call types for OpenAI function calling
+export interface ToolCall {
+  id: string;
+  type: 'function';
+  function: {
+    name: string;
+    arguments: string; // JSON string
+  };
+}
+
 export interface Message {
   id: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'tool';
   content: string;
+  tool_calls?: ToolCall[];      // For assistant messages with tool calls
+  tool_call_id?: string;        // For tool response messages
+  name?: string;                // Tool name for tool responses
   sources?: Source[];
   attachments?: string[];
   timestamp: Date;
@@ -180,8 +193,11 @@ export interface ThreadMetadata {
 
 export interface StoredMessage {
   id: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'assistant' | 'tool';
   content: string;
+  tool_calls?: ToolCall[];
+  tool_call_id?: string;
+  name?: string;
   sources?: Source[];
   attachments?: string[];
   timestamp: string;
@@ -225,4 +241,33 @@ export interface SessionUser {
 export interface Session {
   user?: SessionUser;
   expires: string;
+}
+
+// ============ Web Search Types ============
+
+export interface WebSearchResult {
+  title: string;
+  url: string;
+  content: string;
+  score?: number;
+}
+
+export interface TavilySearchResponse {
+  results: WebSearchResult[];
+  query: string;
+}
+
+// ============ Tavily Settings Types ============
+
+export interface TavilySettings {
+  apiKey: string;
+  enabled: boolean;
+  defaultTopic: 'general' | 'news' | 'finance';
+  defaultSearchDepth: 'basic' | 'advanced';
+  maxResults: number;
+  includeDomains: string[];
+  excludeDomains: string[];
+  cacheTTLSeconds: number;
+  updatedAt: string;
+  updatedBy: string;
 }

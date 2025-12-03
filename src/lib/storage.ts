@@ -315,3 +315,60 @@ export async function saveAcronymMappings(mappings: Record<string, string>, upda
   await writeJson(configPath, config);
   return config;
 }
+
+// Tavily Settings
+export interface TavilySettings {
+  apiKey: string;
+  enabled: boolean;
+  defaultTopic: 'general' | 'news' | 'finance';
+  defaultSearchDepth: 'basic' | 'advanced';
+  maxResults: number;
+  includeDomains: string[];
+  excludeDomains: string[];
+  cacheTTLSeconds: number;
+  updatedAt: string;
+  updatedBy: string;
+}
+
+export const DEFAULT_TAVILY_SETTINGS: Omit<TavilySettings, 'updatedAt' | 'updatedBy'> = {
+  apiKey: '',
+  enabled: false,  // Disabled by default
+  defaultTopic: 'general',
+  defaultSearchDepth: 'basic',
+  maxResults: 5,
+  includeDomains: [],
+  excludeDomains: [],
+  cacheTTLSeconds: 1800, // 30 minutes (web results more time-sensitive than RAG)
+};
+
+export async function getTavilySettings(): Promise<TavilySettings> {
+  const configPath = path.join(getConfigDir(), 'tavily-settings.json');
+  const config = await readJson<TavilySettings>(configPath);
+
+  if (!config) {
+    return {
+      ...DEFAULT_TAVILY_SETTINGS,
+      updatedAt: new Date().toISOString(),
+      updatedBy: 'system',
+    };
+  }
+
+  return config;
+}
+
+export async function saveTavilySettings(settings: Omit<TavilySettings, 'updatedAt' | 'updatedBy'>, updatedBy: string): Promise<TavilySettings> {
+  const configPath = path.join(getConfigDir(), 'tavily-settings.json');
+  const config: TavilySettings = {
+    ...settings,
+    updatedAt: new Date().toISOString(),
+    updatedBy,
+  };
+
+  await writeJson(configPath, config);
+  return config;
+}
+
+// Helper function to ensure directory exists (used by write operations)
+export async function ensureDirectoryExists(dirPath: string): Promise<void> {
+  await ensureDir(dirPath);
+}
