@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { createEmbeddings } from './openai';
 import { addDocuments, deleteDocumentsByFilter } from './chroma';
 import { readJson, writeJson, readFileBuffer, getGlobalDocsDir, deleteFile, fileExists, getRAGSettings } from './storage';
+import { extractTextWithMistral } from './mistral-ocr';
 import type { DocumentChunk, GlobalDocument, DocumentRegistry } from '@/types';
 
 // Create splitter with configurable settings
@@ -31,6 +32,21 @@ export interface PageText {
 }
 
 export async function extractTextFromPDF(buffer: Buffer): Promise<{ text: string; numPages: number; pages: PageText[] }> {
+  // Try Mistral OCR first (if API key is available)
+  if (process.env.MISTRAL_API_KEY) {
+    try {
+      console.log('Attempting PDF extraction with Mistral OCR...');
+      const mistralResult = await extractTextWithMistral(buffer);
+      console.log(`Mistral OCR succeeded: ${mistralResult.numPages} pages extracted`);
+      return mistralResult;
+    } catch (error) {
+      console.warn('Mistral OCR failed, falling back to pdf-parse:', error);
+      // Fall through to pdf-parse fallback
+    }
+  }
+
+  // Fallback to pdf-parse
+  console.log('Using pdf-parse for PDF extraction...');
   const pages: PageText[] = [];
 
   // Custom page render to capture text per page

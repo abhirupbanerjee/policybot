@@ -234,16 +234,15 @@ export interface LLMSettings {
 }
 
 export const DEFAULT_LLM_SETTINGS: Omit<LLMSettings, 'updatedAt' | 'updatedBy'> = {
-  model: 'gpt-4o',
+  model: 'gpt-5-mini',
   temperature: 0.3,
   maxTokens: 2000,
 };
 
 export const AVAILABLE_MODELS = [
-  { id: 'gpt-4o', name: 'GPT-4o (Recommended)', description: 'Most capable, best for complex queries' },
-  { id: 'gpt-4o-mini', name: 'GPT-4o Mini', description: 'Faster and cheaper, good for simple queries' },
-  { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', description: 'Previous generation, high capability' },
-  { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', description: 'Fastest and cheapest, basic capability' },
+  { id: 'gpt-5', name: 'GPT-5', description: 'Most capable, best for complex queries' },
+  { id: 'gpt-5-mini', name: 'GPT-5 Mini (Recommended)', description: 'Balanced performance and cost' },
+  { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini', description: 'Fast and cost-effective' },
 ];
 
 export async function getLLMSettings(): Promise<LLMSettings> {

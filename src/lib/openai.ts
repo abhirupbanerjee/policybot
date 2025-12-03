@@ -15,9 +15,13 @@ function getOpenAI(): OpenAI {
 
 export async function createEmbedding(text: string): Promise<number[]> {
   const openai = getOpenAI();
+  const model = process.env.EMBEDDING_MODEL || 'text-embedding-3-large';
+  const dimensions = parseInt(process.env.EMBEDDING_DIMENSIONS || '3072', 10);
+
   const response = await openai.embeddings.create({
-    model: 'text-embedding-3-small',
+    model,
     input: text,
+    dimensions,
   });
   return response.data[0].embedding;
 }
@@ -26,9 +30,13 @@ export async function createEmbeddings(texts: string[]): Promise<number[][]> {
   if (texts.length === 0) return [];
 
   const openai = getOpenAI();
+  const model = process.env.EMBEDDING_MODEL || 'text-embedding-3-large';
+  const dimensions = parseInt(process.env.EMBEDDING_DIMENSIONS || '3072', 10);
+
   const response = await openai.embeddings.create({
-    model: 'text-embedding-3-small',
+    model,
     input: texts,
+    dimensions,
   });
   return response.data.map(d => d.embedding);
 }
@@ -62,12 +70,25 @@ export async function generateResponse(
   });
 
   const openai = getOpenAI();
-  const response = await openai.chat.completions.create({
+
+  // GPT-5 and GPT-5 Mini have different parameter requirements
+  const isGPT5Family = llmSettings.model.startsWith('gpt-5');
+  const completionParams: any = {
     model: llmSettings.model,
     messages,
-    temperature: llmSettings.temperature,
-    max_tokens: llmSettings.maxTokens,
-  });
+  };
+
+  if (isGPT5Family) {
+    // GPT-5 family uses max_completion_tokens and only supports temperature=1 (default)
+    completionParams.max_completion_tokens = llmSettings.maxTokens;
+    // Don't set temperature for GPT-5 (defaults to 1)
+  } else {
+    // Older models use max_tokens and support custom temperature
+    completionParams.max_tokens = llmSettings.maxTokens;
+    completionParams.temperature = llmSettings.temperature;
+  }
+
+  const response = await openai.chat.completions.create(completionParams);
 
   return response.choices[0].message.content || '';
 }
