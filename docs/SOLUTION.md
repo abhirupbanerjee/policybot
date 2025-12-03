@@ -44,9 +44,17 @@ Policy Bot is a RAG-based (Retrieval-Augmented Generation) chatbot designed to h
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                           OPENAI API                                    │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐          │
-│  │  gpt-4o-mini    │  │ text-embedding- │  │   whisper-1     │          │
-│  │  (Chat)         │  │ 3-small         │  │  (Transcribe)   │          │ 
+│  │  gpt-5-mini     │  │ text-embedding- │  │   whisper-1     │          │
+│  │  (Chat)         │  │ 3-large (3072d) │  │  (Transcribe)   │          │
 │  └─────────────────┘  └─────────────────┘  └─────────────────┘          │
+└─────────────────────────────────────────────────────────────────────────┘
+           │
+           ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           MISTRAL API                                   │
+│  ┌─────────────────┐                                                     │
+│  │ mistral-ocr     │  (Primary PDF extraction with fallback to pdf-parse)│
+│  └─────────────────┘                                                     │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -58,9 +66,11 @@ Policy Bot is a RAG-based (Retrieval-Augmented Generation) chatbot designed to h
 |-------|------------|---------|
 | Frontend | Next.js 15, React, Tailwind CSS | UI Framework |
 | Backend | Next.js API Routes | REST API |
-| LLM | OpenAI gpt-4o-mini | Chat completions |
-| Embeddings | OpenAI text-embedding-3-small | Vector embeddings |
+| LLM | OpenAI GPT-5 Mini (configurable) | Chat completions |
+| LLM Alternatives | OpenAI GPT-5, GPT-4.1 Mini | Advanced reasoning / Fast queries |
+| Embeddings | OpenAI text-embedding-3-large | Vector embeddings (3072d) |
 | Transcription | OpenAI whisper-1 | Voice-to-text |
+| OCR | Mistral OCR (fallback: pdf-parse) | PDF text extraction |
 | Vector DB | ChromaDB | Document embeddings storage |
 | Cache | Redis | Query caching, sessions |
 | Auth | NextAuth + Azure AD + Google | Multi-provider SSO |

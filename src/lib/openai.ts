@@ -73,22 +73,20 @@ export async function generateResponse(
 
   // GPT-5 and GPT-5 Mini have different parameter requirements
   const isGPT5Family = llmSettings.model.startsWith('gpt-5');
-  const completionParams: any = {
-    model: llmSettings.model,
-    messages,
-  };
 
-  if (isGPT5Family) {
-    // GPT-5 family uses max_completion_tokens and only supports temperature=1 (default)
-    completionParams.max_completion_tokens = llmSettings.maxTokens;
-    // Don't set temperature for GPT-5 (defaults to 1)
-  } else {
-    // Older models use max_tokens and support custom temperature
-    completionParams.max_tokens = llmSettings.maxTokens;
-    completionParams.temperature = llmSettings.temperature;
-  }
-
-  const response = await openai.chat.completions.create(completionParams);
+  const response = isGPT5Family
+    ? await openai.chat.completions.create({
+        model: llmSettings.model,
+        messages,
+        max_completion_tokens: llmSettings.maxTokens,
+        // GPT-5 family only supports temperature=1 (default)
+      })
+    : await openai.chat.completions.create({
+        model: llmSettings.model,
+        messages,
+        max_tokens: llmSettings.maxTokens,
+        temperature: llmSettings.temperature,
+      });
 
   return response.choices[0].message.content || '';
 }

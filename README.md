@@ -61,10 +61,10 @@ A Retrieval-Augmented Generation (RAG) chatbot that helps government staff query
 ### RAG Pipeline Flow
 1. **Query** - User submits question via chat or voice
 2. **Cache Check** - Redis checks for cached response (1-hour TTL)
-3. **Embedding** - Query converted to vector using `text-embedding-3-small`
+3. **Embedding** - Query converted to vector using `text-embedding-3-large` (3072 dimensions)
 4. **Search** - ChromaDB performs semantic search across policy documents
 5. **Context Building** - Top results combined with conversation history
-6. **Generation** - GPT-4o-mini generates response with citations
+6. **Generation** - GPT-5 Mini generates response with citations (configurable via admin panel)
 7. **Cache & Return** - Response cached and returned with source metadata
 
 ## Infrastructure
@@ -104,9 +104,12 @@ A Retrieval-Augmented Generation (RAG) chatbot that helps government staff query
 - **TypeScript** - Type safety
 
 ### AI/ML
-- **OpenAI GPT-4o-mini** - Chat completions
-- **OpenAI text-embedding-3-small** - Vector embeddings (1536 dimensions)
+- **OpenAI GPT-5 Mini** - Primary chat completions (configurable)
+- **OpenAI GPT-5** - Advanced reasoning for complex queries
+- **OpenAI GPT-4.1 Mini** - Fast, cost-effective alternative
+- **OpenAI text-embedding-3-large** - Vector embeddings (3072 dimensions)
 - **OpenAI Whisper** - Voice transcription
+- **Mistral OCR** - Advanced PDF text extraction with markdown support (fallback to pdf-parse)
 
 ### Data Storage
 - **ChromaDB** - Vector database for semantic search
@@ -145,9 +148,17 @@ cp .env.example .env.local
 
 3. Configure environment variables:
 ```env
+# Required
 OPENAI_API_KEY=sk-...
 AUTH_DISABLED=true
 DATA_DIR=./data
+
+# Optional - Mistral OCR for advanced PDF extraction
+MISTRAL_API_KEY=your-mistral-api-key
+
+# Embedding configuration (defaults shown)
+EMBEDDING_MODEL=text-embedding-3-large
+EMBEDDING_DIMENSIONS=3072
 ```
 
 4. Start development services:
@@ -163,9 +174,21 @@ npm run dev
 
 1. Configure production environment:
 ```env
+# Domain & TLS
 DOMAIN=policybot.example.com
 ACME_EMAIL=admin@example.com
+
+# OpenAI
 OPENAI_API_KEY=sk-...
+
+# Mistral OCR (optional but recommended)
+MISTRAL_API_KEY=your-mistral-api-key
+
+# Embeddings (defaults to text-embedding-3-large, 3072 dimensions)
+EMBEDDING_MODEL=text-embedding-3-large
+EMBEDDING_DIMENSIONS=3072
+
+# Authentication
 NEXTAUTH_SECRET=<generate-secret>
 NEXTAUTH_URL=https://policybot.example.com
 AZURE_AD_CLIENT_ID=...
@@ -173,6 +196,8 @@ AZURE_AD_CLIENT_SECRET=...
 AZURE_AD_TENANT_ID=...
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
+
+# Access Control
 ACCESS_MODE=allowlist
 ADMIN_EMAILS=admin@example.com
 ```
@@ -203,8 +228,10 @@ policy-bot/
 │   │   ├── rag.ts              # RAG pipeline
 │   │   ├── chroma.ts           # ChromaDB client
 │   │   ├── redis.ts            # Redis client
-│   │   ├── openai.ts           # OpenAI integration
-│   │   ├── ingest.ts           # Document ingestion
+│   │   ├── openai.ts           # OpenAI integration (GPT-5 support)
+│   │   ├── mistral-ocr.ts      # Mistral OCR integration
+│   │   ├── ingest.ts           # Document ingestion (with OCR)
+│   │   ├── storage.ts          # File system and settings
 │   │   ├── threads.ts          # Thread operations
 │   │   ├── users.ts            # User management
 │   │   ├── auth.ts             # Authentication helpers
@@ -234,6 +261,43 @@ policy-bot/
 | POST | `/api/admin/users` | Add user to allowlist |
 | DELETE | `/api/admin/users?email=...` | Remove user from allowlist |
 | PATCH | `/api/admin/users` | Update user role |
+| GET | `/api/admin/settings` | Get LLM and RAG settings |
+| POST | `/api/admin/settings` | Update LLM model, temperature, RAG parameters |
+| GET | `/api/admin/system-prompt` | Get system prompt |
+| POST | `/api/admin/system-prompt` | Update system prompt |
+| POST | `/api/admin/refresh` | Re-index document with current settings |
+
+## Admin Configuration
+
+### LLM Model Selection
+
+Policy Bot supports multiple OpenAI models, configurable through the admin panel:
+
+| Model | Speed | Cost | Best For |
+|-------|-------|------|----------|
+| **GPT-5** | Slow (2.8s) | High | Complex reasoning, analysis |
+| **GPT-5 Mini** | Fast (1.2s) | Medium | Balanced use (recommended) |
+| **GPT-4.1 Mini** | Fastest (0.5s) | Low | High volume, simple queries |
+
+**Note:** GPT-5 models use default temperature=1 and cannot be customized. GPT-4.1 Mini supports custom temperature settings.
+
+### Embedding Configuration
+
+Embeddings are configured via environment variables:
+```env
+EMBEDDING_MODEL=text-embedding-3-large
+EMBEDDING_DIMENSIONS=3072
+```
+
+**Important:** Changing embedding dimensions requires re-indexing all documents.
+
+### PDF Text Extraction
+
+Policy Bot uses a dual-layer approach:
+1. **Primary:** Mistral OCR (if `MISTRAL_API_KEY` is set) - Advanced OCR with markdown support
+2. **Fallback:** pdf-parse - Traditional PDF text extraction
+
+The system automatically falls back to pdf-parse if Mistral OCR fails or is unavailable.
 
 ## User Management
 

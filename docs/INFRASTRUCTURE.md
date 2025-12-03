@@ -61,6 +61,13 @@ Policy Bot uses Docker Compose for containerized deployment with three environme
 # OpenAI
 OPENAI_API_KEY=sk-your-api-key-here
 
+# Mistral (Optional - for advanced PDF OCR)
+MISTRAL_API_KEY=your-mistral-api-key
+
+# Embeddings (defaults shown)
+EMBEDDING_MODEL=text-embedding-3-large
+EMBEDDING_DIMENSIONS=3072
+
 # Chroma
 CHROMA_HOST=localhost
 CHROMA_PORT=8000
@@ -85,6 +92,13 @@ DATA_DIR=./data
 ```env
 # OpenAI
 OPENAI_API_KEY=sk-your-api-key-here
+
+# Mistral (Optional - for advanced PDF OCR)
+MISTRAL_API_KEY=your-mistral-api-key
+
+# Embeddings
+EMBEDDING_MODEL=text-embedding-3-large
+EMBEDDING_DIMENSIONS=3072
 
 # Chroma (internal Docker network)
 CHROMA_HOST=chroma
