@@ -6,6 +6,7 @@ import remarkGfm from 'remark-gfm';
 import { ChevronDown, ChevronRight, Copy, Check } from 'lucide-react';
 import type { Message } from '@/types';
 import SourceCard from './SourceCard';
+import { MarkdownComponents } from '@/components/markdown/MarkdownRenderers';
 
 const MAX_SOURCES_DISPLAYED = 5;
 
@@ -59,7 +60,10 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
         }`}
       >
         <div className={`markdown-content ${isUser ? 'text-white' : ''}`}>
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={MarkdownComponents}
+          >
             {message.content}
           </ReactMarkdown>
         </div>

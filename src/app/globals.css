@@ -32,6 +32,11 @@ body {
 }
 
 /* Markdown content styling */
+.markdown-content {
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
 .markdown-content h1,
 .markdown-content h2,
 .markdown-content h3 {
@@ -46,6 +51,8 @@ body {
 
 .markdown-content h2 {
   font-size: 1.25em;
+  border-bottom: 2px solid #e5e7eb;
+  padding-bottom: 0.5em;
 }
 
 .markdown-content h3 {
@@ -73,13 +80,32 @@ body {
   font-size: 0.9em;
 }
 
+/* Context-aware inline code for user messages (blue background) */
+.bg-blue-600 .markdown-content code {
+  background-color: rgba(255, 255, 255, 0.25);
+  color: #f3f4f6;
+  padding: 0.125em 0.375em;
+  border-radius: 0.25em;
+}
+
+/* Context-aware inline code for assistant messages (gray background) */
+.bg-gray-100 .markdown-content code {
+  background-color: #e5e7eb;
+  color: #111827;
+  padding: 0.125em 0.375em;
+  border-radius: 0.25em;
+  border: 1px solid #d1d5db;
+}
+
 .markdown-content pre {
   background: #1f2937;
   color: #f9fafb;
-  padding: 1em;
+  padding: 1.25em;
   border-radius: 0.5em;
   overflow-x: auto;
   margin-bottom: 0.75em;
+  border: 1px solid #374151;
+  max-width: 100%;
 }
 
 .markdown-content pre code {
@@ -88,28 +114,44 @@ body {
 }
 
 .markdown-content blockquote {
-  border-left: 3px solid #d1d5db;
-  padding-left: 1em;
+  border-left: 4px solid #3b82f6;
+  background-color: rgba(59, 130, 246, 0.05);
+  padding: 0.75em 1.25em;
   margin-left: 0;
-  color: #6b7280;
+  margin-right: 0;
+  color: #374151;
+  font-style: italic;
+  border-radius: 0.375em;
 }
 
 .markdown-content table {
   border-collapse: collapse;
   width: 100%;
-  margin-bottom: 0.75em;
+  margin: 1em 0;
+  border: 1px solid #d1d5db;
+  border-radius: 0.375em;
+  overflow: hidden;
 }
 
 .markdown-content th,
 .markdown-content td {
-  border: 1px solid #e5e7eb;
-  padding: 0.5em;
+  border: 1px solid #d1d5db;
+  padding: 0.75em;
   text-align: left;
 }
 
 .markdown-content th {
-  background: #f9fafb;
+  background-color: #f3f4f6;
   font-weight: 600;
+  color: #111827;
+}
+
+.markdown-content tbody tr:nth-child(even) {
+  background-color: #f9fafb;
+}
+
+.markdown-content tbody tr:hover {
+  background-color: #f3f4f6;
 }
 
 /* Loading animation */
@@ -124,4 +166,23 @@ body {
 
 .animate-pulse-slow {
   animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Responsive font sizes for mobile */
+@media (max-width: 640px) {
+  .markdown-content {
+    font-size: 0.875rem; /* 14px */
+  }
+
+  .markdown-content h1 {
+    font-size: 1.25rem; /* 20px */
+  }
+
+  .markdown-content h2 {
+    font-size: 1.125rem; /* 18px */
+  }
+
+  .markdown-content h3 {
+    font-size: 1rem; /* 16px */
+  }
 }
