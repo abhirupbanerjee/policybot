@@ -419,13 +419,37 @@ On first deployment, users from `ADMIN_EMAILS` environment variable are automati
 3. Add authorized redirect URI: `https://your-domain.com/api/auth/callback/google`
 4. Copy Client ID and Client Secret to `.env`
 
+## Scripts & Commands
+
+### Development
+```bash
+npm run dev              # Start development server
+npm run build            # Build for production
+npm run lint             # Run ESLint
+npm run type-check       # TypeScript type checking
+npm run test:connectivity # Test API connectivity
+```
+
+### Docker Operations
+```bash
+npm run docker:dev       # Start development services (ChromaDB + Redis)
+npm run docker:dev:down  # Stop development services
+npm run docker:prod      # Build and start production stack
+npm run docker:prod:down # Stop production stack
+npm run docker:logs      # View application logs
+```
+
 ## Documentation
 
-- [Solution Architecture](docs/SOLUTION.md)
-- [API Specification](docs/API_SPECIFICATION.md)
-- [Infrastructure Guide](docs/INFRASTRUCTURE.md)
-- [Database Schema](docs/DATABASE.md)
-- [Web Search Integration](docs/web-search.md)
+See [docs/README.md](docs/README.md) for complete documentation index.
+
+**Core Docs:**
+- [Solution Architecture](docs/SOLUTION.md) - System design and components
+- [API Specification](docs/API_SPECIFICATION.md) - REST API reference
+- [Infrastructure Guide](docs/INFRASTRUCTURE.md) - Docker and deployment
+- [Database Schema](docs/DATABASE.md) - Data structure
+- [Web Search Integration](docs/web-search.md) - Tavily web search setup
+- [Deployment Checklist](docs/DEPLOYMENT_CHECKLIST.md) - Production deployment guide
 
 ## License
 
