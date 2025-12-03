@@ -860,7 +860,7 @@ export default function AdminPage() {
             <div className="px-6 py-4 border-b">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="font-semibold text-gray-900">Policy Documents</h2>
+                  <h2 className="font-semibold text-gray-900">Knowledge Base Documents</h2>
                   <p className="text-sm text-gray-500">
                     {documents.length} documents, {totalChunks} chunks indexed
                   </p>

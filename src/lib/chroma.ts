@@ -1,7 +1,7 @@
 import { ChromaClient, Collection, Metadata, IncludeEnum } from 'chromadb';
 import type { ChunkMetadata } from '@/types';
 
-const COLLECTION_NAME = 'policy_documents';
+const COLLECTION_NAME = process.env.CHROMA_COLLECTION_NAME || 'organizational_documents';
 
 let client: ChromaClient | null = null;
 let collection: Collection | null = null;

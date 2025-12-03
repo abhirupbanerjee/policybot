@@ -11,7 +11,7 @@ export const tavilyWebSearch: ToolDefinition = {
     type: 'function',
     function: {
       name: 'web_search',
-      description: 'Search the web for current information, news, or data not available in policy documents. Use when user asks about recent events, current data, or information outside the policy knowledge base.',
+      description: 'Search the web for current information, news, or data not available in the organizational knowledge base. Use when internal documents do not contain the answer or when user asks about recent events or current data.',
       parameters: {
         type: 'object',
         properties: {

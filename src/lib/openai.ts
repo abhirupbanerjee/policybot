@@ -70,7 +70,7 @@ export async function generateResponse(
   // Add context and current question
   messages.push({
     role: 'user',
-    content: `Context from policy documents:\n${context}\n\n---\n\nQuestion: ${userMessage}`,
+    content: `Organizational Knowledge Base:\n${context}\n\n---\n\nQuestion: ${userMessage}`,
   });
 
   const openai = getOpenAI();
@@ -142,7 +142,7 @@ export async function generateResponseWithTools(
   // Add context + user question
   messages.push({
     role: 'user',
-    content: `Policy Documents Context:\n${context}\n\n---\n\nQuestion: ${userMessage}`,
+    content: `Organizational Knowledge Base:\n${context}\n\n---\n\nQuestion: ${userMessage}`,
   });
 
   // Prepare completion params

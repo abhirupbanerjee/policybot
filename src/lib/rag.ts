@@ -157,7 +157,7 @@ function formatContext(globalChunks: RetrievedChunk[], userChunks: RetrievedChun
   let context = '';
 
   if (globalChunks.length > 0) {
-    context += '=== POLICY DOCUMENTS ===\n\n';
+    context += '=== KNOWLEDGE BASE DOCUMENTS ===\n\n';
     for (const chunk of globalChunks) {
       context += `[Source: ${chunk.documentName}, Page ${chunk.pageNumber}]\n`;
       context += `${chunk.text}\n\n---\n\n`;
@@ -173,7 +173,7 @@ function formatContext(globalChunks: RetrievedChunk[], userChunks: RetrievedChun
   }
 
   if (!context) {
-    context = 'No relevant policy documents found.';
+    context = 'No relevant documents found in the knowledge base.';
   }
 
   return context;

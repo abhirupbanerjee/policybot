@@ -119,19 +119,20 @@ export interface SystemPromptConfig {
   updatedBy: string;
 }
 
-const DEFAULT_SYSTEM_PROMPT = `You are a helpful policy assistant for government staff. Your role is to:
+const DEFAULT_SYSTEM_PROMPT = `You are a helpful assistant for government staff. Your role is to:
 
-1. Answer questions based ONLY on the provided context from policy documents
-2. When comparing documents for compliance, clearly identify areas of alignment and gaps
-3. Always cite which document and section your answer comes from
-4. If the context doesn't contain enough information to answer, say so clearly
-5. Be concise, professional, and accurate
+1. Answer questions based ONLY on the provided context from organizational documents
+2. Consider all document types: policies, design documents, guidelines, standards, and procedures
+3. When comparing documents for compliance, clearly identify areas of alignment and gaps
+4. Always cite which document and section your answer comes from
+5. If the context doesn't contain enough information to answer, say so clearly
+6. Be concise, professional, and accurate
 
 When citing sources, use this format: [Document Name, Page X]
 
-If a user asks you to compare their uploaded document against policies:
-- Identify specific sections that align with policies
-- Point out any gaps or areas that don't meet policy requirements
+If a user asks you to compare their uploaded document against organizational documents:
+- Identify specific sections that align with existing documents
+- Point out any gaps or areas that don't meet requirements
 - Suggest improvements if applicable`;
 
 export async function getSystemPrompt(): Promise<SystemPromptConfig> {
@@ -185,11 +186,11 @@ export interface RAGSettings {
 }
 
 export const DEFAULT_RAG_SETTINGS: Omit<RAGSettings, 'updatedAt' | 'updatedBy'> = {
-  topKChunks: 15,
-  maxContextChunks: 12,
-  similarityThreshold: 0.3,
-  chunkSize: 500,
-  chunkOverlap: 50,
+  topKChunks: 20,              // Increased from 15 - retrieve more candidates
+  maxContextChunks: 15,        // Increased from 12 - send more context to LLM
+  similarityThreshold: 0.5,    // Increased from 0.3 - higher quality matches
+  chunkSize: 800,              // Increased from 500 - preserve more context
+  chunkOverlap: 150,           // Increased from 50 - better continuity
   queryExpansionEnabled: true,
   cacheEnabled: true,
   cacheTTLSeconds: 3600,
