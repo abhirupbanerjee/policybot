@@ -1,15 +1,41 @@
+/**
+ * Document Ingestion Module
+ *
+ * Supports category-based document ingestion with SQLite metadata storage.
+ * Documents can be assigned to categories or marked as global.
+ * Global documents are indexed into all category collections.
+ */
+
 import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
 import pdf from 'pdf-parse';
 import path from 'path';
-import { v4 as uuidv4 } from 'uuid';
 import { createEmbeddings } from './openai';
-import { addDocuments, deleteDocumentsByFilter } from './chroma';
-import { readJson, writeJson, readFileBuffer, getGlobalDocsDir, deleteFile, fileExists, getRAGSettings } from './storage';
+import {
+  addDocuments,
+  addDocumentsToCategories,
+  addGlobalDocuments,
+  deleteDocumentsByFilter,
+  deleteDocumentsByFilterFromCategories,
+  deleteDocumentsFromAllCollections,
+} from './chroma';
+import { readFileBuffer, getGlobalDocsDir, deleteFile, fileExists, writeFileBuffer } from './storage';
+import { getRagSettings } from './db/config';
+import {
+  createDocument,
+  getDocumentWithCategories,
+  getAllDocumentsWithCategories,
+  updateDocument,
+  deleteDocument as dbDeleteDocument,
+  setDocumentCategories,
+  setDocumentGlobal,
+  type DocumentWithCategories,
+} from './db/documents';
+import { getCategoryById } from './db/categories';
 import { extractTextWithMistral } from './mistral-ocr';
-import type { DocumentChunk, GlobalDocument, DocumentRegistry } from '@/types';
+import type { DocumentChunk, GlobalDocument } from '@/types';
 
 // Create splitter with configurable settings
-async function createSplitter(chunkSize?: number, chunkOverlap?: number): Promise<RecursiveCharacterTextSplitter> {
+function createSplitter(chunkSize?: number, chunkOverlap?: number): RecursiveCharacterTextSplitter {
   if (chunkSize !== undefined && chunkOverlap !== undefined) {
     return new RecursiveCharacterTextSplitter({
       chunkSize,
@@ -18,7 +44,7 @@ async function createSplitter(chunkSize?: number, chunkOverlap?: number): Promis
     });
   }
 
-  const settings = await getRAGSettings();
+  const settings = getRagSettings();
   return new RecursiveCharacterTextSplitter({
     chunkSize: settings.chunkSize,
     chunkOverlap: settings.chunkOverlap,
@@ -89,7 +115,7 @@ export async function chunkText(
   pages?: PageText[]
 ): Promise<DocumentChunk[]> {
   // Get splitter with current settings
-  const splitter = await createSplitter();
+  const splitter = createSplitter();
 
   // If we have page information, chunk each page separately to preserve page numbers
   if (pages && pages.length > 0) {
@@ -140,44 +166,75 @@ export async function chunkText(
   }));
 }
 
+/**
+ * Convert SQLite document to API format for backward compatibility
+ */
+function toGlobalDocument(doc: DocumentWithCategories): GlobalDocument {
+  return {
+    id: String(doc.id),
+    filename: doc.filename,
+    filepath: doc.filepath,
+    size: doc.file_size,
+    chunkCount: doc.chunk_count,
+    uploadedAt: new Date(doc.created_at),
+    uploadedBy: doc.uploaded_by,
+    status: doc.status,
+    errorMessage: doc.error_message || undefined,
+  };
+}
+
+/**
+ * Ingest a document with category support
+ *
+ * @param buffer - PDF file buffer
+ * @param filename - Original filename
+ * @param uploadedBy - User email who uploaded
+ * @param options - Category and global options
+ */
 export async function ingestDocument(
   buffer: Buffer,
   filename: string,
-  uploadedBy: string
+  uploadedBy: string,
+  options?: {
+    categoryIds?: number[];
+    isGlobal?: boolean;
+  }
 ): Promise<GlobalDocument> {
-  const docId = uuidv4();
   const globalDocsDir = getGlobalDocsDir();
+  const categoryIds = options?.categoryIds || [];
+  const isGlobal = options?.isGlobal || false;
 
-  // Save PDF
-  const { writeFileBuffer } = await import('./storage');
+  // Save PDF file
   const pdfPath = path.join(globalDocsDir, filename);
   await writeFileBuffer(pdfPath, buffer);
 
-  // Create document record
-  const doc: GlobalDocument = {
-    id: docId,
+  // Create document record in SQLite
+  const doc = createDocument({
     filename,
     filepath: filename,
-    size: buffer.length,
-    chunkCount: 0,
-    uploadedAt: new Date(),
+    fileSize: buffer.length,
     uploadedBy,
-    status: 'processing',
-  };
-
-  // Update registry
-  const registryPath = path.join(globalDocsDir, 'registry.json');
-  const registry = await readJson<DocumentRegistry>(registryPath) || { documents: [] };
-  registry.documents.push(doc);
-  await writeJson(registryPath, registry);
+    isGlobal,
+    categoryIds,
+  });
 
   try {
     // Extract and chunk text
     const { text, pages } = await extractTextFromPDF(buffer);
+    const docId = String(doc.id);
     const chunks = await chunkText(text, docId, filename, 'global', undefined, undefined, pages);
 
     if (chunks.length === 0) {
       throw new Error('No text content extracted from PDF');
+    }
+
+    // Get category slugs for ChromaDB collection names
+    const categorySlugs: string[] = [];
+    for (const catId of categoryIds) {
+      const category = getCategoryById(catId);
+      if (category) {
+        categorySlugs.push(category.slug);
+      }
     }
 
     // Create embeddings in batches
@@ -186,96 +243,129 @@ export async function ingestDocument(
       const batch = chunks.slice(i, i + batchSize);
       const texts = batch.map(c => c.text);
       const embeddings = await createEmbeddings(texts);
+      const metadatas = batch.map(c => c.metadata);
 
-      await addDocuments(
-        batch.map(c => c.id),
-        embeddings,
-        texts,
-        batch.map(c => c.metadata)
-      );
+      if (isGlobal) {
+        // Global documents go into all category collections
+        await addGlobalDocuments(
+          batch.map(c => c.id),
+          embeddings,
+          texts,
+          metadatas
+        );
+      } else if (categorySlugs.length > 0) {
+        // Category-specific documents
+        await addDocumentsToCategories(
+          categorySlugs,
+          batch.map(c => c.id),
+          embeddings,
+          texts,
+          metadatas,
+          false
+        );
+      } else {
+        // Legacy: add to default collection (for uncategorized documents)
+        await addDocuments(
+          batch.map(c => c.id),
+          embeddings,
+          texts,
+          metadatas
+        );
+      }
     }
 
     // Update document status
-    doc.chunkCount = chunks.length;
-    doc.status = 'ready';
+    updateDocument(doc.id, {
+      chunkCount: chunks.length,
+      status: 'ready',
+    });
 
-    const updatedRegistry = await readJson<DocumentRegistry>(registryPath) || { documents: [] };
-    const docIndex = updatedRegistry.documents.findIndex(d => d.id === docId);
-    if (docIndex >= 0) {
-      updatedRegistry.documents[docIndex] = doc;
-      await writeJson(registryPath, updatedRegistry);
-    }
-
-    return doc;
+    // Fetch updated document
+    const updatedDoc = getDocumentWithCategories(doc.id);
+    return toGlobalDocument(updatedDoc!);
   } catch (error) {
     // Update document with error status
-    doc.status = 'error';
-    doc.errorMessage = error instanceof Error ? error.message : 'Unknown error';
-
-    const updatedRegistry = await readJson<DocumentRegistry>(registryPath) || { documents: [] };
-    const docIndex = updatedRegistry.documents.findIndex(d => d.id === docId);
-    if (docIndex >= 0) {
-      updatedRegistry.documents[docIndex] = doc;
-      await writeJson(registryPath, updatedRegistry);
-    }
+    updateDocument(doc.id, {
+      status: 'error',
+      errorMessage: error instanceof Error ? error.message : 'Unknown error',
+    });
 
     throw error;
   }
 }
 
+/**
+ * Delete a document and its embeddings
+ */
 export async function deleteDocument(docId: string): Promise<{ filename: string; chunksRemoved: number } | null> {
-  const globalDocsDir = getGlobalDocsDir();
-  const registryPath = path.join(globalDocsDir, 'registry.json');
-  const registry = await readJson<DocumentRegistry>(registryPath) || { documents: [] };
+  const numericId = parseInt(docId, 10);
+  const doc = getDocumentWithCategories(numericId);
 
-  const docIndex = registry.documents.findIndex(d => d.id === docId);
-  if (docIndex < 0) {
+  if (!doc) {
     return null;
   }
 
-  const doc = registry.documents[docIndex];
+  // Get category slugs for deletion
+  const categorySlugs = doc.categories.map(c => c.slug);
 
   // Delete from ChromaDB
-  await deleteDocumentsByFilter({ documentId: docId });
+  if (doc.isGlobal) {
+    // Global doc: delete from all collections
+    await deleteDocumentsFromAllCollections([docId]);
+  } else if (categorySlugs.length > 0) {
+    // Category doc: delete from specific collections
+    await deleteDocumentsByFilterFromCategories(categorySlugs, { documentId: docId });
+  } else {
+    // Legacy: delete from default collection
+    await deleteDocumentsByFilter({ documentId: docId });
+  }
 
   // Delete PDF file
+  const globalDocsDir = getGlobalDocsDir();
   const pdfPath = path.join(globalDocsDir, doc.filepath);
   await deleteFile(pdfPath);
 
-  // Update registry
-  registry.documents.splice(docIndex, 1);
-  await writeJson(registryPath, registry);
+  // Delete from SQLite
+  dbDeleteDocument(numericId);
 
   return {
     filename: doc.filename,
-    chunksRemoved: doc.chunkCount,
+    chunksRemoved: doc.chunk_count,
   };
 }
 
+/**
+ * Reindex a document (re-extract and re-embed)
+ */
 export async function reindexDocument(docId: string): Promise<GlobalDocument | null> {
-  const globalDocsDir = getGlobalDocsDir();
-  const registryPath = path.join(globalDocsDir, 'registry.json');
-  const registry = await readJson<DocumentRegistry>(registryPath) || { documents: [] };
+  const numericId = parseInt(docId, 10);
+  const doc = getDocumentWithCategories(numericId);
 
-  const docIndex = registry.documents.findIndex(d => d.id === docId);
-  if (docIndex < 0) {
+  if (!doc) {
     return null;
   }
 
-  const doc = registry.documents[docIndex];
+  const globalDocsDir = getGlobalDocsDir();
   const pdfPath = path.join(globalDocsDir, doc.filepath);
 
   if (!await fileExists(pdfPath)) {
     throw new Error('PDF file not found');
   }
 
-  // Delete existing chunks
-  await deleteDocumentsByFilter({ documentId: docId });
+  // Get category slugs
+  const categorySlugs = doc.categories.map(c => c.slug);
 
-  // Update status
-  doc.status = 'processing';
-  registry.documents[docIndex] = doc;
-  await writeJson(registryPath, registry);
+  // Delete existing embeddings
+  if (doc.isGlobal) {
+    await deleteDocumentsFromAllCollections([docId]);
+  } else if (categorySlugs.length > 0) {
+    await deleteDocumentsByFilterFromCategories(categorySlugs, { documentId: docId });
+  } else {
+    await deleteDocumentsByFilter({ documentId: docId });
+  }
+
+  // Update status to processing
+  updateDocument(numericId, { status: 'processing' });
 
   try {
     // Re-extract and chunk
@@ -289,51 +379,197 @@ export async function reindexDocument(docId: string): Promise<GlobalDocument | n
       const batch = chunks.slice(i, i + batchSize);
       const texts = batch.map(c => c.text);
       const embeddings = await createEmbeddings(texts);
+      const metadatas = batch.map(c => c.metadata);
 
-      await addDocuments(
-        batch.map(c => c.id),
-        embeddings,
-        texts,
-        batch.map(c => c.metadata)
-      );
+      if (doc.isGlobal) {
+        await addGlobalDocuments(
+          batch.map(c => c.id),
+          embeddings,
+          texts,
+          metadatas
+        );
+      } else if (categorySlugs.length > 0) {
+        await addDocumentsToCategories(
+          categorySlugs,
+          batch.map(c => c.id),
+          embeddings,
+          texts,
+          metadatas,
+          false
+        );
+      } else {
+        await addDocuments(
+          batch.map(c => c.id),
+          embeddings,
+          texts,
+          metadatas
+        );
+      }
     }
 
     // Update document status
-    doc.chunkCount = chunks.length;
-    doc.status = 'ready';
-    doc.errorMessage = undefined;
+    updateDocument(numericId, {
+      chunkCount: chunks.length,
+      status: 'ready',
+      errorMessage: null,
+    });
 
-    const updatedRegistry = await readJson<DocumentRegistry>(registryPath) || { documents: [] };
-    const updatedDocIndex = updatedRegistry.documents.findIndex(d => d.id === docId);
-    if (updatedDocIndex >= 0) {
-      updatedRegistry.documents[updatedDocIndex] = doc;
-      await writeJson(registryPath, updatedRegistry);
-    }
-
-    return doc;
+    const updatedDoc = getDocumentWithCategories(numericId);
+    return toGlobalDocument(updatedDoc!);
   } catch (error) {
-    doc.status = 'error';
-    doc.errorMessage = error instanceof Error ? error.message : 'Unknown error';
-
-    const updatedRegistry = await readJson<DocumentRegistry>(registryPath) || { documents: [] };
-    const updatedDocIndex = updatedRegistry.documents.findIndex(d => d.id === docId);
-    if (updatedDocIndex >= 0) {
-      updatedRegistry.documents[updatedDocIndex] = doc;
-      await writeJson(registryPath, updatedRegistry);
-    }
+    updateDocument(numericId, {
+      status: 'error',
+      errorMessage: error instanceof Error ? error.message : 'Unknown error',
+    });
 
     throw error;
   }
 }
 
+/**
+ * List all global documents
+ */
 export async function listGlobalDocuments(): Promise<GlobalDocument[]> {
-  const globalDocsDir = getGlobalDocsDir();
-  const registryPath = path.join(globalDocsDir, 'registry.json');
-  const registry = await readJson<DocumentRegistry>(registryPath) || { documents: [] };
-  return registry.documents;
+  const docs = getAllDocumentsWithCategories();
+  return docs.map(toGlobalDocument);
 }
 
+/**
+ * Get a specific document
+ */
 export async function getGlobalDocument(docId: string): Promise<GlobalDocument | null> {
-  const documents = await listGlobalDocuments();
-  return documents.find(d => d.id === docId) || null;
+  const numericId = parseInt(docId, 10);
+  const doc = getDocumentWithCategories(numericId);
+  return doc ? toGlobalDocument(doc) : null;
+}
+
+// ============ Category Management Functions ============
+
+/**
+ * Update document categories
+ * This will re-index the document to the new categories
+ */
+export async function updateDocumentCategories(
+  docId: string,
+  categoryIds: number[]
+): Promise<void> {
+  const numericId = parseInt(docId, 10);
+  const doc = getDocumentWithCategories(numericId);
+
+  if (!doc) {
+    throw new Error('Document not found');
+  }
+
+  // Get old and new category slugs
+  const oldSlugs = doc.categories.map(c => c.slug);
+  const newSlugs: string[] = [];
+  for (const catId of categoryIds) {
+    const category = getCategoryById(catId);
+    if (category) {
+      newSlugs.push(category.slug);
+    }
+  }
+
+  // If document has embeddings and categories changed, need to re-index
+  if (doc.chunk_count > 0 && doc.status === 'ready') {
+    // Delete from old categories
+    if (oldSlugs.length > 0) {
+      await deleteDocumentsByFilterFromCategories(oldSlugs, { documentId: docId });
+    }
+
+    // Re-add to new categories
+    if (newSlugs.length > 0) {
+      const globalDocsDir = getGlobalDocsDir();
+      const pdfPath = path.join(globalDocsDir, doc.filepath);
+      const buffer = await readFileBuffer(pdfPath);
+      const { text, pages } = await extractTextFromPDF(buffer);
+      const chunks = await chunkText(text, docId, doc.filename, 'global', undefined, undefined, pages);
+
+      const batchSize = 100;
+      for (let i = 0; i < chunks.length; i += batchSize) {
+        const batch = chunks.slice(i, i + batchSize);
+        const texts = batch.map(c => c.text);
+        const embeddings = await createEmbeddings(texts);
+
+        await addDocumentsToCategories(
+          newSlugs,
+          batch.map(c => c.id),
+          embeddings,
+          texts,
+          batch.map(c => c.metadata),
+          false
+        );
+      }
+    }
+  }
+
+  // Update SQLite
+  setDocumentCategories(numericId, categoryIds);
+}
+
+/**
+ * Toggle document global status
+ * Global documents are indexed into all category collections
+ */
+export async function toggleDocumentGlobal(
+  docId: string,
+  isGlobal: boolean
+): Promise<void> {
+  const numericId = parseInt(docId, 10);
+  const doc = getDocumentWithCategories(numericId);
+
+  if (!doc) {
+    throw new Error('Document not found');
+  }
+
+  // If document has embeddings and status is changing, need to re-index
+  if (doc.chunk_count > 0 && doc.status === 'ready' && doc.isGlobal !== isGlobal) {
+    const globalDocsDir = getGlobalDocsDir();
+    const pdfPath = path.join(globalDocsDir, doc.filepath);
+    const buffer = await readFileBuffer(pdfPath);
+    const { text, pages } = await extractTextFromPDF(buffer);
+    const chunks = await chunkText(text, docId, doc.filename, 'global', undefined, undefined, pages);
+
+    // Delete from current locations
+    if (doc.isGlobal) {
+      await deleteDocumentsFromAllCollections([docId]);
+    } else {
+      const oldSlugs = doc.categories.map(c => c.slug);
+      if (oldSlugs.length > 0) {
+        await deleteDocumentsByFilterFromCategories(oldSlugs, { documentId: docId });
+      }
+    }
+
+    // Re-add to new locations
+    const batchSize = 100;
+    for (let i = 0; i < chunks.length; i += batchSize) {
+      const batch = chunks.slice(i, i + batchSize);
+      const texts = batch.map(c => c.text);
+      const embeddings = await createEmbeddings(texts);
+
+      if (isGlobal) {
+        await addGlobalDocuments(
+          batch.map(c => c.id),
+          embeddings,
+          texts,
+          batch.map(c => c.metadata)
+        );
+      } else {
+        const newSlugs = doc.categories.map(c => c.slug);
+        if (newSlugs.length > 0) {
+          await addDocumentsToCategories(
+            newSlugs,
+            batch.map(c => c.id),
+            embeddings,
+            texts,
+            batch.map(c => c.metadata),
+            false
+          );
+        }
+      }
+    }
+  }
+
+  // Update SQLite
+  setDocumentGlobal(numericId, isGlobal);
 }

@@ -1,9 +1,17 @@
+/**
+ * RAG (Retrieval Augmented Generation) Module
+ *
+ * Supports category-based multi-collection search.
+ * When categories are specified, queries all relevant category collections plus global.
+ */
+
 import { createEmbeddings, generateResponseWithTools } from './openai';
 import type { OpenAI } from 'openai';
-import { queryDocuments } from './chroma';
+import { queryDocuments, queryCategories } from './chroma';
 import { getCachedQuery, cacheQuery, hashQuery } from './redis';
 import { extractTextFromPDF, chunkText } from './ingest';
-import { readFileBuffer, getSystemPrompt, getRAGSettings, getAcronymMappings } from './storage';
+import { readFileBuffer } from './storage';
+import { getSystemPrompt, getRagSettings, getAcronymMappings } from './db/config';
 import type { Message, Source, RetrievedChunk, RAGResponse } from '@/types';
 
 /**
@@ -19,16 +27,18 @@ async function expandQueries(originalQuery: string, enabled: boolean): Promise<s
   // Extract key terms and create variations
   const lowerQuery = originalQuery.toLowerCase();
 
-  // Get acronym mappings from storage
-  const acronymConfig = await getAcronymMappings();
-  const acronymExpansions = acronymConfig.mappings;
+  // Get acronym mappings from SQLite config
+  const acronymExpansions = getAcronymMappings();
 
-  for (const [acronym, expansion] of Object.entries(acronymExpansions)) {
-    if (lowerQuery.includes(acronym)) {
-      queries.push(originalQuery.replace(new RegExp(acronym, 'gi'), expansion));
-    }
-    if (lowerQuery.includes(expansion)) {
-      queries.push(originalQuery.replace(new RegExp(expansion, 'gi'), acronym.toUpperCase()));
+  for (const [acronym, expansions] of Object.entries(acronymExpansions)) {
+    // expansions is now an array of possible expansions
+    for (const expansion of expansions) {
+      if (lowerQuery.includes(acronym.toLowerCase())) {
+        queries.push(originalQuery.replace(new RegExp(acronym, 'gi'), expansion));
+      }
+      if (lowerQuery.includes(expansion.toLowerCase())) {
+        queries.push(originalQuery.replace(new RegExp(expansion, 'gi'), acronym.toUpperCase()));
+      }
     }
   }
 
@@ -54,14 +64,24 @@ function deduplicateChunks(chunks: RetrievedChunk[]): RetrievedChunk[] {
     .sort((a, b) => b.score - a.score);
 }
 
+/**
+ * Build context from knowledge base documents
+ *
+ * @param queryEmbedding - Primary query embedding
+ * @param userDocPaths - Paths to user-uploaded documents
+ * @param additionalEmbeddings - Additional embeddings from query expansion
+ * @param settings - RAG settings (optional, fetched from config if not provided)
+ * @param categorySlugs - Category slugs to search (if empty, uses legacy collection)
+ */
 export async function buildContext(
   queryEmbedding: number[],
   userDocPaths: string[] = [],
   additionalEmbeddings: number[][] = [],
-  settings?: { topKChunks: number; maxContextChunks: number; similarityThreshold: number }
+  settings?: { topKChunks: number; maxContextChunks: number; similarityThreshold: number },
+  categorySlugs?: string[]
 ): Promise<{ globalChunks: RetrievedChunk[]; userChunks: RetrievedChunk[] }> {
-  // Use provided settings or fetch from storage
-  const ragSettings = settings || await getRAGSettings();
+  // Use provided settings or fetch from SQLite config
+  const ragSettings = settings || getRagSettings();
   const { topKChunks, maxContextChunks, similarityThreshold } = ragSettings;
 
   // Collect all embeddings (original + expanded queries)
@@ -71,14 +91,23 @@ export async function buildContext(
   const allGlobalChunks: RetrievedChunk[] = [];
 
   for (const embedding of allEmbeddings) {
-    const globalResults = await queryDocuments(embedding, topKChunks, { source: 'global' });
+    let results;
 
-    const chunks: RetrievedChunk[] = globalResults.documents.map((doc, i) => ({
-      id: globalResults.ids[i],
+    // Use category-based search if categories specified, otherwise legacy
+    if (categorySlugs && categorySlugs.length > 0) {
+      // Query across all specified categories + global collection
+      results = await queryCategories(categorySlugs, embedding, topKChunks);
+    } else {
+      // Legacy: query the default collection
+      results = await queryDocuments(embedding, topKChunks, { source: 'global' });
+    }
+
+    const chunks: RetrievedChunk[] = results.documents.map((doc, i) => ({
+      id: results.ids[i],
       text: doc,
-      documentName: globalResults.metadatas[i]?.documentName || 'Unknown',
-      pageNumber: globalResults.metadatas[i]?.pageNumber || 1,
-      score: 1 - (globalResults.distances[i] || 0), // Convert distance to similarity
+      documentName: results.metadatas[i]?.documentName || 'Unknown',
+      pageNumber: results.metadatas[i]?.pageNumber || 1,
+      score: 1 - (results.distances[i] || 0), // Convert distance to similarity
       source: 'global' as const,
     }));
 
@@ -189,18 +218,32 @@ function extractSources(globalChunks: RetrievedChunk[], userChunks: RetrievedChu
   }));
 }
 
+/**
+ * Main RAG query function
+ *
+ * @param userMessage - The user's question
+ * @param conversationHistory - Previous messages in the conversation
+ * @param userDocPaths - Paths to user-uploaded documents
+ * @param categorySlugs - Category slugs to search (if empty, uses legacy collection)
+ */
 export async function ragQuery(
   userMessage: string,
   conversationHistory: Message[] = [],
-  userDocPaths: string[] = []
+  userDocPaths: string[] = [],
+  categorySlugs?: string[]
 ): Promise<RAGResponse> {
-  // Get RAG settings
-  const ragSettings = await getRAGSettings();
+  // Get RAG settings from SQLite config
+  const ragSettings = getRagSettings();
   const { cacheEnabled, cacheTTLSeconds, queryExpansionEnabled } = ragSettings;
+
+  // Include category info in cache key for category-specific results
+  const cacheKeyBase = categorySlugs?.length
+    ? `${userMessage}:categories:${categorySlugs.sort().join(',')}`
+    : userMessage;
 
   // Check cache (only for queries without user documents and if caching is enabled)
   if (cacheEnabled && userDocPaths.length === 0) {
-    const queryHash = hashQuery(userMessage);
+    const queryHash = hashQuery(cacheKeyBase);
     const cached = await getCachedQuery(queryHash);
     if (cached) {
       try {
@@ -224,18 +267,19 @@ export async function ragQuery(
     primaryEmbedding,
     userDocPaths,
     additionalEmbeddings,
-    ragSettings
+    ragSettings,
+    categorySlugs
   );
 
   // Format context for LLM
   const context = formatContext(globalChunks, userChunks);
 
-  // Get system prompt from storage
-  const systemPromptConfig = await getSystemPrompt();
+  // Get system prompt from SQLite config
+  const systemPrompt = getSystemPrompt();
 
   // Generate response with tools (web search)
   const { content: answer, fullHistory } = await generateResponseWithTools(
-    systemPromptConfig.prompt,
+    systemPrompt,
     conversationHistory,
     context,
     userMessage,
@@ -253,7 +297,7 @@ export async function ragQuery(
 
   // Cache response (only for queries without user documents and if caching is enabled)
   if (cacheEnabled && userDocPaths.length === 0) {
-    const queryHash = hashQuery(userMessage);
+    const queryHash = hashQuery(cacheKeyBase);
     await cacheQuery(queryHash, JSON.stringify(response), cacheTTLSeconds);
   }
 

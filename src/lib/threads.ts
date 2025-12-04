@@ -1,171 +1,308 @@
-import { v4 as uuidv4 } from 'uuid';
+/**
+ * Thread Management Module
+ *
+ * Now uses SQLite database for metadata storage.
+ * File uploads remain on filesystem, only metadata tracked in SQLite.
+ * Supports category-based organization.
+ */
+
 import path from 'path';
-import type { Thread, ThreadWithMessages, Message, ThreadMetadata, StoredMessage } from '@/types';
+import type { Thread, ThreadWithMessages, Message, ThreadCategory } from '@/types';
 import {
-  getThreadDir,
   getThreadUploadsDir,
-  getUserThreadsDir,
   ensureDir,
-  readJson,
-  writeJson,
   deleteDir,
-  listDirs,
   listFiles,
   deleteFile,
+  writeFileBuffer,
 } from './storage';
+import { getUserId } from './users';
+import { getUploadLimits } from './db/config';
+import {
+  createThread as dbCreateThread,
+  getThreadById as dbGetThreadById,
+  getThreadWithDetails,
+  getThreadsForUser as dbGetThreadsForUser,
+  deleteThread as dbDeleteThread,
+  updateThreadTitle as dbUpdateThreadTitle,
+  userOwnsThread as dbUserOwnsThread,
+  addMessage as dbAddMessage,
+  getMessagesForThread as dbGetMessagesForThread,
+  addThreadUpload as dbAddThreadUpload,
+  deleteThreadUpload as dbDeleteThreadUpload,
+  getThreadUploads as dbGetThreadUploads,
+  getThreadUploadCount as dbGetThreadUploadCount,
+  getThreadCategories,
+  setThreadCategories as dbSetThreadCategories,
+  getThreadCategorySlugs,
+  type ParsedMessage,
+} from './db/threads';
 
-const MAX_UPLOADS_PER_THREAD = 3;
-const MAX_UPLOAD_SIZE = 5 * 1024 * 1024; // 5MB
-
-function parseDate(dateString: string): Date {
-  return new Date(dateString);
+// Get upload directory path (still file-based)
+function getThreadUploadPath(userEmail: string, threadId: string): string {
+  return getThreadUploadsDir(userEmail, threadId);
 }
 
-function toStoredMessage(message: Message): StoredMessage {
+// Convert db thread format to API Thread format
+function toThread(
+  dbThread: {
+    id: string;
+    user_id: number;
+    title: string;
+    created_at: string;
+    updated_at: string;
+  },
+  userEmail: string,
+  uploadCount: number,
+  categories?: ThreadCategory[]
+): Thread {
   return {
-    ...message,
-    timestamp: message.timestamp.toISOString(),
+    id: dbThread.id,
+    userId: userEmail, // Keep email for API compatibility
+    title: dbThread.title,
+    createdAt: new Date(dbThread.created_at),
+    updatedAt: new Date(dbThread.updated_at),
+    uploadCount,
+    categories,
   };
 }
 
-function fromStoredMessage(stored: StoredMessage): Message {
+// Convert ParsedMessage to Message
+function toMessage(parsed: ParsedMessage): Message {
   return {
-    ...stored,
-    timestamp: parseDate(stored.timestamp),
+    id: parsed.id,
+    role: parsed.role,
+    content: parsed.content,
+    sources: parsed.sources || undefined,
+    attachments: parsed.attachments || undefined,
+    tool_calls: parsed.toolCalls || undefined,
+    tool_call_id: parsed.toolCallId || undefined,
+    name: parsed.toolName || undefined,
+    timestamp: parsed.createdAt,
   };
 }
 
-function fromMetadata(metadata: ThreadMetadata): Thread {
-  return {
-    id: metadata.id,
-    userId: metadata.userId,
-    title: metadata.title,
-    createdAt: parseDate(metadata.createdAt),
-    updatedAt: parseDate(metadata.updatedAt),
-    uploadCount: metadata.uploadCount,
-  };
+/**
+ * Create a new thread
+ */
+export async function createThread(
+  userId: string, // email
+  title?: string,
+  categoryIds?: number[]
+): Promise<Thread> {
+  const numericUserId = await getUserId(userId);
+  if (!numericUserId) {
+    throw new Error('User not found');
+  }
+
+  const dbThread = dbCreateThread(numericUserId, title || 'New Thread', categoryIds || []);
+
+  // Create uploads directory on filesystem
+  const uploadsDir = getThreadUploadPath(userId, dbThread.id);
+  await ensureDir(uploadsDir);
+
+  // Get categories for the response
+  const categories = categoryIds && categoryIds.length > 0
+    ? getThreadWithDetails(dbThread.id)?.categories
+    : undefined;
+
+  return toThread(dbThread, userId, 0, categories);
 }
 
-export async function createThread(userId: string, title?: string): Promise<Thread> {
-  const threadId = uuidv4();
-  const now = new Date();
-
-  const metadata: ThreadMetadata = {
-    id: threadId,
-    userId,
-    title: title || 'New Thread',
-    createdAt: now.toISOString(),
-    updatedAt: now.toISOString(),
-    uploadCount: 0,
-  };
-
-  const threadDir = getThreadDir(userId, threadId);
-  await ensureDir(threadDir);
-  await ensureDir(getThreadUploadsDir(userId, threadId));
-
-  await writeJson(path.join(threadDir, 'metadata.json'), metadata);
-  await writeJson(path.join(threadDir, 'messages.json'), []);
-
-  return fromMetadata(metadata);
-}
-
-export async function getThread(userId: string, threadId: string): Promise<ThreadWithMessages | null> {
-  const threadDir = getThreadDir(userId, threadId);
-  const metadata = await readJson<ThreadMetadata>(path.join(threadDir, 'metadata.json'));
-
-  if (!metadata || metadata.userId !== userId) {
+/**
+ * Get thread with messages
+ */
+export async function getThread(
+  userId: string, // email
+  threadId: string
+): Promise<ThreadWithMessages | null> {
+  const numericUserId = await getUserId(userId);
+  if (!numericUserId) {
     return null;
   }
 
-  const storedMessages = await readJson<StoredMessage[]>(path.join(threadDir, 'messages.json')) || [];
-  const uploads = await listFiles(getThreadUploadsDir(userId, threadId));
+  // Verify ownership
+  if (!dbUserOwnsThread(numericUserId, threadId)) {
+    return null;
+  }
+
+  const threadDetails = getThreadWithDetails(threadId);
+  if (!threadDetails) {
+    return null;
+  }
+
+  // Get messages
+  const dbMessages = dbGetMessagesForThread(threadId);
+  const messages = dbMessages.map(toMessage);
+
+  // Get uploads from filesystem
+  const uploadsDir = getThreadUploadPath(userId, threadId);
+  const uploadFiles = await listFiles(uploadsDir);
+  const uploads = uploadFiles.filter(f => f.endsWith('.pdf'));
 
   return {
-    ...fromMetadata(metadata),
-    messages: storedMessages.map(fromStoredMessage),
-    uploads: uploads.filter(f => f.endsWith('.pdf')),
+    id: threadDetails.id,
+    userId: userId, // Keep email for API compatibility
+    title: threadDetails.title,
+    createdAt: new Date(threadDetails.created_at),
+    updatedAt: new Date(threadDetails.updated_at),
+    uploadCount: threadDetails.uploadCount,
+    categories: threadDetails.categories,
+    messages,
+    uploads,
   };
 }
 
+/**
+ * List threads for a user
+ */
 export async function listThreads(userId: string): Promise<Thread[]> {
-  const userDir = getUserThreadsDir(userId);
-  const threadIds = await listDirs(userDir);
-
-  const threads: Thread[] = [];
-
-  for (const threadId of threadIds) {
-    const threadDir = getThreadDir(userId, threadId);
-    const metadata = await readJson<ThreadMetadata>(path.join(threadDir, 'metadata.json'));
-    if (metadata && metadata.userId === userId) {
-      threads.push(fromMetadata(metadata));
-    }
+  const numericUserId = await getUserId(userId);
+  if (!numericUserId) {
+    return [];
   }
 
-  // Sort by updatedAt descending
-  threads.sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime());
+  const dbThreads = dbGetThreadsForUser(numericUserId);
 
-  return threads;
+  return dbThreads.map(t => ({
+    id: t.id,
+    userId: userId, // Keep email for API compatibility
+    title: t.title,
+    createdAt: new Date(t.created_at),
+    updatedAt: new Date(t.updated_at),
+    uploadCount: t.uploadCount,
+    categories: t.categories,
+  }));
 }
 
-export async function deleteThread(userId: string, threadId: string): Promise<{ messageCount: number; uploadCount: number } | null> {
-  const thread = await getThread(userId, threadId);
-  if (!thread) {
+/**
+ * Delete a thread
+ */
+export async function deleteThread(
+  userId: string,
+  threadId: string
+): Promise<{ messageCount: number; uploadCount: number } | null> {
+  const numericUserId = await getUserId(userId);
+  if (!numericUserId) {
     return null;
   }
 
-  const threadDir = getThreadDir(userId, threadId);
-  await deleteDir(threadDir);
+  // Verify ownership
+  if (!dbUserOwnsThread(numericUserId, threadId)) {
+    return null;
+  }
+
+  // Delete from database (cascades to messages, uploads metadata, etc.)
+  const result = dbDeleteThread(threadId);
+
+  // Delete uploads directory from filesystem
+  const uploadsDir = getThreadUploadPath(userId, threadId);
+  await deleteDir(uploadsDir);
+
+  return result;
+}
+
+/**
+ * Update thread title
+ */
+export async function updateThreadTitle(
+  userId: string,
+  threadId: string,
+  title: string
+): Promise<Thread | null> {
+  const numericUserId = await getUserId(userId);
+  if (!numericUserId) {
+    return null;
+  }
+
+  // Verify ownership
+  if (!dbUserOwnsThread(numericUserId, threadId)) {
+    return null;
+  }
+
+  const truncatedTitle = title.substring(0, 100); // Max 100 characters
+  const success = dbUpdateThreadTitle(threadId, truncatedTitle);
+  if (!success) {
+    return null;
+  }
+
+  const threadDetails = getThreadWithDetails(threadId);
+  if (!threadDetails) {
+    return null;
+  }
 
   return {
-    messageCount: thread.messages.length,
-    uploadCount: thread.uploadCount,
+    id: threadDetails.id,
+    userId: userId,
+    title: threadDetails.title,
+    createdAt: new Date(threadDetails.created_at),
+    updatedAt: new Date(threadDetails.updated_at),
+    uploadCount: threadDetails.uploadCount,
+    categories: threadDetails.categories,
   };
 }
 
-export async function updateThreadTitle(userId: string, threadId: string, title: string): Promise<Thread | null> {
-  const threadDir = getThreadDir(userId, threadId);
-  const metadata = await readJson<ThreadMetadata>(path.join(threadDir, 'metadata.json'));
-
-  if (!metadata || metadata.userId !== userId) {
-    return null;
+/**
+ * Add a message to a thread
+ */
+export async function addMessage(
+  userId: string,
+  threadId: string,
+  message: Message
+): Promise<void> {
+  const numericUserId = await getUserId(userId);
+  if (!numericUserId) {
+    throw new Error('User not found');
   }
 
-  metadata.title = title.substring(0, 100); // Max 100 characters
-  metadata.updatedAt = new Date().toISOString();
-
-  await writeJson(path.join(threadDir, 'metadata.json'), metadata);
-
-  return fromMetadata(metadata);
-}
-
-export async function addMessage(userId: string, threadId: string, message: Message): Promise<void> {
-  const threadDir = getThreadDir(userId, threadId);
-  const metadata = await readJson<ThreadMetadata>(path.join(threadDir, 'metadata.json'));
-
-  if (!metadata || metadata.userId !== userId) {
+  // Verify ownership
+  if (!dbUserOwnsThread(numericUserId, threadId)) {
     throw new Error('Thread not found');
   }
 
-  const storedMessages = await readJson<StoredMessage[]>(path.join(threadDir, 'messages.json')) || [];
-  storedMessages.push(toStoredMessage(message));
+  // Get current message count to check if this is the first message
+  const existingMessages = dbGetMessagesForThread(threadId);
+  const isFirstMessage = existingMessages.length === 0;
 
-  await writeJson(path.join(threadDir, 'messages.json'), storedMessages);
+  // Add the message
+  dbAddMessage(threadId, message.role, message.content, {
+    sources: message.sources,
+    attachments: message.attachments,
+    toolCalls: message.tool_calls,
+    toolCallId: message.tool_call_id,
+    toolName: message.name,
+  });
 
-  // Update title if this is the first user message
-  if (storedMessages.length === 1 && message.role === 'user' && metadata.title === 'New Thread') {
-    // Generate title from first message
-    const title = message.content.substring(0, 50) + (message.content.length > 50 ? '...' : '');
-    metadata.title = title;
+  // Update title if this is the first user message and title is default
+  if (isFirstMessage && message.role === 'user') {
+    const thread = dbGetThreadById(threadId);
+    if (thread && thread.title === 'New Thread') {
+      const newTitle = message.content.substring(0, 50) + (message.content.length > 50 ? '...' : '');
+      dbUpdateThreadTitle(threadId, newTitle);
+    }
   }
-
-  metadata.updatedAt = new Date().toISOString();
-  await writeJson(path.join(threadDir, 'metadata.json'), metadata);
 }
 
-export async function getMessages(userId: string, threadId: string, limit?: number): Promise<Message[]> {
-  const threadDir = getThreadDir(userId, threadId);
-  const storedMessages = await readJson<StoredMessage[]>(path.join(threadDir, 'messages.json')) || [];
-  const messages = storedMessages.map(fromStoredMessage);
+/**
+ * Get messages for a thread
+ */
+export async function getMessages(
+  userId: string,
+  threadId: string,
+  limit?: number
+): Promise<Message[]> {
+  const numericUserId = await getUserId(userId);
+  if (!numericUserId) {
+    return [];
+  }
+
+  // Verify ownership
+  if (!dbUserOwnsThread(numericUserId, threadId)) {
+    return [];
+  }
+
+  const dbMessages = dbGetMessagesForThread(threadId);
+  const messages = dbMessages.map(toMessage);
 
   if (limit && limit > 0) {
     return messages.slice(-limit);
@@ -174,69 +311,152 @@ export async function getMessages(userId: string, threadId: string, limit?: numb
   return messages;
 }
 
+/**
+ * Save an uploaded file
+ */
 export async function saveUpload(
   userId: string,
   threadId: string,
   filename: string,
   buffer: Buffer
 ): Promise<{ filename: string; uploadCount: number }> {
-  const threadDir = getThreadDir(userId, threadId);
-  const metadata = await readJson<ThreadMetadata>(path.join(threadDir, 'metadata.json'));
+  const numericUserId = await getUserId(userId);
+  if (!numericUserId) {
+    throw new Error('User not found');
+  }
 
-  if (!metadata || metadata.userId !== userId) {
+  // Verify ownership
+  if (!dbUserOwnsThread(numericUserId, threadId)) {
     throw new Error('Thread not found');
   }
 
-  if (metadata.uploadCount >= MAX_UPLOADS_PER_THREAD) {
-    throw new Error(`Maximum ${MAX_UPLOADS_PER_THREAD} files per thread`);
+  // Get configurable limits
+  const limits = getUploadLimits();
+  const maxFileSizeBytes = limits.maxFileSizeMB * 1024 * 1024;
+
+  // Check current upload count
+  const currentCount = dbGetThreadUploadCount(threadId);
+  if (currentCount >= limits.maxFilesPerThread) {
+    throw new Error(`Maximum ${limits.maxFilesPerThread} files per thread`);
   }
 
-  if (buffer.length > MAX_UPLOAD_SIZE) {
-    throw new Error(`File too large (max ${MAX_UPLOAD_SIZE / 1024 / 1024}MB)`);
+  // Check file size
+  if (buffer.length > maxFileSizeBytes) {
+    throw new Error(`File too large (max ${limits.maxFileSizeMB}MB)`);
   }
 
   // Sanitize filename
   const safeFilename = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
-  const uploadsDir = getThreadUploadsDir(userId, threadId);
+  const uploadsDir = getThreadUploadPath(userId, threadId);
+  await ensureDir(uploadsDir);
   const filePath = path.join(uploadsDir, safeFilename);
 
-  const { writeFileBuffer } = await import('./storage');
+  // Write file to filesystem
   await writeFileBuffer(filePath, buffer);
 
-  metadata.uploadCount += 1;
-  metadata.updatedAt = new Date().toISOString();
-  await writeJson(path.join(threadDir, 'metadata.json'), metadata);
+  // Record upload in database
+  dbAddThreadUpload(threadId, safeFilename, filePath, buffer.length);
+
+  const newCount = dbGetThreadUploadCount(threadId);
 
   return {
     filename: safeFilename,
-    uploadCount: metadata.uploadCount,
+    uploadCount: newCount,
   };
 }
 
-export async function deleteUpload(userId: string, threadId: string, filename: string): Promise<number> {
-  const threadDir = getThreadDir(userId, threadId);
-  const metadata = await readJson<ThreadMetadata>(path.join(threadDir, 'metadata.json'));
+/**
+ * Delete an uploaded file
+ */
+export async function deleteUpload(
+  userId: string,
+  threadId: string,
+  filename: string
+): Promise<number> {
+  const numericUserId = await getUserId(userId);
+  if (!numericUserId) {
+    throw new Error('User not found');
+  }
 
-  if (!metadata || metadata.userId !== userId) {
+  // Verify ownership
+  if (!dbUserOwnsThread(numericUserId, threadId)) {
     throw new Error('Thread not found');
   }
 
-  const uploadsDir = getThreadUploadsDir(userId, threadId);
-  const filePath = path.join(uploadsDir, filename);
+  // Find the upload record
+  const uploads = dbGetThreadUploads(threadId);
+  const upload = uploads.find(u => u.filename === filename);
+  if (!upload) {
+    throw new Error('Upload not found');
+  }
 
+  // Delete from filesystem
+  const uploadsDir = getThreadUploadPath(userId, threadId);
+  const filePath = path.join(uploadsDir, filename);
   await deleteFile(filePath);
 
-  metadata.uploadCount = Math.max(0, metadata.uploadCount - 1);
-  metadata.updatedAt = new Date().toISOString();
-  await writeJson(path.join(threadDir, 'metadata.json'), metadata);
+  // Delete from database
+  dbDeleteThreadUpload(upload.id);
 
-  return metadata.uploadCount;
+  return dbGetThreadUploadCount(threadId);
 }
 
-export async function getUploadPaths(userId: string, threadId: string): Promise<string[]> {
-  const uploadsDir = getThreadUploadsDir(userId, threadId);
-  const files = await listFiles(uploadsDir);
-  return files
-    .filter(f => f.endsWith('.pdf'))
-    .map(f => path.join(uploadsDir, f));
+/**
+ * Get paths to all uploaded files
+ */
+export async function getUploadPaths(
+  userId: string,
+  threadId: string
+): Promise<string[]> {
+  const numericUserId = await getUserId(userId);
+  if (!numericUserId) {
+    return [];
+  }
+
+  // Verify ownership
+  if (!dbUserOwnsThread(numericUserId, threadId)) {
+    return [];
+  }
+
+  const uploads = dbGetThreadUploads(threadId);
+  return uploads
+    .filter(u => u.filename.endsWith('.pdf'))
+    .map(u => u.filepath);
+}
+
+// ============ Category Operations ============
+
+/**
+ * Get categories for a thread
+ */
+export async function getThreadCategoryIds(threadId: string): Promise<number[]> {
+  return getThreadCategories(threadId);
+}
+
+/**
+ * Get category slugs for a thread (for ChromaDB queries)
+ */
+export async function getThreadCategorySlugsForQuery(threadId: string): Promise<string[]> {
+  return getThreadCategorySlugs(threadId);
+}
+
+/**
+ * Set categories for a thread
+ */
+export async function setThreadCategories(
+  userId: string,
+  threadId: string,
+  categoryIds: number[]
+): Promise<void> {
+  const numericUserId = await getUserId(userId);
+  if (!numericUserId) {
+    throw new Error('User not found');
+  }
+
+  // Verify ownership
+  if (!dbUserOwnsThread(numericUserId, threadId)) {
+    throw new Error('Thread not found');
+  }
+
+  dbSetThreadCategories(threadId, categoryIds);
 }

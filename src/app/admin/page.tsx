@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Upload, RefreshCw, Trash2, FileText, AlertCircle, Users, UserPlus, Shield, User, Settings, Save } from 'lucide-react';
+import { ArrowLeft, Upload, RefreshCw, Trash2, FileText, AlertCircle, Users, UserPlus, Shield, User, Settings, Save, FolderOpen, Plus, Edit2, BarChart3, Database, HardDrive } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import Spinner from '@/components/ui/Spinner';
@@ -11,9 +11,21 @@ import type { GlobalDocument } from '@/types';
 interface AllowedUser {
   email: string;
   name?: string;
-  role: 'admin' | 'user';
+  role: 'admin' | 'superuser' | 'user';
   addedAt: string;
   addedBy: string;
+}
+
+interface Category {
+  id: number;
+  name: string;
+  slug: string;
+  description: string | null;
+  created_by: string;
+  created_at: string;
+  documentCount: number;
+  superUserCount: number;
+  subscriberCount: number;
 }
 
 interface SystemPromptConfig {
@@ -68,8 +80,31 @@ interface AvailableModel {
   description: string;
 }
 
-type TabType = 'documents' | 'users' | 'settings';
+type TabType = 'documents' | 'categories' | 'users' | 'settings' | 'stats';
 type SettingsSection = 'prompt' | 'rag' | 'llm' | 'acronyms' | 'tavily';
+
+interface SystemStats {
+  database: {
+    users: { total: number; admins: number; superUsers: number; regularUsers: number };
+    categories: { total: number; withDocuments: number; totalSubscriptions: number };
+    threads: { total: number; totalMessages: number; totalUploads: number };
+    documents: { total: number; globalDocuments: number; categoryDocuments: number; totalChunks: number; byStatus: { processing: number; ready: number; error: number } };
+  };
+  chroma: {
+    connected: boolean;
+    collections: { name: string; documentCount: number }[];
+    totalVectors: number;
+  };
+  storage: {
+    globalDocsDir: { path: string; exists: boolean; fileCount: number; totalSizeMB: number };
+    threadsDir: { path: string; exists: boolean; userCount: number; totalUploadSizeMB: number };
+    dataDir: { path: string; exists: boolean; totalSizeMB: number };
+  };
+  recentActivity: {
+    recentThreads: { id: string; title: string; userEmail: string; messageCount: number; createdAt: string }[];
+    recentDocuments: { id: number; filename: string; uploadedBy: string; status: string; createdAt: string }[];
+  };
+}
 
 export default function AdminPage() {
   const router = useRouter();
@@ -97,6 +132,20 @@ export default function AdminPage() {
   const [deletingUser, setDeletingUser] = useState(false);
   const [editingUser, setEditingUser] = useState<AllowedUser | null>(null);
   const [updatingRole, setUpdatingRole] = useState(false);
+
+  // Category state
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [categoryLoading, setCategoryLoading] = useState(true);
+  const [showAddCategory, setShowAddCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [newCategoryDescription, setNewCategoryDescription] = useState('');
+  const [addingCategory, setAddingCategory] = useState(false);
+  const [deleteCategory, setDeleteCategory] = useState<Category | null>(null);
+  const [deletingCategory, setDeletingCategory] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [editCategoryName, setEditCategoryName] = useState('');
+  const [editCategoryDescription, setEditCategoryDescription] = useState('');
+  const [updatingCategory, setUpdatingCategory] = useState(false);
 
   // System prompt state
   const [systemPrompt, setSystemPrompt] = useState<SystemPromptConfig | null>(null);
@@ -126,6 +175,10 @@ export default function AdminPage() {
   const [error, setError] = useState<string | null>(null);
   const [refreshingAll, setRefreshingAll] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Stats state
+  const [systemStats, setSystemStats] = useState<SystemStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(true);
 
   // Load documents
   const loadDocuments = useCallback(async () => {
@@ -174,6 +227,29 @@ export default function AdminPage() {
       setError(err instanceof Error ? err.message : 'Failed to load users');
     } finally {
       setUserLoading(false);
+    }
+  }, [router]);
+
+  // Load categories
+  const loadCategories = useCallback(async () => {
+    try {
+      const response = await fetch('/api/admin/categories');
+
+      if (response.status === 403) {
+        router.push('/');
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error('Failed to load categories');
+      }
+
+      const data = await response.json();
+      setCategories(data.categories);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load categories');
+    } finally {
+      setCategoryLoading(false);
     }
   }, [router]);
 
@@ -263,12 +339,38 @@ export default function AdminPage() {
     }
   }, [router]);
 
+  // Load system stats
+  const loadStats = useCallback(async () => {
+    setStatsLoading(true);
+    try {
+      const response = await fetch('/api/admin/stats');
+
+      if (response.status === 403) {
+        router.push('/');
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error('Failed to load stats');
+      }
+
+      const data = await response.json();
+      setSystemStats(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load stats');
+    } finally {
+      setStatsLoading(false);
+    }
+  }, [router]);
+
   useEffect(() => {
     loadDocuments();
     loadUsers();
+    loadCategories();
     loadSystemPrompt();
     loadSettings();
-  }, [loadDocuments, loadUsers, loadSystemPrompt, loadSettings]);
+    loadStats();
+  }, [loadDocuments, loadUsers, loadCategories, loadSystemPrompt, loadSettings, loadStats]);
 
   // Document handlers
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -472,6 +574,100 @@ export default function AdminPage() {
     } finally {
       setUpdatingRole(false);
       setEditingUser(null);
+    }
+  };
+
+  // Category handlers
+  const handleAddCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCategoryName.trim()) return;
+
+    setAddingCategory(true);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/admin/categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newCategoryName.trim(),
+          description: newCategoryDescription.trim() || undefined,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to create category');
+      }
+
+      await loadCategories();
+      setShowAddCategory(false);
+      setNewCategoryName('');
+      setNewCategoryDescription('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create category');
+    } finally {
+      setAddingCategory(false);
+    }
+  };
+
+  const handleDeleteCategory = async () => {
+    if (!deleteCategory) return;
+
+    setDeletingCategory(true);
+    try {
+      const response = await fetch(`/api/admin/categories/${deleteCategory.id}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to delete category');
+      }
+
+      await loadCategories();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete category');
+    } finally {
+      setDeletingCategory(false);
+      setDeleteCategory(null);
+    }
+  };
+
+  const handleEditCategory = (category: Category) => {
+    setEditingCategory(category);
+    setEditCategoryName(category.name);
+    setEditCategoryDescription(category.description || '');
+  };
+
+  const handleUpdateCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCategory || !editCategoryName.trim()) return;
+
+    setUpdatingCategory(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/admin/categories/${editingCategory.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editCategoryName.trim(),
+          description: editCategoryDescription.trim() || null,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to update category');
+      }
+
+      await loadCategories();
+      setEditingCategory(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update category');
+    } finally {
+      setUpdatingCategory(false);
     }
   };
 
@@ -815,6 +1011,17 @@ export default function AdminPage() {
               Documents
             </button>
             <button
+              onClick={() => setActiveTab('categories')}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'categories'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <FolderOpen size={16} className="inline mr-2" />
+              Categories
+            </button>
+            <button
               onClick={() => setActiveTab('users')}
               className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === 'users'
@@ -835,6 +1042,17 @@ export default function AdminPage() {
             >
               <Settings size={16} className="inline mr-2" />
               Settings
+            </button>
+            <button
+              onClick={() => setActiveTab('stats')}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'stats'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <BarChart3 size={16} className="inline mr-2" />
+              Stats
             </button>
           </nav>
         </div>
@@ -964,6 +1182,97 @@ export default function AdminPage() {
                               onClick={() => setDeleteDoc(doc)}
                               className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg"
                               title="Delete"
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Categories Tab */}
+        {activeTab === 'categories' && (
+          <div className="bg-white rounded-lg border shadow-sm">
+            <div className="px-6 py-4 border-b">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="font-semibold text-gray-900">Document Categories</h2>
+                  <p className="text-sm text-gray-500">
+                    {categories.length} categories defined
+                  </p>
+                </div>
+                <Button onClick={() => setShowAddCategory(true)}>
+                  <Plus size={18} className="mr-2" />
+                  Add Category
+                </Button>
+              </div>
+            </div>
+
+            {categoryLoading ? (
+              <div className="px-6 py-12 flex justify-center">
+                <Spinner size="lg" />
+              </div>
+            ) : categories.length === 0 ? (
+              <div className="px-6 py-12 text-center">
+                <FolderOpen className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">No categories yet</h3>
+                <p className="text-gray-500 mb-4">
+                  Create categories to organize documents and control user access
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 text-left text-sm text-gray-600">
+                    <tr>
+                      <th className="px-6 py-3 font-medium">Category</th>
+                      <th className="px-6 py-3 font-medium">Slug</th>
+                      <th className="px-6 py-3 font-medium">Documents</th>
+                      <th className="px-6 py-3 font-medium">Super Users</th>
+                      <th className="px-6 py-3 font-medium">Subscribers</th>
+                      <th className="px-6 py-3 font-medium text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {categories.map((cat) => (
+                      <tr key={cat.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <FolderOpen className="w-5 h-5 text-blue-600" />
+                            <div>
+                              <span className="font-medium text-gray-900">{cat.name}</span>
+                              {cat.description && (
+                                <p className="text-sm text-gray-500">{cat.description}</p>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-gray-600 font-mono text-sm">
+                          {cat.slug}
+                        </td>
+                        <td className="px-6 py-4 text-gray-600">{cat.documentCount}</td>
+                        <td className="px-6 py-4 text-gray-600">{cat.superUserCount}</td>
+                        <td className="px-6 py-4 text-gray-600">{cat.subscriberCount}</td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => handleEditCategory(cat)}
+                              className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
+                              title="Edit"
+                            >
+                              <Edit2 size={16} />
+                            </button>
+                            <button
+                              onClick={() => setDeleteCategory(cat)}
+                              disabled={cat.documentCount > 0}
+                              className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                              title={cat.documentCount > 0 ? 'Remove documents first' : 'Delete'}
                             >
                               <Trash2 size={16} />
                             </button>
@@ -1643,6 +1952,206 @@ export default function AdminPage() {
             </div>
           </div>
         )}
+
+        {/* Stats Tab */}
+        {activeTab === 'stats' && (
+          <div className="space-y-6">
+            {statsLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Spinner size="lg" />
+              </div>
+            ) : systemStats ? (
+              <>
+                {/* Database Stats */}
+                <div className="bg-white rounded-lg border shadow-sm">
+                  <div className="px-6 py-4 border-b flex items-center gap-3">
+                    <Database className="text-blue-600" size={20} />
+                    <h2 className="font-semibold text-gray-900">Database Statistics</h2>
+                  </div>
+                  <div className="p-6">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                      {/* Users */}
+                      <div className="bg-gray-50 rounded-lg p-4">
+                        <div className="text-2xl font-bold text-gray-900">{systemStats.database.users.total}</div>
+                        <div className="text-sm text-gray-500">Total Users</div>
+                        <div className="mt-2 text-xs text-gray-400">
+                          {systemStats.database.users.admins} admins, {systemStats.database.users.superUsers} super users
+                        </div>
+                      </div>
+                      {/* Categories */}
+                      <div className="bg-gray-50 rounded-lg p-4">
+                        <div className="text-2xl font-bold text-gray-900">{systemStats.database.categories.total}</div>
+                        <div className="text-sm text-gray-500">Categories</div>
+                        <div className="mt-2 text-xs text-gray-400">
+                          {systemStats.database.categories.withDocuments} with documents
+                        </div>
+                      </div>
+                      {/* Threads */}
+                      <div className="bg-gray-50 rounded-lg p-4">
+                        <div className="text-2xl font-bold text-gray-900">{systemStats.database.threads.total}</div>
+                        <div className="text-sm text-gray-500">Threads</div>
+                        <div className="mt-2 text-xs text-gray-400">
+                          {systemStats.database.threads.totalMessages} messages
+                        </div>
+                      </div>
+                      {/* Documents */}
+                      <div className="bg-gray-50 rounded-lg p-4">
+                        <div className="text-2xl font-bold text-gray-900">{systemStats.database.documents.total}</div>
+                        <div className="text-sm text-gray-500">Documents</div>
+                        <div className="mt-2 text-xs text-gray-400">
+                          {systemStats.database.documents.totalChunks} chunks indexed
+                        </div>
+                      </div>
+                    </div>
+                    {/* Document Status */}
+                    <div className="mt-6 pt-4 border-t">
+                      <div className="text-sm font-medium text-gray-700 mb-2">Document Status</div>
+                      <div className="flex gap-4">
+                        <span className="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-700">
+                          {systemStats.database.documents.byStatus.ready} ready
+                        </span>
+                        <span className="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full bg-yellow-100 text-yellow-700">
+                          {systemStats.database.documents.byStatus.processing} processing
+                        </span>
+                        <span className="inline-flex items-center px-2 py-1 text-xs font-medium rounded-full bg-red-100 text-red-700">
+                          {systemStats.database.documents.byStatus.error} error
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ChromaDB Stats */}
+                <div className="bg-white rounded-lg border shadow-sm">
+                  <div className="px-6 py-4 border-b flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Database className="text-purple-600" size={20} />
+                      <h2 className="font-semibold text-gray-900">ChromaDB Vector Store</h2>
+                    </div>
+                    <span className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-full ${
+                      systemStats.chroma.connected ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                    }`}>
+                      {systemStats.chroma.connected ? 'Connected' : 'Disconnected'}
+                    </span>
+                  </div>
+                  <div className="p-6">
+                    <div className="text-2xl font-bold text-gray-900 mb-4">
+                      {systemStats.chroma.totalVectors.toLocaleString()} total vectors
+                    </div>
+                    {systemStats.chroma.collections.length > 0 && (
+                      <div>
+                        <div className="text-sm font-medium text-gray-700 mb-2">Collections</div>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                          {systemStats.chroma.collections.map((col) => (
+                            <div key={col.name} className="bg-gray-50 rounded-lg px-3 py-2 text-sm">
+                              <div className="font-medium text-gray-900 truncate">{col.name}</div>
+                              <div className="text-xs text-gray-500">{col.documentCount.toLocaleString()} vectors</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* File Storage Stats */}
+                <div className="bg-white rounded-lg border shadow-sm">
+                  <div className="px-6 py-4 border-b flex items-center gap-3">
+                    <HardDrive className="text-green-600" size={20} />
+                    <h2 className="font-semibold text-gray-900">File Storage</h2>
+                  </div>
+                  <div className="p-6">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div className="bg-gray-50 rounded-lg p-4">
+                        <div className="text-lg font-bold text-gray-900">{systemStats.storage.dataDir.totalSizeMB} MB</div>
+                        <div className="text-sm text-gray-500">Total Data Size</div>
+                        <div className="mt-1 text-xs text-gray-400 truncate" title={systemStats.storage.dataDir.path}>
+                          {systemStats.storage.dataDir.path}
+                        </div>
+                      </div>
+                      <div className="bg-gray-50 rounded-lg p-4">
+                        <div className="text-lg font-bold text-gray-900">{systemStats.storage.globalDocsDir.totalSizeMB} MB</div>
+                        <div className="text-sm text-gray-500">Global Documents</div>
+                        <div className="mt-1 text-xs text-gray-400">
+                          {systemStats.storage.globalDocsDir.fileCount} files
+                        </div>
+                      </div>
+                      <div className="bg-gray-50 rounded-lg p-4">
+                        <div className="text-lg font-bold text-gray-900">{systemStats.storage.threadsDir.totalUploadSizeMB} MB</div>
+                        <div className="text-sm text-gray-500">Thread Uploads</div>
+                        <div className="mt-1 text-xs text-gray-400">
+                          {systemStats.storage.threadsDir.userCount} users
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Recent Activity */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Recent Threads */}
+                  <div className="bg-white rounded-lg border shadow-sm">
+                    <div className="px-6 py-4 border-b">
+                      <h2 className="font-semibold text-gray-900">Recent Threads</h2>
+                    </div>
+                    <div className="divide-y max-h-80 overflow-y-auto">
+                      {systemStats.recentActivity.recentThreads.length === 0 ? (
+                        <div className="px-6 py-8 text-center text-gray-500 text-sm">No threads yet</div>
+                      ) : (
+                        systemStats.recentActivity.recentThreads.map((thread) => (
+                          <div key={thread.id} className="px-6 py-3">
+                            <div className="text-sm font-medium text-gray-900 truncate">{thread.title}</div>
+                            <div className="text-xs text-gray-500">
+                              {thread.userEmail} - {thread.messageCount} messages
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Recent Documents */}
+                  <div className="bg-white rounded-lg border shadow-sm">
+                    <div className="px-6 py-4 border-b">
+                      <h2 className="font-semibold text-gray-900">Recent Documents</h2>
+                    </div>
+                    <div className="divide-y max-h-80 overflow-y-auto">
+                      {systemStats.recentActivity.recentDocuments.length === 0 ? (
+                        <div className="px-6 py-8 text-center text-gray-500 text-sm">No documents yet</div>
+                      ) : (
+                        systemStats.recentActivity.recentDocuments.map((doc) => (
+                          <div key={doc.id} className="px-6 py-3">
+                            <div className="flex items-center justify-between">
+                              <div className="text-sm font-medium text-gray-900 truncate flex-1">{doc.filename}</div>
+                              <span className={`inline-flex items-center px-2 py-0.5 text-xs font-medium rounded-full ml-2 ${
+                                doc.status === 'ready' ? 'bg-green-100 text-green-700' :
+                                doc.status === 'processing' ? 'bg-yellow-100 text-yellow-700' :
+                                'bg-red-100 text-red-700'
+                              }`}>
+                                {doc.status}
+                              </span>
+                            </div>
+                            <div className="text-xs text-gray-500">{doc.uploadedBy}</div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Refresh Button */}
+                <div className="flex justify-center">
+                  <Button variant="secondary" onClick={loadStats} disabled={statsLoading}>
+                    <RefreshCw size={16} className={`mr-2 ${statsLoading ? 'animate-spin' : ''}`} />
+                    Refresh Stats
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-12 text-gray-500">Failed to load stats</div>
+            )}
+          </div>
+        )}
       </main>
 
       {/* Delete Document Modal */}
@@ -1823,6 +2332,137 @@ export default function AdminPage() {
             {updatingRole ? <Spinner size="sm" /> : 'Close'}
           </Button>
         </div>
+      </Modal>
+
+      {/* Add Category Modal */}
+      <Modal
+        isOpen={showAddCategory}
+        onClose={() => setShowAddCategory(false)}
+        title="Create Category"
+      >
+        <form onSubmit={handleAddCategory}>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Category Name *
+              </label>
+              <input
+                type="text"
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                placeholder="e.g., Human Resources"
+                required
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+              <p className="mt-1 text-xs text-gray-500">
+                A URL-safe slug will be generated automatically
+              </p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Description (optional)
+              </label>
+              <textarea
+                value={newCategoryDescription}
+                onChange={(e) => setNewCategoryDescription(e.target.value)}
+                placeholder="Brief description of this category"
+                rows={3}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-3 mt-6">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setShowAddCategory(false)}
+              disabled={addingCategory}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" loading={addingCategory}>
+              Create Category
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Delete Category Modal */}
+      <Modal
+        isOpen={!!deleteCategory}
+        onClose={() => setDeleteCategory(null)}
+        title="Delete Category?"
+      >
+        <p className="text-gray-600 mb-4">
+          Are you sure you want to delete &quot;{deleteCategory?.name}&quot;?
+        </p>
+        <p className="text-sm text-gray-500 mb-6">
+          This will remove the category. Documents assigned to this category will become unassigned.
+        </p>
+        <div className="flex justify-end gap-3">
+          <Button
+            variant="secondary"
+            onClick={() => setDeleteCategory(null)}
+            disabled={deletingCategory}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="danger"
+            onClick={handleDeleteCategory}
+            loading={deletingCategory}
+          >
+            Delete
+          </Button>
+        </div>
+      </Modal>
+
+      {/* Edit Category Modal */}
+      <Modal
+        isOpen={!!editingCategory}
+        onClose={() => setEditingCategory(null)}
+        title="Edit Category"
+      >
+        <form onSubmit={handleUpdateCategory}>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Category Name *
+              </label>
+              <input
+                type="text"
+                value={editCategoryName}
+                onChange={(e) => setEditCategoryName(e.target.value)}
+                required
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Description
+              </label>
+              <textarea
+                value={editCategoryDescription}
+                onChange={(e) => setEditCategoryDescription(e.target.value)}
+                rows={3}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-3 mt-6">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setEditingCategory(null)}
+              disabled={updatingCategory}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" loading={updatingCategory}>
+              Save Changes
+            </Button>
+          </div>
+        </form>
       </Modal>
     </div>
   );

@@ -1,12 +1,13 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, MessageSquare, Trash2, Menu, X, Settings, LogOut } from 'lucide-react';
+import { Plus, MessageSquare, Trash2, Menu, X, Settings, LogOut, Tag } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
 import Link from 'next/link';
 import type { Thread } from '@/types';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
+import CategorySelector from '@/components/ui/CategorySelector';
 
 interface ThreadSidebarProps {
   onThreadSelect?: (thread: Thread | null) => void;
@@ -25,6 +26,10 @@ export default function ThreadSidebar({
   const [isOpen, setIsOpen] = useState(false);
   const [deleteThread, setDeleteThread] = useState<Thread | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const [showNewThreadModal, setShowNewThreadModal] = useState(false);
+  const [newThreadTitle, setNewThreadTitle] = useState('');
+  const [newThreadCategories, setNewThreadCategories] = useState<number[]>([]);
+  const [creating, setCreating] = useState(false);
 
   const isAdmin = (session?.user as { role?: string })?.role === 'admin';
 
@@ -50,11 +55,27 @@ export default function ThreadSidebar({
     loadThreads();
   }, [loadThreads]);
 
+  const openNewThreadModal = () => {
+    setNewThreadTitle('');
+    setNewThreadCategories([]);
+    setShowNewThreadModal(true);
+  };
+
   const createNewThread = async () => {
+    setCreating(true);
     try {
+      const body: { title?: string; categoryIds?: number[] } = {};
+      if (newThreadTitle.trim()) {
+        body.title = newThreadTitle.trim();
+      }
+      if (newThreadCategories.length > 0) {
+        body.categoryIds = newThreadCategories;
+      }
+
       const response = await fetch('/api/threads', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
       });
 
       if (response.ok) {
@@ -68,9 +89,12 @@ export default function ThreadSidebar({
         onThreadSelect?.(newThread);
         onThreadCreated?.(newThread);
         setIsOpen(false);
+        setShowNewThreadModal(false);
       }
     } catch (err) {
       console.error('Failed to create thread:', err);
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -177,7 +201,7 @@ export default function ThreadSidebar({
 
         {/* New Thread Button */}
         <div className="p-4">
-          <Button onClick={createNewThread} className="w-full">
+          <Button onClick={openNewThreadModal} className="w-full">
             <Plus size={18} className="mr-2" />
             New Thread
           </Button>
@@ -222,9 +246,19 @@ export default function ThreadSidebar({
                         <p className="text-sm font-medium truncate">
                           {thread.title}
                         </p>
-                        <p className="text-xs text-gray-500">
-                          {formatDate(thread.updatedAt)}
-                        </p>
+                        <div className="flex items-center gap-1.5 mt-0.5">
+                          <span className="text-xs text-gray-500">
+                            {formatDate(thread.updatedAt)}
+                          </span>
+                          {thread.categories && thread.categories.length > 0 && (
+                            <div className="flex items-center gap-0.5">
+                              <Tag size={10} className="text-gray-400" />
+                              <span className="text-xs text-gray-400">
+                                {thread.categories.length}
+                              </span>
+                            </div>
+                          )}
+                        </div>
                       </div>
                       <button
                         onClick={(e) => {
@@ -315,6 +349,57 @@ export default function ThreadSidebar({
             loading={deleting}
           >
             Delete
+          </Button>
+        </div>
+      </Modal>
+
+      {/* New Thread modal */}
+      <Modal
+        isOpen={showNewThreadModal}
+        onClose={() => setShowNewThreadModal(false)}
+        title="New Thread"
+      >
+        <div className="space-y-4">
+          <div>
+            <label htmlFor="thread-title" className="block text-sm font-medium text-gray-700 mb-1">
+              Title (optional)
+            </label>
+            <input
+              id="thread-title"
+              type="text"
+              value={newThreadTitle}
+              onChange={(e) => setNewThreadTitle(e.target.value)}
+              placeholder="New Thread"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Categories (optional)
+            </label>
+            <p className="text-xs text-gray-500 mb-2">
+              Select categories to scope RAG queries for this thread
+            </p>
+            <CategorySelector
+              selectedIds={newThreadCategories}
+              onChange={setNewThreadCategories}
+              placeholder="All available documents"
+            />
+          </div>
+        </div>
+        <div className="flex justify-end gap-3 mt-6">
+          <Button
+            variant="secondary"
+            onClick={() => setShowNewThreadModal(false)}
+            disabled={creating}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={createNewThread}
+            loading={creating}
+          >
+            Create Thread
           </Button>
         </div>
       </Modal>

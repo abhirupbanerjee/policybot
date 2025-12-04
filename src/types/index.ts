@@ -6,6 +6,37 @@ export interface User {
   name: string;
   image?: string;
   isAdmin: boolean;
+  role?: 'admin' | 'superuser' | 'user';
+}
+
+// ============ Category Types ============
+
+export interface Category {
+  id: number;
+  name: string;
+  slug: string;
+  description?: string;
+  createdBy: string;
+  createdAt: Date;
+}
+
+export interface CategoryWithStats extends Category {
+  documentCount: number;
+  superUserCount: number;
+  subscriberCount: number;
+}
+
+export interface UserSubscription {
+  categoryId: number;
+  categoryName: string;
+  categorySlug: string;
+  isActive: boolean;
+}
+
+export interface SuperUserAssignment {
+  categoryId: number;
+  categoryName: string;
+  categorySlug: string;
 }
 
 // ============ Thread Types ============
@@ -17,11 +48,19 @@ export interface Thread {
   createdAt: Date;
   updatedAt: Date;
   uploadCount: number;
+  categories?: ThreadCategory[];
+}
+
+export interface ThreadCategory {
+  id: number;
+  name: string;
+  slug: string;
 }
 
 export interface ThreadWithMessages extends Thread {
   messages: Message[];
   uploads: string[];
+  categories?: ThreadCategory[];
 }
 
 // ============ Message Types ============
@@ -99,10 +138,12 @@ export interface TranscribeRequest {
 
 export interface CreateThreadRequest {
   title?: string;
+  categoryIds?: number[];
 }
 
 export interface UpdateThreadRequest {
   title?: string;
+  categoryIds?: number[];
 }
 
 // ============ API Response Types ============

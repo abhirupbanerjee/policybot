@@ -1,11 +1,27 @@
+/**
+ * ChromaDB Client with Multi-Collection Support
+ *
+ * Each category maps to a separate ChromaDB collection.
+ * Global documents are indexed into ALL category collections.
+ */
+
 import { ChromaClient, Collection, Metadata, IncludeEnum } from 'chromadb';
 import type { ChunkMetadata } from '@/types';
 
-const COLLECTION_NAME = process.env.CHROMA_COLLECTION_NAME || 'organizational_documents';
+// Legacy collection name for backward compatibility
+const LEGACY_COLLECTION_NAME = process.env.CHROMA_COLLECTION_NAME || 'organizational_documents';
+
+// Global collection for documents that should be searchable from all categories
+const GLOBAL_COLLECTION_NAME = 'global_documents';
 
 let client: ChromaClient | null = null;
-let collection: Collection | null = null;
 
+// Cache for collections
+const collectionCache: Map<string, Collection> = new Map();
+
+/**
+ * Get or create the ChromaDB client
+ */
 export async function getChromaClient(): Promise<ChromaClient> {
   if (!client) {
     const host = process.env.CHROMA_HOST || 'localhost';
@@ -17,25 +33,86 @@ export async function getChromaClient(): Promise<ChromaClient> {
   return client;
 }
 
-export async function getCollection(): Promise<Collection> {
-  if (!collection) {
-    const chromaClient = await getChromaClient();
-    collection = await chromaClient.getOrCreateCollection({
-      name: COLLECTION_NAME,
-      metadata: { 'hnsw:space': 'cosine' },
-    });
-  }
+/**
+ * Get or create a collection by name (category slug)
+ */
+export async function getCollectionByName(name: string): Promise<Collection> {
+  const cached = collectionCache.get(name);
+  if (cached) return cached;
+
+  const chromaClient = await getChromaClient();
+  const collection = await chromaClient.getOrCreateCollection({
+    name,
+    metadata: { 'hnsw:space': 'cosine' },
+  });
+
+  collectionCache.set(name, collection);
   return collection;
 }
 
-export async function addDocuments(
+/**
+ * Get the legacy/default collection (for backward compatibility)
+ */
+export async function getCollection(): Promise<Collection> {
+  return getCollectionByName(LEGACY_COLLECTION_NAME);
+}
+
+/**
+ * Get the global documents collection
+ */
+export async function getGlobalCollection(): Promise<Collection> {
+  return getCollectionByName(GLOBAL_COLLECTION_NAME);
+}
+
+/**
+ * Create a collection for a new category
+ */
+export async function createCategoryCollection(categorySlug: string): Promise<Collection> {
+  const collectionName = `category_${categorySlug}`;
+  return getCollectionByName(collectionName);
+}
+
+/**
+ * Delete a category collection
+ */
+export async function deleteCategoryCollection(categorySlug: string): Promise<void> {
+  const collectionName = `category_${categorySlug}`;
+  const chromaClient = await getChromaClient();
+
+  try {
+    await chromaClient.deleteCollection({ name: collectionName });
+    collectionCache.delete(collectionName);
+  } catch {
+    // Collection may not exist, ignore error
+  }
+}
+
+/**
+ * List all category collections
+ */
+export async function listCategoryCollections(): Promise<string[]> {
+  const chromaClient = await getChromaClient();
+  const collections = await chromaClient.listCollections();
+  // ChromaDB returns array of collection names as strings
+  return (collections as string[])
+    .filter(name => name.startsWith('category_'))
+    .map(name => name.replace('category_', ''));
+}
+
+// ============ Document Operations ============
+
+/**
+ * Add documents to a specific collection
+ */
+export async function addDocumentsToCollection(
+  collectionName: string,
   ids: string[],
   embeddings: number[][],
   documents: string[],
   metadatas: ChunkMetadata[]
 ): Promise<void> {
-  const coll = await getCollection();
-  await coll.add({
+  const collection = await getCollectionByName(collectionName);
+  await collection.add({
     ids,
     embeddings,
     documents,
@@ -43,7 +120,69 @@ export async function addDocuments(
   });
 }
 
-export async function queryDocuments(
+/**
+ * Add documents to the legacy/default collection (backward compatibility)
+ */
+export async function addDocuments(
+  ids: string[],
+  embeddings: number[][],
+  documents: string[],
+  metadatas: ChunkMetadata[]
+): Promise<void> {
+  await addDocumentsToCollection(LEGACY_COLLECTION_NAME, ids, embeddings, documents, metadatas);
+}
+
+/**
+ * Add documents to category collections
+ * If isGlobal is true, also adds to global collection
+ */
+export async function addDocumentsToCategories(
+  categorySlugs: string[],
+  ids: string[],
+  embeddings: number[][],
+  documents: string[],
+  metadatas: ChunkMetadata[],
+  isGlobal: boolean = false
+): Promise<void> {
+  // Add to each category collection
+  for (const slug of categorySlugs) {
+    const collectionName = `category_${slug}`;
+    await addDocumentsToCollection(collectionName, ids, embeddings, documents, metadatas);
+  }
+
+  // If global, also add to global collection
+  if (isGlobal) {
+    await addDocumentsToCollection(GLOBAL_COLLECTION_NAME, ids, embeddings, documents, metadatas);
+  }
+}
+
+/**
+ * Add global documents to ALL category collections
+ */
+export async function addGlobalDocuments(
+  ids: string[],
+  embeddings: number[][],
+  documents: string[],
+  metadatas: ChunkMetadata[]
+): Promise<void> {
+  // Add to global collection
+  await addDocumentsToCollection(GLOBAL_COLLECTION_NAME, ids, embeddings, documents, metadatas);
+
+  // Also add to all existing category collections
+  const categorySlugs = await listCategoryCollections();
+  for (const slug of categorySlugs) {
+    const collectionName = `category_${slug}`;
+    await addDocumentsToCollection(collectionName, ids, embeddings, documents, metadatas);
+  }
+}
+
+// ============ Query Operations ============
+
+/**
+ * Query a specific collection
+ */
+export async function queryCollection(
+  collectionName: string,
   queryEmbedding: number[],
   nResults: number = 5,
   whereFilter?: Record<string, unknown>
@@ -53,8 +192,8 @@ export async function queryDocuments(
   metadatas: ChunkMetadata[];
   distances: number[];
 }> {
-  const coll = await getCollection();
-  const results = await coll.query({
+  const collection = await getCollectionByName(collectionName);
+  const results = await collection.query({
     queryEmbeddings: [queryEmbedding],
     nResults,
     where: whereFilter,
@@ -69,12 +208,144 @@ export async function queryDocuments(
   };
 }
 
-export async function deleteDocuments(ids: string[]): Promise<void> {
-  if (ids.length === 0) return;
-  const coll = await getCollection();
-  await coll.delete({ ids });
+/**
+ * Query the legacy/default collection (backward compatibility)
+ */
+export async function queryDocuments(
+  queryEmbedding: number[],
+  nResults: number = 5,
+  whereFilter?: Record<string, unknown>
+): Promise<{
+  ids: string[];
+  documents: string[];
+  metadatas: ChunkMetadata[];
+  distances: number[];
+}> {
+  return queryCollection(LEGACY_COLLECTION_NAME, queryEmbedding, nResults, whereFilter);
 }
 
+/**
+ * Query multiple category collections and merge results
+ */
+export async function queryCategories(
+  categorySlugs: string[],
+  queryEmbedding: number[],
+  nResults: number = 5,
+  whereFilter?: Record<string, unknown>
+): Promise<{
+  ids: string[];
+  documents: string[];
+  metadatas: ChunkMetadata[];
+  distances: number[];
+}> {
+  // Query all specified categories + global collection
+  const collectionsToQuery = [
+    ...categorySlugs.map(slug => `category_${slug}`),
+    GLOBAL_COLLECTION_NAME,
+  ];
+
+  // Query each collection
+  const allResults: {
+    id: string;
+    document: string;
+    metadata: ChunkMetadata;
+    distance: number;
+  }[] = [];
+
+  for (const collectionName of collectionsToQuery) {
+    try {
+      const results = await queryCollection(collectionName, queryEmbedding, nResults, whereFilter);
+
+      for (let i = 0; i < results.ids.length; i++) {
+        allResults.push({
+          id: results.ids[i],
+          document: results.documents[i],
+          metadata: results.metadatas[i],
+          distance: results.distances[i],
+        });
+      }
+    } catch {
+      // Collection may not exist, skip it
+    }
+  }
+
+  // Deduplicate by ID (keep lowest distance / highest score)
+  const uniqueResults = new Map<string, typeof allResults[0]>();
+  for (const result of allResults) {
+    const existing = uniqueResults.get(result.id);
+    if (!existing || result.distance < existing.distance) {
+      uniqueResults.set(result.id, result);
+    }
+  }
+
+  // Sort by distance (lower = more similar) and take top N
+  const sortedResults = Array.from(uniqueResults.values())
+    .sort((a, b) => a.distance - b.distance)
+    .slice(0, nResults);
+
+  return {
+    ids: sortedResults.map(r => r.id),
+    documents: sortedResults.map(r => r.document),
+    metadatas: sortedResults.map(r => r.metadata),
+    distances: sortedResults.map(r => r.distance),
+  };
+}
+
+// ============ Delete Operations ============
+
+/**
+ * Delete documents from a specific collection
+ */
+export async function deleteDocumentsFromCollection(
+  collectionName: string,
+  ids: string[]
+): Promise<void> {
+  if (ids.length === 0) return;
+  const collection = await getCollectionByName(collectionName);
+  await collection.delete({ ids });
+}
+
+/**
+ * Delete documents from the legacy/default collection (backward compatibility)
+ */
+export async function deleteDocuments(ids: string[]): Promise<void> {
+  await deleteDocumentsFromCollection(LEGACY_COLLECTION_NAME, ids);
+}
+
+/**
+ * Delete documents from all category collections (for global doc removal)
+ */
+export async function deleteDocumentsFromAllCollections(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+
+  // Delete from global collection
+  try {
+    await deleteDocumentsFromCollection(GLOBAL_COLLECTION_NAME, ids);
+  } catch {
+    // May not exist
+  }
+
+  // Delete from all category collections
+  const categorySlugs = await listCategoryCollections();
+  for (const slug of categorySlugs) {
+    try {
+      await deleteDocumentsFromCollection(`category_${slug}`, ids);
+    } catch {
+      // May not exist in this collection
+    }
+  }
+
+  // Also delete from legacy collection
+  try {
+    await deleteDocumentsFromCollection(LEGACY_COLLECTION_NAME, ids);
+  } catch {
+    // May not exist
+  }
+}
+
+/**
+ * Delete documents by filter from a collection
+ */
 export async function deleteDocumentsByFilter(
   whereFilter: Record<string, unknown>
 ): Promise<void> {
@@ -82,7 +353,77 @@ export async function deleteDocumentsByFilter(
   await coll.delete({ where: whereFilter });
 }
 
+/**
+ * Delete documents by filter from specific categories
+ */
+export async function deleteDocumentsByFilterFromCategories(
+  categorySlugs: string[],
+  whereFilter: Record<string, unknown>
+): Promise<void> {
+  for (const slug of categorySlugs) {
+    try {
+      const collection = await getCollectionByName(`category_${slug}`);
+      await collection.delete({ where: whereFilter });
+    } catch {
+      // Collection may not exist
+    }
+  }
+}
+
+// ============ Count Operations ============
+
+/**
+ * Get document count from legacy collection (backward compatibility)
+ */
 export async function getDocumentCount(): Promise<number> {
   const coll = await getCollection();
   return coll.count();
+}
+
+/**
+ * Get document count from a specific collection
+ */
+export async function getCollectionCount(collectionName: string): Promise<number> {
+  try {
+    const collection = await getCollectionByName(collectionName);
+    return await collection.count();
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * Get document count for a category
+ */
+export async function getCategoryDocumentCount(categorySlug: string): Promise<number> {
+  return getCollectionCount(`category_${categorySlug}`);
+}
+
+/**
+ * Get total document count across all category collections
+ */
+export async function getTotalCategoryDocumentCount(): Promise<number> {
+  const categorySlugs = await listCategoryCollections();
+  let total = 0;
+  for (const slug of categorySlugs) {
+    total += await getCategoryDocumentCount(slug);
+  }
+  return total;
+}
+
+// ============ Utility Operations ============
+
+/**
+ * Clear the collection cache (useful after collection deletion)
+ */
+export function clearCollectionCache(): void {
+  collectionCache.clear();
+}
+
+/**
+ * Check if a category collection exists
+ */
+export async function categoryCollectionExists(categorySlug: string): Promise<boolean> {
+  const collections = await listCategoryCollections();
+  return collections.includes(categorySlug);
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getThread, deleteThread, updateThreadTitle } from '@/lib/threads';
+import { getThread, deleteThread, updateThreadTitle, setThreadCategories } from '@/lib/threads';
 import type { ThreadWithMessages, DeleteThreadResponse, UpdateThreadRequest, ApiError } from '@/types';
 
 interface RouteParams {
@@ -87,15 +87,16 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const { threadId } = await params;
     const body = await request.json() as UpdateThreadRequest;
 
-    if (!body.title) {
+    // Need at least one field to update
+    if (!body.title && !body.categoryIds) {
       return NextResponse.json<ApiError>(
-        { error: 'Title is required', code: 'VALIDATION_ERROR' },
+        { error: 'Title or categoryIds required', code: 'VALIDATION_ERROR' },
         { status: 400 }
       );
     }
 
-    const thread = await updateThreadTitle(user.id, threadId, body.title);
-
+    // Verify thread exists and belongs to user
+    let thread = await getThread(user.id, threadId);
     if (!thread) {
       return NextResponse.json<ApiError>(
         { error: 'Thread not found', code: 'NOT_FOUND' },
@@ -103,10 +104,29 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       );
     }
 
+    // Update title if provided
+    if (body.title) {
+      const updatedThread = await updateThreadTitle(user.id, threadId, body.title);
+      if (updatedThread) {
+        thread = { ...thread, title: updatedThread.title, updatedAt: updatedThread.updatedAt };
+      }
+    }
+
+    // Update categories if provided
+    if (body.categoryIds !== undefined) {
+      await setThreadCategories(user.id, threadId, body.categoryIds);
+      // Refresh thread to get updated categories
+      const refreshedThread = await getThread(user.id, threadId);
+      if (refreshedThread) {
+        thread = refreshedThread;
+      }
+    }
+
     return NextResponse.json({
       id: thread.id,
       title: thread.title,
       updatedAt: thread.updatedAt,
+      categories: thread.categories,
     });
   } catch (error) {
     console.error('Update thread error:', error);

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getSystemPrompt, saveSystemPrompt } from '@/lib/storage';
+import { getSystemPrompt, setSystemPrompt, getSettingMetadata } from '@/lib/db/config';
 import { invalidateQueryCache } from '@/lib/redis';
 import type { ApiError } from '@/types';
 
@@ -21,8 +21,14 @@ export async function GET() {
       );
     }
 
-    const config = await getSystemPrompt();
-    return NextResponse.json(config);
+    const prompt = getSystemPrompt();
+    const meta = getSettingMetadata('system-prompt');
+
+    return NextResponse.json({
+      prompt,
+      updatedAt: meta?.updatedAt || new Date().toISOString(),
+      updatedBy: meta?.updatedBy || 'system',
+    });
   } catch (error) {
     console.error('Get system prompt error:', error);
     return NextResponse.json<ApiError>(
@@ -70,14 +76,19 @@ export async function PUT(request: NextRequest) {
       );
     }
 
-    const config = await saveSystemPrompt(prompt.trim(), user.email);
+    setSystemPrompt(prompt.trim(), user.email);
+    const meta = getSettingMetadata('system-prompt');
 
     // Invalidate query cache since system prompt changed
     await invalidateQueryCache();
 
     return NextResponse.json({
       success: true,
-      config,
+      config: {
+        prompt: prompt.trim(),
+        updatedAt: meta?.updatedAt || new Date().toISOString(),
+        updatedBy: meta?.updatedBy || user.email,
+      },
     });
   } catch (error) {
     console.error('Update system prompt error:', error);

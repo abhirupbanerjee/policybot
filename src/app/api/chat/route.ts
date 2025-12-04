@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { getCurrentUser } from '@/lib/auth';
 import { ragQuery } from '@/lib/rag';
-import { getThread, addMessage, getMessages, getUploadPaths } from '@/lib/threads';
+import { getThread, addMessage, getMessages, getUploadPaths, getThreadCategorySlugsForQuery } from '@/lib/threads';
 import type { Message, ChatRequest, ChatResponse, ApiError } from '@/types';
 
 export async function POST(request: NextRequest) {
@@ -58,11 +58,15 @@ export async function POST(request: NextRequest) {
     // Get user uploaded documents
     const uploadPaths = await getUploadPaths(user.id, threadId);
 
-    // Run RAG query
+    // Get thread categories for category-based search
+    const categorySlugs = await getThreadCategorySlugsForQuery(threadId);
+
+    // Run RAG query with category context
     const { answer, sources } = await ragQuery(
       message,
       conversationHistory.slice(0, -1), // Exclude the message we just added
-      uploadPaths
+      uploadPaths,
+      categorySlugs.length > 0 ? categorySlugs : undefined
     );
 
     // Create assistant message

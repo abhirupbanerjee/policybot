@@ -1,114 +1,177 @@
-import path from 'path';
-import { readJson, writeJson, getDataDir } from './storage';
+/**
+ * User Management Module
+ *
+ * Now uses SQLite database for user storage
+ * Supports three roles: admin, superuser, user
+ */
+
+import {
+  getAllUsers as dbGetAllUsers,
+  getUserByEmail as dbGetUserByEmail,
+  createUser as dbCreateUser,
+  deleteUserByEmail as dbDeleteUserByEmail,
+  updateUser as dbUpdateUser,
+  initializeAdminsFromEnv,
+  type DbUser,
+  type UserRole,
+} from './db/users';
+import { getDatabase } from './db';
+
+// Re-export types
+export type { UserRole } from './db/users';
 
 export interface AllowedUser {
   email: string;
   name?: string;
-  role: 'admin' | 'user';
+  role: UserRole;
   addedAt: Date;
   addedBy: string;
 }
 
-interface UserRegistry {
-  users: AllowedUser[];
-}
+// Initialize database on first access
+let initialized = false;
 
-function getUsersFilePath(): string {
-  return path.join(getDataDir(), 'allowed-users.json');
-}
-
-export async function getAllowedUsers(): Promise<AllowedUser[]> {
-  const filePath = getUsersFilePath();
-  const registry = await readJson<UserRegistry>(filePath);
-
-  if (!registry) {
-    // Initialize with admin emails from env
-    const adminEmails = (process.env.ADMIN_EMAILS || '')
-      .split(',')
-      .map(e => e.trim().toLowerCase())
-      .filter(e => e.length > 0);
-
-    const initialUsers: AllowedUser[] = adminEmails.map(email => ({
-      email,
-      role: 'admin' as const,
-      addedAt: new Date(),
-      addedBy: 'system',
-    }));
-
-    await writeJson(filePath, { users: initialUsers });
-    return initialUsers;
+function ensureInitialized(): void {
+  if (!initialized) {
+    getDatabase(); // This triggers schema creation and default settings
+    initializeAdminsFromEnv();
+    initialized = true;
   }
-
-  return registry.users.map(u => ({
-    ...u,
-    addedAt: new Date(u.addedAt),
-  }));
 }
 
+/**
+ * Convert DbUser to AllowedUser for API compatibility
+ */
+function toAllowedUser(dbUser: DbUser): AllowedUser {
+  return {
+    email: dbUser.email,
+    name: dbUser.name || undefined,
+    role: dbUser.role,
+    addedAt: new Date(dbUser.created_at),
+    addedBy: dbUser.added_by || 'system',
+  };
+}
+
+/**
+ * Get all allowed users
+ */
+export async function getAllowedUsers(): Promise<AllowedUser[]> {
+  ensureInitialized();
+  const users = dbGetAllUsers();
+  return users.map(toAllowedUser);
+}
+
+/**
+ * Check if a user is allowed to access the system
+ */
 export async function isUserAllowed(email: string): Promise<boolean> {
   if (!email) return false;
-  const users = await getAllowedUsers();
-  return users.some(u => u.email.toLowerCase() === email.toLowerCase());
+  ensureInitialized();
+  const user = dbGetUserByEmail(email);
+  return !!user;
 }
 
-export async function getUserRole(email: string): Promise<'admin' | 'user' | null> {
+/**
+ * Get user role by email
+ */
+export async function getUserRole(email: string): Promise<UserRole | null> {
   if (!email) return null;
-  const users = await getAllowedUsers();
-  const user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+  ensureInitialized();
+  const user = dbGetUserByEmail(email);
   return user?.role || null;
 }
 
+/**
+ * Get user ID by email
+ */
+export async function getUserId(email: string): Promise<number | null> {
+  if (!email) return null;
+  ensureInitialized();
+  const user = dbGetUserByEmail(email);
+  return user?.id || null;
+}
+
+/**
+ * Get full user by email
+ */
+export async function getUserByEmail(email: string): Promise<AllowedUser | null> {
+  if (!email) return null;
+  ensureInitialized();
+  const user = dbGetUserByEmail(email);
+  return user ? toAllowedUser(user) : null;
+}
+
+/**
+ * Add or update an allowed user
+ */
 export async function addAllowedUser(
   email: string,
-  role: 'admin' | 'user',
+  role: UserRole,
   addedBy: string,
   name?: string
 ): Promise<AllowedUser> {
-  const users = await getAllowedUsers();
+  ensureInitialized();
 
-  // Check if already exists
-  const existingIndex = users.findIndex(u => u.email.toLowerCase() === email.toLowerCase());
+  // Check if user exists
+  const existing = dbGetUserByEmail(email);
 
-  const newUser: AllowedUser = {
-    email: email.toLowerCase(),
+  if (existing) {
+    // Update existing user
+    const updated = dbUpdateUser(existing.id, { name, role });
+    return toAllowedUser(updated!);
+  }
+
+  // Create new user
+  const newUser = dbCreateUser({
+    email,
     name,
     role,
-    addedAt: new Date(),
     addedBy,
-  };
+  });
 
-  if (existingIndex >= 0) {
-    // Update existing user
-    users[existingIndex] = newUser;
-  } else {
-    users.push(newUser);
-  }
-
-  await writeJson(getUsersFilePath(), { users });
-  return newUser;
+  return toAllowedUser(newUser);
 }
 
+/**
+ * Remove an allowed user
+ */
 export async function removeAllowedUser(email: string): Promise<boolean> {
-  const users = await getAllowedUsers();
-  const filteredUsers = users.filter(u => u.email.toLowerCase() !== email.toLowerCase());
+  ensureInitialized();
+  return dbDeleteUserByEmail(email);
+}
 
-  if (filteredUsers.length === users.length) {
-    return false; // User not found
-  }
+/**
+ * Update user role
+ */
+export async function updateUserRole(email: string, role: UserRole): Promise<boolean> {
+  ensureInitialized();
+  const user = dbGetUserByEmail(email);
+  if (!user) return false;
 
-  await writeJson(getUsersFilePath(), { users: filteredUsers });
+  dbUpdateUser(user.id, { role });
   return true;
 }
 
-export async function updateUserRole(email: string, role: 'admin' | 'user'): Promise<boolean> {
-  const users = await getAllowedUsers();
-  const userIndex = users.findIndex(u => u.email.toLowerCase() === email.toLowerCase());
+/**
+ * Check if user is an admin
+ */
+export async function isUserAdmin(email: string): Promise<boolean> {
+  const role = await getUserRole(email);
+  return role === 'admin';
+}
 
-  if (userIndex < 0) {
-    return false;
-  }
+/**
+ * Check if user is a super user
+ */
+export async function isUserSuperUser(email: string): Promise<boolean> {
+  const role = await getUserRole(email);
+  return role === 'superuser';
+}
 
-  users[userIndex].role = role;
-  await writeJson(getUsersFilePath(), { users });
-  return true;
+/**
+ * Check if user has elevated privileges (admin or superuser)
+ */
+export async function hasElevatedAccess(email: string): Promise<boolean> {
+  const role = await getUserRole(email);
+  return role === 'admin' || role === 'superuser';
 }

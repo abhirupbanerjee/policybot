@@ -1,22 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import {
-  getRAGSettings,
-  saveRAGSettings,
-  getLLMSettings,
-  saveLLMSettings,
+  getRagSettings,
+  setRagSettings,
+  getLlmSettings,
+  setLlmSettings,
   getAcronymMappings,
-  saveAcronymMappings,
+  setAcronymMappings,
   getTavilySettings,
-  saveTavilySettings,
-  AVAILABLE_MODELS,
-  DEFAULT_RAG_SETTINGS,
-  DEFAULT_LLM_SETTINGS,
-  DEFAULT_ACRONYM_MAPPINGS,
-  DEFAULT_TAVILY_SETTINGS,
-} from '@/lib/storage';
+  setTavilySettings,
+  getUploadLimits,
+  setUploadLimits,
+  getRetentionSettings,
+  setRetentionSettings,
+  getSettingMetadata,
+} from '@/lib/db/config';
 import { invalidateQueryCache, invalidateTavilyCache } from '@/lib/redis';
 import type { ApiError } from '@/types';
+
+// Available models for selection
+const AVAILABLE_MODELS = [
+  { id: 'gpt-4o-mini', name: 'GPT-4o Mini', description: 'Fast and affordable for most tasks' },
+  { id: 'gpt-4o', name: 'GPT-4o', description: 'Most capable model for complex tasks' },
+  { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', description: 'High performance with larger context' },
+  { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', description: 'Fast and cost-effective' },
+];
 
 export async function GET() {
   try {
@@ -35,24 +43,50 @@ export async function GET() {
       );
     }
 
-    const [ragSettings, llmSettings, acronymMappings, tavilySettings] = await Promise.all([
-      getRAGSettings(),
-      getLLMSettings(),
-      getAcronymMappings(),
-      getTavilySettings(),
-    ]);
+    // Get all settings from SQLite
+    const ragSettings = getRagSettings();
+    const llmSettings = getLlmSettings();
+    const acronymMappings = getAcronymMappings();
+    const tavilySettings = getTavilySettings();
+    const uploadLimits = getUploadLimits();
+    const retentionSettings = getRetentionSettings();
+
+    // Get metadata for last updated info
+    const ragMeta = getSettingMetadata('rag-settings');
+    const llmMeta = getSettingMetadata('llm-settings');
+    const acronymsMeta = getSettingMetadata('acronym-mappings');
+    const tavilyMeta = getSettingMetadata('tavily-settings');
 
     return NextResponse.json({
-      rag: ragSettings,
-      llm: llmSettings,
-      acronyms: acronymMappings,
-      tavily: tavilySettings,
+      rag: {
+        ...ragSettings,
+        updatedAt: ragMeta?.updatedAt || new Date().toISOString(),
+        updatedBy: ragMeta?.updatedBy || 'system',
+      },
+      llm: {
+        ...llmSettings,
+        updatedAt: llmMeta?.updatedAt || new Date().toISOString(),
+        updatedBy: llmMeta?.updatedBy || 'system',
+      },
+      acronyms: {
+        mappings: acronymMappings,
+        updatedAt: acronymsMeta?.updatedAt || new Date().toISOString(),
+        updatedBy: acronymsMeta?.updatedBy || 'system',
+      },
+      tavily: {
+        ...tavilySettings,
+        apiKey: process.env.TAVILY_API_KEY || '',
+        updatedAt: tavilyMeta?.updatedAt || new Date().toISOString(),
+        updatedBy: tavilyMeta?.updatedBy || 'system',
+      },
+      uploadLimits,
+      retentionSettings,
       availableModels: AVAILABLE_MODELS,
       defaults: {
-        rag: DEFAULT_RAG_SETTINGS,
-        llm: DEFAULT_LLM_SETTINGS,
-        acronyms: DEFAULT_ACRONYM_MAPPINGS,
-        tavily: DEFAULT_TAVILY_SETTINGS,
+        rag: getRagSettings(), // Already returns defaults if not set
+        llm: getLlmSettings(),
+        acronyms: { mappings: {} },
+        tavily: getTavilySettings(),
       },
     });
   } catch (error) {
@@ -144,7 +178,7 @@ export async function PUT(request: NextRequest) {
           );
         }
 
-        result = await saveRAGSettings({
+        result = setRagSettings({
           topKChunks,
           maxContextChunks,
           similarityThreshold,
@@ -182,7 +216,7 @@ export async function PUT(request: NextRequest) {
           );
         }
 
-        result = await saveLLMSettings({
+        result = setLlmSettings({
           model,
           temperature,
           maxTokens,
@@ -201,23 +235,35 @@ export async function PUT(request: NextRequest) {
           );
         }
 
-        // Validate each mapping
+        // Convert string values to arrays for new format
+        const normalizedMappings: Record<string, string[]> = {};
         for (const [key, value] of Object.entries(mappings)) {
-          if (typeof key !== 'string' || typeof value !== 'string') {
+          if (typeof key !== 'string') {
             return NextResponse.json<ApiError>(
-              { error: 'All mappings must be string to string', code: 'VALIDATION_ERROR' },
+              { error: 'All mapping keys must be strings', code: 'VALIDATION_ERROR' },
+              { status: 400 }
+            );
+          }
+          // Accept both string and string[] for backward compatibility
+          if (typeof value === 'string') {
+            normalizedMappings[key.toLowerCase()] = [value];
+          } else if (Array.isArray(value) && value.every(v => typeof v === 'string')) {
+            normalizedMappings[key.toLowerCase()] = value;
+          } else {
+            return NextResponse.json<ApiError>(
+              { error: 'Mapping values must be strings or arrays of strings', code: 'VALIDATION_ERROR' },
               { status: 400 }
             );
           }
         }
 
-        result = await saveAcronymMappings(mappings as Record<string, string>, user.email);
+        setAcronymMappings(normalizedMappings, user.email);
+        result = { mappings: normalizedMappings };
         break;
       }
 
       case 'tavily': {
         const {
-          apiKey,
           enabled,
           defaultTopic,
           defaultSearchDepth,
@@ -226,14 +272,6 @@ export async function PUT(request: NextRequest) {
           excludeDomains,
           cacheTTLSeconds,
         } = settings;
-
-        // Validate API key
-        if (typeof apiKey !== 'string') {
-          return NextResponse.json<ApiError>(
-            { error: 'API key must be a string', code: 'VALIDATION_ERROR' },
-            { status: 400 }
-          );
-        }
 
         // Validate enabled flag
         if (typeof enabled !== 'boolean') {
@@ -290,11 +328,75 @@ export async function PUT(request: NextRequest) {
           );
         }
 
-        result = await saveTavilySettings(settings, user.email);
+        result = setTavilySettings({
+          enabled,
+          defaultTopic,
+          defaultSearchDepth,
+          maxResults,
+          includeDomains,
+          excludeDomains,
+          cacheTTLSeconds,
+        }, user.email);
 
         // Invalidate Tavily cache when settings change
         await invalidateTavilyCache();
 
+        break;
+      }
+
+      case 'uploadLimits': {
+        const { maxFilesPerThread, maxFileSizeMB, allowedTypes } = settings;
+
+        if (typeof maxFilesPerThread !== 'number' || maxFilesPerThread < 1 || maxFilesPerThread > 20) {
+          return NextResponse.json<ApiError>(
+            { error: 'Max files per thread must be between 1 and 20', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        if (typeof maxFileSizeMB !== 'number' || maxFileSizeMB < 1 || maxFileSizeMB > 100) {
+          return NextResponse.json<ApiError>(
+            { error: 'Max file size must be between 1 and 100 MB', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        if (!Array.isArray(allowedTypes) || !allowedTypes.every(t => typeof t === 'string')) {
+          return NextResponse.json<ApiError>(
+            { error: 'Allowed types must be an array of strings', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        result = setUploadLimits({
+          maxFilesPerThread,
+          maxFileSizeMB,
+          allowedTypes,
+        }, user.email);
+        break;
+      }
+
+      case 'retention': {
+        const { threadRetentionDays, storageAlertThreshold } = settings;
+
+        if (typeof threadRetentionDays !== 'number' || threadRetentionDays < 1 || threadRetentionDays > 365) {
+          return NextResponse.json<ApiError>(
+            { error: 'Thread retention days must be between 1 and 365', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        if (typeof storageAlertThreshold !== 'number' || storageAlertThreshold < 50 || storageAlertThreshold > 100) {
+          return NextResponse.json<ApiError>(
+            { error: 'Storage alert threshold must be between 50 and 100 percent', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        result = setRetentionSettings({
+          threadRetentionDays,
+          storageAlertThreshold,
+        }, user.email);
         break;
       }
 

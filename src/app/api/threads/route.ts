@@ -44,15 +44,17 @@ export async function POST(request: NextRequest) {
     }
 
     let title: string | undefined;
+    let categoryIds: number[] | undefined;
 
     try {
       const body = await request.json() as CreateThreadRequest;
       title = body.title;
+      categoryIds = body.categoryIds;
     } catch {
       // Body is optional
     }
 
-    const thread = await createThread(user.id, title);
+    const thread = await createThread(user.id, title, categoryIds);
 
     return NextResponse.json<Thread>(thread, { status: 201 });
   } catch (error) {
