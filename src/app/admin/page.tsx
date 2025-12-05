@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Upload, RefreshCw, Trash2, FileText, AlertCircle, Users, UserPlus, Shield, User, Settings, Save, FolderOpen, Plus, Edit2, BarChart3, Database, HardDrive } from 'lucide-react';
+import { ArrowLeft, Upload, RefreshCw, Trash2, FileText, AlertCircle, Users, UserPlus, Shield, User, Settings, Save, FolderOpen, Plus, Edit2, BarChart3, Database, HardDrive, Globe, Tag } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import Spinner from '@/components/ui/Spinner';
@@ -14,6 +14,8 @@ interface AllowedUser {
   role: 'admin' | 'superuser' | 'user';
   addedAt: string;
   addedBy: string;
+  subscriptions?: { categoryId: number; categoryName: string; isActive: boolean }[];
+  assignedCategories?: { categoryId: number; categoryName: string }[];
 }
 
 interface Category {
@@ -80,6 +82,28 @@ interface AvailableModel {
   description: string;
 }
 
+interface ModelPreset {
+  id: string;
+  name: string;
+  description: string;
+  model: string;
+  llmSettings: {
+    model: string;
+    temperature: number;
+    maxTokens: number;
+  };
+  ragSettings: {
+    topKChunks: number;
+    maxContextChunks: number;
+    similarityThreshold: number;
+    chunkSize: number;
+    chunkOverlap: number;
+    queryExpansionEnabled: boolean;
+    cacheEnabled: boolean;
+    cacheTTLSeconds: number;
+  };
+}
+
 type TabType = 'documents' | 'categories' | 'users' | 'settings' | 'stats';
 type SettingsSection = 'prompt' | 'rag' | 'llm' | 'acronyms' | 'tavily';
 
@@ -120,18 +144,40 @@ export default function AdminPage() {
   const [deleting, setDeleting] = useState(false);
   const [reindexing, setReindexing] = useState<string | null>(null);
 
+  // Upload modal state
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadCategoryIds, setUploadCategoryIds] = useState<number[]>([]);
+  const [uploadIsGlobal, setUploadIsGlobal] = useState(false);
+
+  // Edit document modal state
+  const [editingDoc, setEditingDoc] = useState<GlobalDocument | null>(null);
+  const [editDocCategoryIds, setEditDocCategoryIds] = useState<number[]>([]);
+  const [editDocIsGlobal, setEditDocIsGlobal] = useState(false);
+  const [savingDocChanges, setSavingDocChanges] = useState(false);
+
   // User state
   const [users, setUsers] = useState<AllowedUser[]>([]);
   const [userLoading, setUserLoading] = useState(true);
   const [showAddUser, setShowAddUser] = useState(false);
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserName, setNewUserName] = useState('');
-  const [newUserRole, setNewUserRole] = useState<'admin' | 'user'>('user');
+  const [newUserRole, setNewUserRole] = useState<'admin' | 'superuser' | 'user'>('user');
   const [addingUser, setAddingUser] = useState(false);
   const [deleteUser, setDeleteUser] = useState<AllowedUser | null>(null);
   const [deletingUser, setDeletingUser] = useState(false);
   const [editingUser, setEditingUser] = useState<AllowedUser | null>(null);
   const [updatingRole, setUpdatingRole] = useState(false);
+
+  // Add user category selection state
+  const [newUserSubscriptions, setNewUserSubscriptions] = useState<number[]>([]);
+  const [newUserAssignedCategories, setNewUserAssignedCategories] = useState<number[]>([]);
+
+  // Manage user subscriptions state
+  const [managingUserSubs, setManagingUserSubs] = useState<AllowedUser | null>(null);
+  const [editUserSubscriptions, setEditUserSubscriptions] = useState<number[]>([]);
+  const [editUserAssignedCategories, setEditUserAssignedCategories] = useState<number[]>([]);
+  const [savingUserSubs, setSavingUserSubs] = useState(false);
 
   // Category state
   const [categories, setCategories] = useState<Category[]>([]);
@@ -165,6 +211,8 @@ export default function AdminPage() {
   const [tavilySettings, setTavilySettings] = useState<TavilySettings | null>(null);
   const [editedTavily, setEditedTavily] = useState<Omit<TavilySettings, 'updatedAt' | 'updatedBy'> | null>(null);
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
+  const [modelPresets, setModelPresets] = useState<ModelPreset[]>([]);
+  const [applyingPreset, setApplyingPreset] = useState(false);
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
   const [ragModified, setRagModified] = useState(false);
@@ -328,6 +376,7 @@ export default function AdminPage() {
         cacheTTLSeconds: data.tavily.cacheTTLSeconds,
       });
       setAvailableModels(data.availableModels);
+      setModelPresets(data.modelPresets || []);
       setRagModified(false);
       setLlmModified(false);
       setAcronymsModified(false);
@@ -373,19 +422,32 @@ export default function AdminPage() {
   }, [loadDocuments, loadUsers, loadCategories, loadSystemPrompt, loadSettings, loadStats]);
 
   // Document handlers
-  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (file.type !== 'application/pdf') {
       setError('Only PDF files are allowed');
+      e.target.value = '';
       return;
     }
 
     if (file.size > 50 * 1024 * 1024) {
       setError('File too large (max 50MB)');
+      e.target.value = '';
       return;
     }
+
+    // Open modal with selected file
+    setUploadFile(file);
+    setUploadCategoryIds([]);
+    setUploadIsGlobal(false);
+    setShowUploadModal(true);
+    e.target.value = '';
+  };
+
+  const handleUploadConfirm = async () => {
+    if (!uploadFile) return;
 
     setUploading(true);
     setUploadProgress('Uploading...');
@@ -393,7 +455,9 @@ export default function AdminPage() {
 
     try {
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append('file', uploadFile);
+      formData.append('categoryIds', JSON.stringify(uploadCategoryIds));
+      formData.append('isGlobal', String(uploadIsGlobal));
 
       const response = await fetch('/api/admin/documents', {
         method: 'POST',
@@ -407,12 +471,51 @@ export default function AdminPage() {
 
       setUploadProgress('Processing...');
       await loadDocuments();
+      setShowUploadModal(false);
+      setUploadFile(null);
+      setUploadCategoryIds([]);
+      setUploadIsGlobal(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed');
     } finally {
       setUploading(false);
       setUploadProgress(null);
-      e.target.value = '';
+    }
+  };
+
+  const handleEditDoc = (doc: GlobalDocument) => {
+    setEditingDoc(doc);
+    setEditDocCategoryIds(doc.categories?.map(c => c.id) || []);
+    setEditDocIsGlobal(doc.isGlobal || false);
+  };
+
+  const handleSaveDocChanges = async () => {
+    if (!editingDoc) return;
+
+    setSavingDocChanges(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/admin/documents/${editingDoc.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          categoryIds: editDocCategoryIds,
+          isGlobal: editDocIsGlobal,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to update document');
+      }
+
+      await loadDocuments();
+      setEditingDoc(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update document');
+    } finally {
+      setSavingDocChanges(false);
     }
   };
 
@@ -506,6 +609,8 @@ export default function AdminPage() {
           email: newUserEmail.trim(),
           name: newUserName.trim() || undefined,
           role: newUserRole,
+          subscriptions: newUserRole === 'user' ? newUserSubscriptions : undefined,
+          assignedCategories: newUserRole === 'superuser' ? newUserAssignedCategories : undefined,
         }),
       });
 
@@ -519,6 +624,8 @@ export default function AdminPage() {
       setNewUserEmail('');
       setNewUserName('');
       setNewUserRole('user');
+      setNewUserSubscriptions([]);
+      setNewUserAssignedCategories([]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add user');
     } finally {
@@ -549,7 +656,7 @@ export default function AdminPage() {
     }
   };
 
-  const handleUpdateRole = async (newRole: 'admin' | 'user') => {
+  const handleUpdateRole = async (newRole: 'admin' | 'superuser' | 'user') => {
     if (!editingUser) return;
 
     setUpdatingRole(true);
@@ -574,6 +681,94 @@ export default function AdminPage() {
     } finally {
       setUpdatingRole(false);
       setEditingUser(null);
+    }
+  };
+
+  const handleManageUserSubs = (user: AllowedUser) => {
+    setManagingUserSubs(user);
+    if (user.role === 'user') {
+      setEditUserSubscriptions(user.subscriptions?.map(s => s.categoryId) || []);
+      setEditUserAssignedCategories([]);
+    } else if (user.role === 'superuser') {
+      setEditUserSubscriptions([]);
+      setEditUserAssignedCategories(user.assignedCategories?.map(c => c.categoryId) || []);
+    }
+  };
+
+  const handleSaveUserSubs = async () => {
+    if (!managingUserSubs) return;
+
+    setSavingUserSubs(true);
+    setError(null);
+
+    try {
+      // Get user ID first
+      const userResponse = await fetch('/api/admin/users');
+      const usersData = await userResponse.json();
+      const userData = usersData.users.find((u: AllowedUser & { id?: number }) =>
+        u.email === managingUserSubs.email
+      );
+
+      if (!userData?.id) {
+        throw new Error('Could not find user ID');
+      }
+
+      const userId = userData.id;
+
+      if (managingUserSubs.role === 'user') {
+        // Get current subscriptions
+        const currentSubs = managingUserSubs.subscriptions?.map(s => s.categoryId) || [];
+
+        // Add new subscriptions
+        for (const catId of editUserSubscriptions) {
+          if (!currentSubs.includes(catId)) {
+            await fetch(`/api/admin/users/${userId}/subscriptions`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ categoryId: catId }),
+            });
+          }
+        }
+
+        // Remove old subscriptions
+        for (const catId of currentSubs) {
+          if (!editUserSubscriptions.includes(catId)) {
+            await fetch(`/api/admin/users/${userId}/subscriptions?categoryId=${catId}`, {
+              method: 'DELETE',
+            });
+          }
+        }
+      } else if (managingUserSubs.role === 'superuser') {
+        // Get current assignments
+        const currentAssignments = managingUserSubs.assignedCategories?.map(c => c.categoryId) || [];
+
+        // Add new assignments
+        for (const catId of editUserAssignedCategories) {
+          if (!currentAssignments.includes(catId)) {
+            await fetch(`/api/admin/super-users/${userId}/categories`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ categoryId: catId }),
+            });
+          }
+        }
+
+        // Remove old assignments
+        for (const catId of currentAssignments) {
+          if (!editUserAssignedCategories.includes(catId)) {
+            await fetch(`/api/admin/super-users/${userId}/categories?categoryId=${catId}`, {
+              method: 'DELETE',
+            });
+          }
+        }
+      }
+
+      await loadUsers();
+      setManagingUserSubs(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update subscriptions');
+    } finally {
+      setSavingUserSubs(false);
     }
   };
 
@@ -831,6 +1026,50 @@ export default function AdminPage() {
         maxTokens: llmSettings.maxTokens,
       });
       setLlmModified(false);
+    }
+  };
+
+  // Preset handlers
+  const handleApplyPreset = async (presetId: string) => {
+    setApplyingPreset(true);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/admin/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'preset', settings: { presetId } }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to apply preset');
+      }
+
+      const result = await response.json();
+
+      // Update LLM settings
+      setLlmSettings({
+        ...result.settings.llm,
+        updatedAt: new Date().toISOString(),
+        updatedBy: 'admin',
+      });
+      setEditedLlm(result.settings.llm);
+
+      // Update RAG settings
+      setRagSettings({
+        ...result.settings.rag,
+        updatedAt: new Date().toISOString(),
+        updatedBy: 'admin',
+      });
+      setEditedRag(result.settings.rag);
+
+      setLlmModified(false);
+      setRagModified(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to apply preset');
+    } finally {
+      setApplyingPreset(false);
     }
   };
 
@@ -1098,7 +1337,7 @@ export default function AdminPage() {
                     ref={fileInputRef}
                     type="file"
                     accept=".pdf,application/pdf"
-                    onChange={handleUpload}
+                    onChange={handleFileSelect}
                     disabled={uploading}
                     className="hidden"
                   />
@@ -1128,6 +1367,7 @@ export default function AdminPage() {
                   <thead className="bg-gray-50 text-left text-sm text-gray-600">
                     <tr>
                       <th className="px-6 py-3 font-medium">Document</th>
+                      <th className="px-6 py-3 font-medium">Categories</th>
                       <th className="px-6 py-3 font-medium">Size</th>
                       <th className="px-6 py-3 font-medium">Chunks</th>
                       <th className="px-6 py-3 font-medium">Status</th>
@@ -1142,6 +1382,29 @@ export default function AdminPage() {
                           <div className="flex items-center gap-3">
                             <FileText className="w-5 h-5 text-blue-600" />
                             <span className="font-medium text-gray-900">{doc.filename}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-wrap gap-1">
+                            {doc.isGlobal && (
+                              <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-100 text-purple-700 text-xs rounded-full">
+                                <Globe size={10} />
+                                Global
+                              </span>
+                            )}
+                            {doc.categories && doc.categories.length > 0 ? (
+                              doc.categories.map(cat => (
+                                <span
+                                  key={cat.id}
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full"
+                                >
+                                  <Tag size={10} />
+                                  {cat.name}
+                                </span>
+                              ))
+                            ) : !doc.isGlobal ? (
+                              <span className="text-gray-400 text-xs italic">Uncategorized</span>
+                            ) : null}
                           </div>
                         </td>
                         <td className="px-6 py-4 text-gray-600">
@@ -1166,6 +1429,13 @@ export default function AdminPage() {
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => handleEditDoc(doc)}
+                              className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
+                              title="Edit categories"
+                            >
+                              <Edit2 size={16} />
+                            </button>
                             <button
                               onClick={() => handleReindex(doc.id)}
                               disabled={reindexing === doc.id}
@@ -1320,8 +1590,8 @@ export default function AdminPage() {
                     <tr>
                       <th className="px-6 py-3 font-medium">User</th>
                       <th className="px-6 py-3 font-medium">Role</th>
+                      <th className="px-6 py-3 font-medium">Categories</th>
                       <th className="px-6 py-3 font-medium">Added</th>
-                      <th className="px-6 py-3 font-medium">Added By</th>
                       <th className="px-6 py-3 font-medium text-right">Actions</th>
                     </tr>
                   </thead>
@@ -1331,10 +1601,13 @@ export default function AdminPage() {
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
                             <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
-                              user.role === 'admin' ? 'bg-purple-100' : 'bg-gray-100'
+                              user.role === 'admin' ? 'bg-purple-100' :
+                              user.role === 'superuser' ? 'bg-orange-100' : 'bg-gray-100'
                             }`}>
                               {user.role === 'admin' ? (
                                 <Shield size={16} className="text-purple-600" />
+                              ) : user.role === 'superuser' ? (
+                                <UserPlus size={16} className="text-orange-600" />
                               ) : (
                                 <User size={16} className="text-gray-600" />
                               )}
@@ -1352,20 +1625,67 @@ export default function AdminPage() {
                             className={`inline-flex items-center px-2 py-1 text-xs font-medium rounded-full ${
                               user.role === 'admin'
                                 ? 'bg-purple-100 text-purple-700'
+                                : user.role === 'superuser'
+                                ? 'bg-orange-100 text-orange-700'
                                 : 'bg-gray-100 text-gray-700'
                             }`}
                           >
-                            {user.role}
+                            {user.role === 'superuser' ? 'super user' : user.role}
                           </span>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-wrap gap-1">
+                            {user.role === 'admin' ? (
+                              <span className="text-gray-400 text-xs italic">All access</span>
+                            ) : user.role === 'superuser' ? (
+                              user.assignedCategories && user.assignedCategories.length > 0 ? (
+                                user.assignedCategories.map(cat => (
+                                  <span
+                                    key={cat.categoryId}
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 bg-orange-100 text-orange-700 text-xs rounded-full"
+                                  >
+                                    <FolderOpen size={10} />
+                                    {cat.categoryName}
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="text-gray-400 text-xs italic">No categories assigned</span>
+                              )
+                            ) : (
+                              user.subscriptions && user.subscriptions.length > 0 ? (
+                                user.subscriptions.map(sub => (
+                                  <span
+                                    key={sub.categoryId}
+                                    className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full ${
+                                      sub.isActive
+                                        ? 'bg-blue-100 text-blue-700'
+                                        : 'bg-gray-100 text-gray-500'
+                                    }`}
+                                  >
+                                    <Tag size={10} />
+                                    {sub.categoryName}
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="text-gray-400 text-xs italic">No subscriptions</span>
+                              )
+                            )}
+                          </div>
                         </td>
                         <td className="px-6 py-4 text-gray-600">
                           {formatDate(user.addedAt)}
                         </td>
-                        <td className="px-6 py-4 text-gray-600">
-                          {user.addedBy}
-                        </td>
                         <td className="px-6 py-4">
                           <div className="flex items-center justify-end gap-2">
+                            {user.role !== 'admin' && (
+                              <button
+                                onClick={() => handleManageUserSubs(user)}
+                                className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg"
+                                title={user.role === 'superuser' ? 'Manage assigned categories' : 'Manage subscriptions'}
+                              >
+                                <FolderOpen size={16} />
+                              </button>
+                            )}
                             <button
                               onClick={() => setEditingUser(user)}
                               className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"
@@ -1499,32 +1819,76 @@ export default function AdminPage() {
 
               {/* LLM Settings Section */}
               {settingsSection === 'llm' && (
-                <div className="bg-white rounded-lg border shadow-sm">
-                  <div className="px-6 py-4 border-b">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h2 className="font-semibold text-gray-900">LLM Settings</h2>
-                        <p className="text-sm text-gray-500">Configure the language model parameters</p>
+                <div className="space-y-4">
+                  {/* Model Presets Card */}
+                  <div className="bg-white rounded-lg border shadow-sm">
+                    <div className="px-6 py-4 border-b">
+                      <h2 className="font-semibold text-gray-900">Quick Presets</h2>
+                      <p className="text-sm text-gray-500">Apply recommended model + RAG configurations</p>
+                    </div>
+                    <div className="p-6">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {modelPresets.map((preset) => (
+                          <div
+                            key={preset.id}
+                            className={`relative p-4 rounded-lg border-2 transition-all cursor-pointer ${
+                              editedLlm?.model === preset.model
+                                ? 'border-blue-500 bg-blue-50'
+                                : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                            }`}
+                            onClick={() => !applyingPreset && handleApplyPreset(preset.id)}
+                          >
+                            {editedLlm?.model === preset.model && (
+                              <div className="absolute top-2 right-2">
+                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                  Active
+                                </span>
+                              </div>
+                            )}
+                            <h3 className="font-medium text-gray-900 pr-12">{preset.name}</h3>
+                            <p className="text-sm text-gray-500 mt-1">{preset.description}</p>
+                            <div className="mt-3 text-xs text-gray-400 space-y-1">
+                              <div>Temp: {preset.llmSettings.temperature} | Tokens: {preset.llmSettings.maxTokens}</div>
+                              <div>Chunks: {preset.ragSettings.topKChunks}/{preset.ragSettings.maxContextChunks}</div>
+                            </div>
+                          </div>
+                        ))}
                       </div>
-                      <div className="flex items-center gap-2">
-                        {llmModified && (
-                          <Button variant="secondary" onClick={handleResetLlm} disabled={savingSettings}>
-                            Reset
-                          </Button>
-                        )}
-                        <Button onClick={handleSaveLlm} disabled={!llmModified || savingSettings} loading={savingSettings}>
-                          <Save size={18} className="mr-2" />
-                          Save
-                        </Button>
-                      </div>
+                      {applyingPreset && (
+                        <div className="mt-4 flex items-center justify-center text-sm text-gray-500">
+                          <Spinner size="sm" /> <span className="ml-2">Applying preset...</span>
+                        </div>
+                      )}
                     </div>
                   </div>
-                  {settingsLoading ? (
-                    <div className="px-6 py-12 flex justify-center"><Spinner size="lg" /></div>
-                  ) : editedLlm && (
-                    <div className="p-6 space-y-6">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">Model</label>
+
+                  {/* Manual LLM Settings Card */}
+                  <div className="bg-white rounded-lg border shadow-sm">
+                    <div className="px-6 py-4 border-b">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h2 className="font-semibold text-gray-900">LLM Settings</h2>
+                          <p className="text-sm text-gray-500">Fine-tune the language model parameters manually</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {llmModified && (
+                            <Button variant="secondary" onClick={handleResetLlm} disabled={savingSettings}>
+                              Reset
+                            </Button>
+                          )}
+                          <Button onClick={handleSaveLlm} disabled={!llmModified || savingSettings} loading={savingSettings}>
+                            <Save size={18} className="mr-2" />
+                            Save
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                    {settingsLoading ? (
+                      <div className="px-6 py-12 flex justify-center"><Spinner size="lg" /></div>
+                    ) : editedLlm && (
+                      <div className="p-6 space-y-6">
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Model</label>
                         <select
                           value={editedLlm.model}
                           onChange={(e) => handleLlmChange('model', e.target.value)}
@@ -1569,12 +1933,13 @@ export default function AdminPage() {
                         <p className="mt-1 text-xs text-gray-500">Maximum length of generated responses (100-16000)</p>
                       </div>
                       {llmSettings && (
-                        <p className="text-xs text-gray-500 pt-4 border-t">
-                          Last updated: {formatDate(llmSettings.updatedAt)} by {llmSettings.updatedBy}
-                        </p>
-                      )}
-                    </div>
-                  )}
+                          <p className="text-xs text-gray-500 pt-4 border-t">
+                            Last updated: {formatDate(llmSettings.updatedAt)} by {llmSettings.updatedBy}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -2185,6 +2550,233 @@ export default function AdminPage() {
         </div>
       </Modal>
 
+      {/* Upload Document Modal */}
+      <Modal
+        isOpen={showUploadModal}
+        onClose={() => {
+          setShowUploadModal(false);
+          setUploadFile(null);
+          setUploadCategoryIds([]);
+          setUploadIsGlobal(false);
+        }}
+        title="Upload Document"
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              File
+            </label>
+            <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg">
+              <FileText className="w-5 h-5 text-blue-600" />
+              <span className="text-sm text-gray-700 truncate">{uploadFile?.name}</span>
+              <span className="text-xs text-gray-500 ml-auto">
+                {uploadFile && formatFileSize(uploadFile.size)}
+              </span>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Categories
+            </label>
+            <div className="border border-gray-200 rounded-lg p-2">
+              <div className="flex flex-wrap gap-2 mb-2">
+                {uploadCategoryIds.length === 0 ? (
+                  <span className="text-sm text-gray-500">No categories selected</span>
+                ) : (
+                  uploadCategoryIds.map(catId => {
+                    const cat = categories.find(c => c.id === catId);
+                    return cat ? (
+                      <span
+                        key={catId}
+                        className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full"
+                      >
+                        <Tag size={10} />
+                        {cat.name}
+                        <button
+                          type="button"
+                          onClick={() => setUploadCategoryIds(ids => ids.filter(id => id !== catId))}
+                          className="hover:bg-blue-200 rounded-full p-0.5"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ) : null;
+                  })
+                )}
+              </div>
+              <select
+                value=""
+                onChange={(e) => {
+                  const catId = parseInt(e.target.value, 10);
+                  if (catId && !uploadCategoryIds.includes(catId)) {
+                    setUploadCategoryIds([...uploadCategoryIds, catId]);
+                  }
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              >
+                <option value="">Add category...</option>
+                {categories
+                  .filter(cat => !uploadCategoryIds.includes(cat.id))
+                  .map(cat => (
+                    <option key={cat.id} value={cat.id}>{cat.name}</option>
+                  ))
+                }
+              </select>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="uploadIsGlobal"
+              checked={uploadIsGlobal}
+              onChange={(e) => setUploadIsGlobal(e.target.checked)}
+              className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+            />
+            <label htmlFor="uploadIsGlobal" className="flex items-center gap-2 text-sm text-gray-700">
+              <Globe size={16} className="text-purple-600" />
+              Global document (available in all categories)
+            </label>
+          </div>
+
+          <p className="text-xs text-gray-500">
+            {uploadIsGlobal
+              ? 'Global documents are indexed into all category collections for universal access.'
+              : uploadCategoryIds.length > 0
+              ? `This document will be available to users subscribed to the selected ${uploadCategoryIds.length === 1 ? 'category' : 'categories'}.`
+              : 'Select categories or mark as global to control document visibility.'}
+          </p>
+        </div>
+
+        <div className="flex justify-end gap-3 mt-6">
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setShowUploadModal(false);
+              setUploadFile(null);
+              setUploadCategoryIds([]);
+              setUploadIsGlobal(false);
+            }}
+            disabled={uploading}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleUploadConfirm}
+            loading={uploading}
+            disabled={!uploadFile}
+          >
+            <Upload size={18} className="mr-2" />
+            {uploadProgress || 'Upload'}
+          </Button>
+        </div>
+      </Modal>
+
+      {/* Edit Document Modal */}
+      <Modal
+        isOpen={!!editingDoc}
+        onClose={() => setEditingDoc(null)}
+        title="Edit Document Categories"
+      >
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg">
+            <FileText className="w-5 h-5 text-blue-600" />
+            <span className="text-sm text-gray-700 truncate font-medium">{editingDoc?.filename}</span>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Categories
+            </label>
+            <div className="border border-gray-200 rounded-lg p-2">
+              <div className="flex flex-wrap gap-2 mb-2">
+                {editDocCategoryIds.length === 0 ? (
+                  <span className="text-sm text-gray-500">No categories selected</span>
+                ) : (
+                  editDocCategoryIds.map(catId => {
+                    const cat = categories.find(c => c.id === catId);
+                    return cat ? (
+                      <span
+                        key={catId}
+                        className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full"
+                      >
+                        <Tag size={10} />
+                        {cat.name}
+                        <button
+                          type="button"
+                          onClick={() => setEditDocCategoryIds(ids => ids.filter(id => id !== catId))}
+                          className="hover:bg-blue-200 rounded-full p-0.5"
+                        >
+                          ×
+                        </button>
+                      </span>
+                    ) : null;
+                  })
+                )}
+              </div>
+              <select
+                value=""
+                onChange={(e) => {
+                  const catId = parseInt(e.target.value, 10);
+                  if (catId && !editDocCategoryIds.includes(catId)) {
+                    setEditDocCategoryIds([...editDocCategoryIds, catId]);
+                  }
+                }}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              >
+                <option value="">Add category...</option>
+                {categories
+                  .filter(cat => !editDocCategoryIds.includes(cat.id))
+                  .map(cat => (
+                    <option key={cat.id} value={cat.id}>{cat.name}</option>
+                  ))
+                }
+              </select>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <input
+              type="checkbox"
+              id="editDocIsGlobal"
+              checked={editDocIsGlobal}
+              onChange={(e) => setEditDocIsGlobal(e.target.checked)}
+              className="w-4 h-4 text-purple-600 border-gray-300 rounded focus:ring-purple-500"
+            />
+            <label htmlFor="editDocIsGlobal" className="flex items-center gap-2 text-sm text-gray-700">
+              <Globe size={16} className="text-purple-600" />
+              Global document (available in all categories)
+            </label>
+          </div>
+
+          <p className="text-xs text-gray-500">
+            {editDocIsGlobal
+              ? 'This document will be re-indexed into all category collections.'
+              : editDocCategoryIds.length > 0
+              ? `This document will be re-indexed into the selected ${editDocCategoryIds.length === 1 ? 'category' : 'categories'}.`
+              : 'Select categories or mark as global. Changes will trigger re-indexing.'}
+          </p>
+        </div>
+
+        <div className="flex justify-end gap-3 mt-6">
+          <Button
+            variant="secondary"
+            onClick={() => setEditingDoc(null)}
+            disabled={savingDocChanges}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSaveDocChanges}
+            loading={savingDocChanges}
+          >
+            <Save size={18} className="mr-2" />
+            Save Changes
+          </Button>
+        </div>
+      </Modal>
+
       {/* Add User Modal */}
       <Modal
         isOpen={showAddUser}
@@ -2224,19 +2816,142 @@ export default function AdminPage() {
               </label>
               <select
                 value={newUserRole}
-                onChange={(e) => setNewUserRole(e.target.value as 'admin' | 'user')}
+                onChange={(e) => {
+                  setNewUserRole(e.target.value as 'admin' | 'superuser' | 'user');
+                  setNewUserSubscriptions([]);
+                  setNewUserAssignedCategories([]);
+                }}
                 className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               >
                 <option value="user">User - Can use chat and upload documents</option>
+                <option value="superuser">Super User - Can manage assigned categories</option>
                 <option value="admin">Admin - Full access including user management</option>
               </select>
             </div>
+
+            {/* Category selection for users */}
+            {newUserRole === 'user' && categories.length > 0 && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Subscribe to Categories
+                </label>
+                <div className="border border-gray-200 rounded-lg p-2">
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {newUserSubscriptions.length === 0 ? (
+                      <span className="text-sm text-gray-500">No categories selected</span>
+                    ) : (
+                      newUserSubscriptions.map(catId => {
+                        const cat = categories.find(c => c.id === catId);
+                        return cat ? (
+                          <span
+                            key={catId}
+                            className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full"
+                          >
+                            <Tag size={10} />
+                            {cat.name}
+                            <button
+                              type="button"
+                              onClick={() => setNewUserSubscriptions(ids => ids.filter(id => id !== catId))}
+                              className="hover:bg-blue-200 rounded-full p-0.5"
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ) : null;
+                      })
+                    )}
+                  </div>
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      const catId = parseInt(e.target.value, 10);
+                      if (catId && !newUserSubscriptions.includes(catId)) {
+                        setNewUserSubscriptions([...newUserSubscriptions, catId]);
+                      }
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  >
+                    <option value="">Add category subscription...</option>
+                    {categories
+                      .filter(cat => !newUserSubscriptions.includes(cat.id))
+                      .map(cat => (
+                        <option key={cat.id} value={cat.id}>{cat.name}</option>
+                      ))
+                    }
+                  </select>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  User will have access to documents in these categories.
+                </p>
+              </div>
+            )}
+
+            {/* Category assignment for super users */}
+            {newUserRole === 'superuser' && categories.length > 0 && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Assign Categories to Manage
+                </label>
+                <div className="border border-gray-200 rounded-lg p-2">
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {newUserAssignedCategories.length === 0 ? (
+                      <span className="text-sm text-gray-500">No categories assigned</span>
+                    ) : (
+                      newUserAssignedCategories.map(catId => {
+                        const cat = categories.find(c => c.id === catId);
+                        return cat ? (
+                          <span
+                            key={catId}
+                            className="inline-flex items-center gap-1 px-2 py-1 bg-orange-100 text-orange-700 text-xs rounded-full"
+                          >
+                            <FolderOpen size={10} />
+                            {cat.name}
+                            <button
+                              type="button"
+                              onClick={() => setNewUserAssignedCategories(ids => ids.filter(id => id !== catId))}
+                              className="hover:bg-orange-200 rounded-full p-0.5"
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ) : null;
+                      })
+                    )}
+                  </div>
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      const catId = parseInt(e.target.value, 10);
+                      if (catId && !newUserAssignedCategories.includes(catId)) {
+                        setNewUserAssignedCategories([...newUserAssignedCategories, catId]);
+                      }
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  >
+                    <option value="">Assign category...</option>
+                    {categories
+                      .filter(cat => !newUserAssignedCategories.includes(cat.id))
+                      .map(cat => (
+                        <option key={cat.id} value={cat.id}>{cat.name}</option>
+                      ))
+                    }
+                  </select>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Super user will be able to manage users subscribed to these categories.
+                </p>
+              </div>
+            )}
           </div>
           <div className="flex justify-end gap-3 mt-6">
             <Button
               type="button"
               variant="secondary"
-              onClick={() => setShowAddUser(false)}
+              onClick={() => {
+                setShowAddUser(false);
+                setNewUserSubscriptions([]);
+                setNewUserAssignedCategories([]);
+              }}
               disabled={addingUser}
             >
               Cancel
@@ -2306,6 +3021,23 @@ export default function AdminPage() {
             </div>
           </button>
           <button
+            onClick={() => handleUpdateRole('superuser')}
+            disabled={updatingRole || editingUser?.role === 'superuser'}
+            className={`w-full p-3 text-left border rounded-lg transition-colors ${
+              editingUser?.role === 'superuser'
+                ? 'border-orange-500 bg-orange-50'
+                : 'hover:border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            <div className="flex items-center gap-3">
+              <UserPlus size={20} className="text-orange-600" />
+              <div>
+                <p className="font-medium text-gray-900">Super User</p>
+                <p className="text-sm text-gray-500">Can manage assigned categories</p>
+              </div>
+            </div>
+          </button>
+          <button
             onClick={() => handleUpdateRole('admin')}
             disabled={updatingRole || editingUser?.role === 'admin'}
             className={`w-full p-3 text-left border rounded-lg transition-colors ${
@@ -2330,6 +3062,162 @@ export default function AdminPage() {
             disabled={updatingRole}
           >
             {updatingRole ? <Spinner size="sm" /> : 'Close'}
+          </Button>
+        </div>
+      </Modal>
+
+      {/* Manage User Subscriptions Modal */}
+      <Modal
+        isOpen={!!managingUserSubs}
+        onClose={() => setManagingUserSubs(null)}
+        title={managingUserSubs?.role === 'superuser' ? 'Manage Assigned Categories' : 'Manage Subscriptions'}
+      >
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg">
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center ${
+              managingUserSubs?.role === 'superuser' ? 'bg-orange-100' : 'bg-gray-100'
+            }`}>
+              {managingUserSubs?.role === 'superuser' ? (
+                <UserPlus size={16} className="text-orange-600" />
+              ) : (
+                <User size={16} className="text-gray-600" />
+              )}
+            </div>
+            <div>
+              <p className="font-medium text-gray-900 text-sm">
+                {managingUserSubs?.name || managingUserSubs?.email.split('@')[0]}
+              </p>
+              <p className="text-xs text-gray-500">{managingUserSubs?.email}</p>
+            </div>
+          </div>
+
+          {managingUserSubs?.role === 'user' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Category Subscriptions
+              </label>
+              <div className="border border-gray-200 rounded-lg p-2">
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {editUserSubscriptions.length === 0 ? (
+                    <span className="text-sm text-gray-500">No subscriptions</span>
+                  ) : (
+                    editUserSubscriptions.map(catId => {
+                      const cat = categories.find(c => c.id === catId);
+                      return cat ? (
+                        <span
+                          key={catId}
+                          className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full"
+                        >
+                          <Tag size={10} />
+                          {cat.name}
+                          <button
+                            type="button"
+                            onClick={() => setEditUserSubscriptions(ids => ids.filter(id => id !== catId))}
+                            className="hover:bg-blue-200 rounded-full p-0.5"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ) : null;
+                    })
+                  )}
+                </div>
+                <select
+                  value=""
+                  onChange={(e) => {
+                    const catId = parseInt(e.target.value, 10);
+                    if (catId && !editUserSubscriptions.includes(catId)) {
+                      setEditUserSubscriptions([...editUserSubscriptions, catId]);
+                    }
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                >
+                  <option value="">Add subscription...</option>
+                  {categories
+                    .filter(cat => !editUserSubscriptions.includes(cat.id))
+                    .map(cat => (
+                      <option key={cat.id} value={cat.id}>{cat.name}</option>
+                    ))
+                  }
+                </select>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                User will have access to documents in subscribed categories.
+              </p>
+            </div>
+          )}
+
+          {managingUserSubs?.role === 'superuser' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Assigned Categories
+              </label>
+              <div className="border border-gray-200 rounded-lg p-2">
+                <div className="flex flex-wrap gap-2 mb-2">
+                  {editUserAssignedCategories.length === 0 ? (
+                    <span className="text-sm text-gray-500">No categories assigned</span>
+                  ) : (
+                    editUserAssignedCategories.map(catId => {
+                      const cat = categories.find(c => c.id === catId);
+                      return cat ? (
+                        <span
+                          key={catId}
+                          className="inline-flex items-center gap-1 px-2 py-1 bg-orange-100 text-orange-700 text-xs rounded-full"
+                        >
+                          <FolderOpen size={10} />
+                          {cat.name}
+                          <button
+                            type="button"
+                            onClick={() => setEditUserAssignedCategories(ids => ids.filter(id => id !== catId))}
+                            className="hover:bg-orange-200 rounded-full p-0.5"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ) : null;
+                    })
+                  )}
+                </div>
+                <select
+                  value=""
+                  onChange={(e) => {
+                    const catId = parseInt(e.target.value, 10);
+                    if (catId && !editUserAssignedCategories.includes(catId)) {
+                      setEditUserAssignedCategories([...editUserAssignedCategories, catId]);
+                    }
+                  }}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                >
+                  <option value="">Assign category...</option>
+                  {categories
+                    .filter(cat => !editUserAssignedCategories.includes(cat.id))
+                    .map(cat => (
+                      <option key={cat.id} value={cat.id}>{cat.name}</option>
+                    ))
+                  }
+                </select>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                Super user can manage users subscribed to these categories.
+              </p>
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-3 mt-6">
+          <Button
+            variant="secondary"
+            onClick={() => setManagingUserSubs(null)}
+            disabled={savingUserSubs}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSaveUserSubs}
+            loading={savingUserSubs}
+          >
+            <Save size={18} className="mr-2" />
+            Save Changes
           </Button>
         </div>
       </Modal>

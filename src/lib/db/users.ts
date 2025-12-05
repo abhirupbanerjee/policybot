@@ -396,6 +396,34 @@ export function userHasSubscription(userId: number, categoryId: number): boolean
   return (result?.count ?? 0) > 0;
 }
 
+/**
+ * Get all users subscribed to a category
+ */
+export function getUsersSubscribedToCategory(categoryId: number): Array<{
+  userId: number;
+  isActive: boolean;
+  subscribedBy: string;
+  subscribedAt: string;
+}> {
+  const results = queryAll<{
+    user_id: number;
+    is_active: number;
+    subscribed_by: string;
+    created_at: string;
+  }>(`
+    SELECT user_id, is_active, subscribed_by, created_at
+    FROM user_subscriptions
+    WHERE category_id = ?
+  `, [categoryId]);
+
+  return results.map(r => ({
+    userId: r.user_id,
+    isActive: r.is_active === 1,
+    subscribedBy: r.subscribed_by,
+    subscribedAt: r.created_at,
+  }));
+}
+
 // ============ Bulk Operations ============
 
 /**

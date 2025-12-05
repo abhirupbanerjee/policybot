@@ -180,6 +180,8 @@ function toGlobalDocument(doc: DocumentWithCategories): GlobalDocument {
     uploadedBy: doc.uploaded_by,
     status: doc.status,
     errorMessage: doc.error_message || undefined,
+    isGlobal: doc.isGlobal,
+    categories: doc.categories,
   };
 }
 

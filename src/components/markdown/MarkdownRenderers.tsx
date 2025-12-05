@@ -132,14 +132,14 @@ export const MarkdownComponents: Components = {
     }
 
     return (
-      <code className="text-gray-100 font-mono text-xs sm:text-sm">
+      <code className="text-gray-800 font-mono text-xs sm:text-sm">
         {children}
       </code>
     );
   },
 
   pre: ({ children }) => (
-    <pre className="bg-gray-900 text-gray-100 p-4 rounded-md overflow-x-auto my-3 border border-gray-700 max-w-full touch-pan-x">
+    <pre className="bg-gray-100 text-gray-800 p-4 rounded-md overflow-x-auto whitespace-pre my-3 border border-gray-300 max-w-full touch-pan-x font-mono text-sm leading-relaxed">
       {children}
     </pre>
   ),

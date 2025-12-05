@@ -26,22 +26,28 @@ Policy Bot uses Docker Compose for containerized deployment with three environme
 │  │                    (Port 3000 internal)                          │    │
 │  │                                                                  │    │
 │  │   ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │    │
-│  │   │  Chat API    │  │  Admin API   │  │  Thread API  │          │    │
+│  │   │  Chat API    │  │  Admin API   │  │ SuperUser API│          │    │
 │  │   └──────────────┘  └──────────────┘  └──────────────┘          │    │
 │  └─────────────────────────────────────────────────────────────────┘    │
 │         │                      │                      │                  │
 │         ▼                      ▼                      ▼                  │
 │  ┌─────────────┐        ┌─────────────┐        ┌─────────────┐         │
-│  │  CHROMADB   │        │    REDIS    │        │  FILESYSTEM │         │
-│  │  Port 8000  │        │  Port 6379  │        │   /app/data │         │
-│  │  (internal) │        │  (internal) │        │   (volume)  │         │
-│  └─────────────┘        └─────────────┘        └─────────────┘         │
-│         │                      │                      │                  │
-│         ▼                      ▼                      ▼                  │
-│  ┌─────────────┐        ┌─────────────┐        ┌─────────────┐         │
-│  │ chroma_data │        │ redis_data  │        │  app_data   │         │
-│  │  (volume)   │        │  (volume)   │        │  (volume)   │         │
-│  └─────────────┘        └─────────────┘        └─────────────┘         │
+│  │   SQLITE    │        │  CHROMADB   │        │    REDIS    │         │
+│  │  /app/data  │        │  Port 8000  │        │  Port 6379  │         │
+│  │  /policy-   │        │  (internal) │        │  (internal) │         │
+│  │  bot.db     │        └─────────────┘        └─────────────┘         │
+│  └─────────────┘               │                      │                  │
+│         │                      ▼                      ▼                  │
+│         │               ┌─────────────┐        ┌─────────────┐         │
+│         │               │ chroma_data │        │ redis_data  │         │
+│         │               │  (volume)   │        │  (volume)   │         │
+│         │               └─────────────┘        └─────────────┘         │
+│         │                                                               │
+│         ▼                                                               │
+│  ┌─────────────┐                                                        │
+│  │  app_data   │ ◄── SQLite DB + global-docs + threads                 │
+│  │  (volume)   │                                                        │
+│  └─────────────┘                                                        │
 └─────────────────────────────────────────────────────────────────────────┘
                               │
                               ▼
@@ -50,6 +56,47 @@ Policy Bot uses Docker Compose for containerized deployment with three environme
                     │   (External)    │
                     └─────────────────┘
 ```
+
+---
+
+## Data Storage Architecture
+
+### SQLite Database
+
+Policy Bot uses SQLite (via better-sqlite3) for all metadata storage:
+
+| Data | Storage Location | Notes |
+|------|------------------|-------|
+| Users | `data/policy-bot.db` | users table |
+| Categories | `data/policy-bot.db` | categories table |
+| Documents metadata | `data/policy-bot.db` | documents, document_categories tables |
+| Subscriptions | `data/policy-bot.db` | user_subscriptions table |
+| Super user assignments | `data/policy-bot.db` | super_user_categories table |
+| Threads | `data/policy-bot.db` | threads, thread_categories tables |
+| Messages | `data/policy-bot.db` | messages table |
+| Settings | `data/policy-bot.db` | settings table |
+
+### ChromaDB Collections
+
+Category-based vector storage:
+
+| Collection Pattern | Purpose |
+|-------------------|---------|
+| `policy_hr` | HR category documents |
+| `policy_finance` | Finance category documents |
+| `policy_it` | IT category documents |
+| `policy_{slug}` | Dynamic per category |
+
+Global documents are indexed into ALL category collections.
+
+### Filesystem
+
+| Path | Purpose |
+|------|---------|
+| `data/policy-bot.db` | SQLite database |
+| `data/global-docs/` | Admin-uploaded policy PDFs |
+| `data/threads/{userId}/{threadId}/uploads/` | User-uploaded PDFs |
+| `data/threads/{userId}/{threadId}/outputs/` | AI-generated files |
 
 ---
 
@@ -63,6 +110,9 @@ OPENAI_API_KEY=sk-your-api-key-here
 
 # Mistral (Optional - for advanced PDF OCR)
 MISTRAL_API_KEY=your-mistral-api-key
+
+# Tavily (Optional - for web search)
+TAVILY_API_KEY=your-tavily-api-key
 
 # Embeddings (defaults shown)
 EMBEDDING_MODEL=text-embedding-3-large
@@ -95,6 +145,9 @@ OPENAI_API_KEY=sk-your-api-key-here
 
 # Mistral (Optional - for advanced PDF OCR)
 MISTRAL_API_KEY=your-mistral-api-key
+
+# Tavily (Optional - for web search)
+TAVILY_API_KEY=your-tavily-api-key
 
 # Embeddings
 EMBEDDING_MODEL=text-embedding-3-large
@@ -340,7 +393,7 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
-# Create data directory
+# Create data directory for SQLite and files
 RUN mkdir -p /app/data && chown -R nextjs:nodejs /app/data
 
 USER nextjs
@@ -354,30 +407,6 @@ CMD ["node", "server.js"]
 ```
 
 **Note**: Uses `npm ci` (not `npm ci --only=production`) because TypeScript and other devDependencies are required during the build stage.
-
----
-
-## Next.js Configuration
-
-### next.config.ts
-
-```typescript
-import type { NextConfig } from 'next';
-
-const nextConfig: NextConfig = {
-  output: 'standalone',  // Required for Docker
-  experimental: {
-    serverActions: {
-      bodySizeLimit: '50mb',  // For admin uploads
-    },
-  },
-  images: {
-    unoptimized: true,  // Simplify for self-hosted
-  },
-};
-
-export default nextConfig;
-```
 
 ---
 
@@ -487,20 +516,23 @@ docker compose logs -f app
 curl -I https://policybot.abhirup.app
 ```
 
-### Initial Document Ingestion
+### Initial Setup
 
 ```bash
-# 1. Copy policy documents to server
-scp -r documents/ user@server:~/policy-bot/data/global-docs/
-
-# 2. Access admin panel
+# 1. Access admin panel
 # https://policybot.abhirup.app/admin
 
-# 3. Upload documents through UI
-# Or use API:
-curl -X POST https://policybot.abhirup.app/api/admin/documents \
-  -H "Cookie: <session-cookie>" \
-  -F "file=@Leave_Policy.pdf"
+# 2. Create categories
+# Go to Categories tab, add: HR, Finance, IT, Legal, etc.
+
+# 3. Upload documents
+# Go to Documents tab, upload PDFs with category assignments
+
+# 4. Add users
+# Go to Users tab, add users with subscriptions
+# - Admin: full access
+# - SuperUser: assign categories to manage
+# - User: subscribe to categories
 ```
 
 ---
@@ -521,6 +553,9 @@ docker compose logs -f app
 
 # All logs
 docker compose logs -f
+
+# SQLite database size
+du -h data/policy-bot.db
 ```
 
 ### Backup
@@ -534,7 +569,12 @@ DATE=$(date +%Y%m%d_%H%M%S)
 
 mkdir -p $BACKUP_DIR
 
-# Backup app data (threads, documents)
+# Backup SQLite database
+docker exec policy-bot-app sh -c "sqlite3 /app/data/policy-bot.db '.backup /app/data/backup.db'"
+docker cp policy-bot-app:/app/data/backup.db $BACKUP_DIR/policy-bot-$DATE.db
+docker exec policy-bot-app rm /app/data/backup.db
+
+# Backup app data (global-docs, threads)
 docker run --rm \
   -v policy-bot-app-data:/data \
   -v $BACKUP_DIR:/backup \
@@ -554,6 +594,7 @@ docker run --rm \
 
 # Keep last 7 days
 find $BACKUP_DIR -name "*.tar.gz" -mtime +7 -delete
+find $BACKUP_DIR -name "*.db" -mtime +7 -delete
 
 echo "Backup completed: $DATE"
 ```
@@ -575,7 +616,10 @@ fi
 # Stop services
 docker compose down
 
-# Restore app data
+# Restore SQLite database
+docker cp $BACKUP_DIR/policy-bot-$DATE.db policy-bot-app:/app/data/policy-bot.db
+
+# Restore app data (includes global-docs and threads)
 docker run --rm \
   -v policy-bot-app-data:/data \
   -v $BACKUP_DIR:/backup \
@@ -597,6 +641,24 @@ docker run --rm \
 docker compose up -d
 
 echo "Restore completed from: $DATE"
+```
+
+### Database Maintenance
+
+```bash
+# Vacuum SQLite database (reclaim space)
+docker exec policy-bot-app sh -c "sqlite3 /app/data/policy-bot.db 'VACUUM;'"
+
+# Check database integrity
+docker exec policy-bot-app sh -c "sqlite3 /app/data/policy-bot.db 'PRAGMA integrity_check;'"
+
+# View database statistics
+docker exec policy-bot-app sh -c "sqlite3 /app/data/policy-bot.db 'SELECT * FROM sqlite_master WHERE type=\"table\";'"
+
+# Count records
+docker exec policy-bot-app sh -c "sqlite3 /app/data/policy-bot.db 'SELECT COUNT(*) FROM users;'"
+docker exec policy-bot-app sh -c "sqlite3 /app/data/policy-bot.db 'SELECT COUNT(*) FROM categories;'"
+docker exec policy-bot-app sh -c "sqlite3 /app/data/policy-bot.db 'SELECT COUNT(*) FROM documents;'"
 ```
 
 ### Updates
@@ -662,6 +724,13 @@ if docker exec policy-bot-redis redis-cli ping | grep -q PONG; then
 else
   echo "✗ Redis: unhealthy"
 fi
+
+# Check SQLite database
+if docker exec policy-bot-app sh -c "sqlite3 /app/data/policy-bot.db 'SELECT 1;'" | grep -q 1; then
+  echo "✓ SQLite: healthy"
+else
+  echo "✗ SQLite: unhealthy"
+fi
 ```
 
 ---
@@ -683,7 +752,10 @@ fi
 - [ ] Test Azure AD login flow
 - [ ] Test Google OAuth login flow (if configured)
 - [ ] Verify admin access control
+- [ ] Create initial categories
 - [ ] Add initial users to allowlist (if ACCESS_MODE=allowlist)
+- [ ] Assign super users to categories
+- [ ] Subscribe regular users to categories
 - [ ] Test file upload limits
 - [ ] Check CORS settings
 
@@ -694,6 +766,8 @@ fi
 - [ ] Update base images monthly
 - [ ] Rotate secrets quarterly
 - [ ] Review user allowlist regularly
+- [ ] Monitor SQLite database size
+- [ ] Run database VACUUM monthly
 
 ---
 
@@ -740,6 +814,22 @@ docker compose logs redis
 docker exec policy-bot-redis redis-cli ping
 ```
 
+#### SQLite Database Issues
+
+```bash
+# Check database file exists
+docker exec policy-bot-app ls -la /app/data/policy-bot.db
+
+# Check permissions
+docker exec policy-bot-app stat /app/data/policy-bot.db
+
+# Check integrity
+docker exec policy-bot-app sh -c "sqlite3 /app/data/policy-bot.db 'PRAGMA integrity_check;'"
+
+# If corrupted, restore from backup
+./restore.sh YYYYMMDD_HHMMSS
+```
+
 #### Out of Memory
 
 ```bash
@@ -774,6 +864,16 @@ sudo swapon /swapfile
 | Disk | 20 GB | 50 GB |
 | Network | 10 Mbps | 100 Mbps |
 
+### Storage Breakdown
+
+| Component | Typical Size |
+|-----------|--------------|
+| SQLite database | 10-100 MB |
+| Global documents | 100 MB - 1 GB |
+| ChromaDB vectors | 50-500 MB |
+| Redis cache | 10-100 MB |
+| Thread data | 50 MB - 500 MB |
+
 ---
 
 ## Cost Estimation
@@ -782,11 +882,18 @@ sudo swapon /swapfile
 
 | Model | Usage | Cost |
 |-------|-------|------|
-| gpt-4o-mini | ~100K tokens/day | ~$15 |
-| text-embedding-3-small | ~50K tokens/day | ~$1 |
+| gpt-5-mini | ~100K tokens/day | ~$15 |
+| text-embedding-3-large | ~50K tokens/day | ~$1 |
 | whisper-1 | ~1 hour audio/day | ~$18 |
 
 **Total: ~$35/month** (for moderate usage)
+
+### External APIs (Optional)
+
+| API | Usage | Cost |
+|-----|-------|------|
+| Mistral OCR | ~100 pages/day | ~$5/month |
+| Tavily Search | ~1000 queries/month | ~$10/month |
 
 ### Infrastructure (Self-Hosted VM)
 

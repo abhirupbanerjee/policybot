@@ -14,12 +14,18 @@ import {
   getRetentionSettings,
   setRetentionSettings,
   getSettingMetadata,
+  MODEL_PRESETS,
 } from '@/lib/db/config';
 import { invalidateQueryCache, invalidateTavilyCache } from '@/lib/redis';
 import type { ApiError } from '@/types';
 
-// Available models for selection
+// Available models for selection (includes preset models + legacy models)
 const AVAILABLE_MODELS = [
+  // Preset models (recommended)
+  { id: 'gpt-5.1', name: 'GPT-5.1', description: 'Most capable - high accuracy for complex policy analysis' },
+  { id: 'gpt-5.1-mini', name: 'GPT-5.1 Mini', description: 'Balanced - fast and affordable for most queries' },
+  { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini', description: 'Cost-effective - simpler queries, faster responses' },
+  // Legacy models
   { id: 'gpt-4o-mini', name: 'GPT-4o Mini', description: 'Fast and affordable for most tasks' },
   { id: 'gpt-4o', name: 'GPT-4o', description: 'Most capable model for complex tasks' },
   { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', description: 'High performance with larger context' },
@@ -82,6 +88,7 @@ export async function GET() {
       uploadLimits,
       retentionSettings,
       availableModels: AVAILABLE_MODELS,
+      modelPresets: MODEL_PRESETS,
       defaults: {
         rag: getRagSettings(), // Already returns defaults if not set
         llm: getLlmSettings(),
@@ -397,6 +404,30 @@ export async function PUT(request: NextRequest) {
           threadRetentionDays,
           storageAlertThreshold,
         }, user.email);
+        break;
+      }
+
+      case 'preset': {
+        // Apply a model preset (updates both LLM and RAG settings)
+        const { presetId } = settings;
+
+        const preset = MODEL_PRESETS.find(p => p.id === presetId);
+        if (!preset) {
+          return NextResponse.json<ApiError>(
+            { error: 'Invalid preset selected', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Apply both LLM and RAG settings from the preset
+        const updatedLlm = setLlmSettings(preset.llmSettings, user.email);
+        const updatedRag = setRagSettings(preset.ragSettings, user.email);
+
+        result = {
+          preset: preset,
+          llm: updatedLlm,
+          rag: updatedRag,
+        };
         break;
       }
 

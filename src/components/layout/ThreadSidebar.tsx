@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, MessageSquare, Trash2, Menu, X, Settings, LogOut, Tag } from 'lucide-react';
+import { Plus, MessageSquare, Trash2, Menu, X, Settings, LogOut, Tag, Users } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
 import Link from 'next/link';
 import type { Thread } from '@/types';
@@ -31,7 +31,9 @@ export default function ThreadSidebar({
   const [newThreadCategories, setNewThreadCategories] = useState<number[]>([]);
   const [creating, setCreating] = useState(false);
 
-  const isAdmin = (session?.user as { role?: string })?.role === 'admin';
+  const userRole = (session?.user as { role?: string })?.role;
+  const isAdmin = userRole === 'admin';
+  const isSuperUser = userRole === 'superuser';
 
   const loadThreads = useCallback(async () => {
     try {
@@ -287,6 +289,16 @@ export default function ThreadSidebar({
             >
               <Settings size={16} />
               Admin Dashboard
+            </Link>
+          )}
+          {isSuperUser && (
+            <Link
+              href="/superuser"
+              className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              onClick={() => setIsOpen(false)}
+            >
+              <Users size={16} />
+              Manage Users
             </Link>
           )}
           {session?.user && (

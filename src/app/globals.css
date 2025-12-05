@@ -98,19 +98,25 @@ body {
 }
 
 .markdown-content pre {
-  background: #1f2937;
-  color: #f9fafb;
-  padding: 1.25em;
-  border-radius: 0.5em;
+  background: #f7f7f7;
+  color: #1f2937;
+  padding: 1rem;
+  border-radius: 0.5rem;
   overflow-x: auto;
-  margin-bottom: 0.75em;
-  border: 1px solid #374151;
+  white-space: pre;
+  margin-bottom: 0.75rem;
+  border: 1px solid #e5e7eb;
   max-width: 100%;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  tab-size: 4;
 }
 
 .markdown-content pre code {
   background: transparent;
   padding: 0;
+  color: inherit;
 }
 
 .markdown-content blockquote {

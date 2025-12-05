@@ -96,6 +96,12 @@ export interface Source {
 
 // ============ Document Types ============
 
+export interface DocumentCategory {
+  id: number;
+  name: string;
+  slug: string;
+}
+
 export interface GlobalDocument {
   id: string;
   filename: string;
@@ -106,6 +112,8 @@ export interface GlobalDocument {
   uploadedBy: string;
   status: 'processing' | 'ready' | 'error';
   errorMessage?: string;
+  isGlobal?: boolean;
+  categories?: DocumentCategory[];
 }
 
 export interface DocumentChunk {

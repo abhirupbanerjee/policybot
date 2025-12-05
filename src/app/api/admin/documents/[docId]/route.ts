@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getGlobalDocument, deleteDocument, reindexDocument } from '@/lib/ingest';
+import { getGlobalDocument, deleteDocument, reindexDocument, updateDocumentCategories, toggleDocumentGlobal } from '@/lib/ingest';
+import { getDocumentWithCategories } from '@/lib/db/documents';
 import type { GlobalDocument, AdminDeleteResponse, AdminUploadResponse, ApiError } from '@/types';
 
 interface RouteParams {
@@ -141,6 +142,71 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json<ApiError>(
       {
         error: 'Failed to reindex document',
+        code: 'SERVICE_ERROR',
+        details: error instanceof Error ? error.message : undefined,
+      },
+      { status: 500 }
+    );
+  }
+}
+
+// Update document categories and global status
+export async function PATCH(request: NextRequest, { params }: RouteParams) {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json<ApiError>(
+        { error: 'Unauthorized', code: 'AUTH_REQUIRED' },
+        { status: 401 }
+      );
+    }
+
+    if (!user.isAdmin) {
+      return NextResponse.json<ApiError>(
+        { error: 'Admin access required', code: 'ADMIN_REQUIRED' },
+        { status: 403 }
+      );
+    }
+
+    const { docId } = await params;
+    const body = await request.json();
+
+    // Check document exists
+    const doc = await getGlobalDocument(docId);
+    if (!doc) {
+      return NextResponse.json<ApiError>(
+        { error: 'Document not found', code: 'NOT_FOUND' },
+        { status: 404 }
+      );
+    }
+
+    // Update categories if provided
+    if (body.categoryIds !== undefined) {
+      await updateDocumentCategories(docId, body.categoryIds);
+    }
+
+    // Update global status if provided
+    if (body.isGlobal !== undefined) {
+      await toggleDocumentGlobal(docId, body.isGlobal);
+    }
+
+    // Get updated document with categories
+    const updatedDoc = getDocumentWithCategories(parseInt(docId, 10));
+
+    return NextResponse.json({
+      success: true,
+      document: {
+        id: String(updatedDoc?.id),
+        filename: updatedDoc?.filename,
+        isGlobal: updatedDoc?.isGlobal,
+        categories: updatedDoc?.categories || [],
+      },
+    });
+  } catch (error) {
+    console.error('Update document error:', error);
+    return NextResponse.json<ApiError>(
+      {
+        error: 'Failed to update document',
         code: 'SERVICE_ERROR',
         details: error instanceof Error ? error.message : undefined,
       },

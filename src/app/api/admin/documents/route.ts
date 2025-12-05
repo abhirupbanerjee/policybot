@@ -91,11 +91,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Get optional category IDs and global flag from form data
+    const categoryIdsStr = formData.get('categoryIds') as string | null;
+    const isGlobalStr = formData.get('isGlobal') as string | null;
+
+    const categoryIds = categoryIdsStr ? JSON.parse(categoryIdsStr) as number[] : [];
+    const isGlobal = isGlobalStr === 'true';
+
     // Convert to buffer and ingest
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
 
-    const doc = await ingestDocument(buffer, file.name, user.email);
+    const doc = await ingestDocument(buffer, file.name, user.email, {
+      categoryIds,
+      isGlobal,
+    });
 
     return NextResponse.json<AdminUploadResponse>(
       {
