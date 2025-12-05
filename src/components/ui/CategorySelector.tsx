@@ -16,6 +16,8 @@ interface CategorySelectorProps {
   placeholder?: string;
   disabled?: boolean;
   className?: string;
+  /** Single selection mode - only one category can be selected at a time */
+  singleSelect?: boolean;
 }
 
 export default function CategorySelector({
@@ -24,6 +26,7 @@ export default function CategorySelector({
   placeholder = 'Select categories...',
   disabled = false,
   className = '',
+  singleSelect = false,
 }: CategorySelectorProps) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
@@ -62,10 +65,22 @@ export default function CategorySelector({
   }, []);
 
   const toggleCategory = (categoryId: number) => {
-    if (selectedIds.includes(categoryId)) {
-      onChange(selectedIds.filter(id => id !== categoryId));
+    if (singleSelect) {
+      // In single-select mode, selecting a category replaces the current selection
+      // Clicking the already-selected category deselects it
+      if (selectedIds.includes(categoryId)) {
+        onChange([]);
+      } else {
+        onChange([categoryId]);
+      }
+      setIsOpen(false); // Close dropdown after selection in single-select mode
     } else {
-      onChange([...selectedIds, categoryId]);
+      // Multi-select mode
+      if (selectedIds.includes(categoryId)) {
+        onChange(selectedIds.filter(id => id !== categoryId));
+      } else {
+        onChange([...selectedIds, categoryId]);
+      }
     }
   };
 
@@ -149,12 +164,23 @@ export default function CategorySelector({
                   ${isSelected ? 'bg-blue-50' : ''}
                 `}
               >
-                <div className={`
-                  w-4 h-4 rounded border flex items-center justify-center shrink-0
-                  ${isSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-300'}
-                `}>
-                  {isSelected && <Check size={12} className="text-white" />}
-                </div>
+                {singleSelect ? (
+                  // Radio button for single-select
+                  <div className={`
+                    w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0
+                    ${isSelected ? 'border-blue-600' : 'border-gray-300'}
+                  `}>
+                    {isSelected && <div className="w-2 h-2 rounded-full bg-blue-600" />}
+                  </div>
+                ) : (
+                  // Checkbox for multi-select
+                  <div className={`
+                    w-4 h-4 rounded border flex items-center justify-center shrink-0
+                    ${isSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-300'}
+                  `}>
+                    {isSelected && <Check size={12} className="text-white" />}
+                  </div>
+                )}
                 <div className="min-w-0 flex-1">
                   <div className="text-sm font-medium text-gray-900 truncate">
                     {cat.name}

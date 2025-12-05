@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Users, User, FolderOpen, Tag, Plus } from 'lucide-react';
+import { ArrowLeft, Users, User, FolderOpen, Tag, Plus, FileText, Upload, Trash2, X } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import Spinner from '@/components/ui/Spinner';
@@ -25,6 +25,21 @@ interface ManagedUser {
   subscriptions: UserSubscription[];
 }
 
+interface DocumentCategory {
+  categoryId: number;
+  categoryName: string;
+}
+
+interface ManagedDocument {
+  id: number;
+  filename: string;
+  size: number;
+  status: string;
+  uploadedBy: string;
+  uploadedAt: string;
+  categories: DocumentCategory[];
+}
+
 export default function SuperUserPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -41,23 +56,44 @@ export default function SuperUserPage() {
   // Remove subscription state
   const [removingSub, setRemovingSub] = useState<{ email: string; categoryId: number } | null>(null);
 
+  // Documents state
+  const [documents, setDocuments] = useState<ManagedDocument[]>([]);
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadCategory, setUploadCategory] = useState<number | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [deletingDocId, setDeletingDocId] = useState<number | null>(null);
+
+  // Active tab state
+  const [activeTab, setActiveTab] = useState<'users' | 'documents'>('users');
+
   const loadData = useCallback(async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/superuser/users');
 
-      if (response.status === 403) {
+      // Load users and documents in parallel
+      const [usersResponse, docsResponse] = await Promise.all([
+        fetch('/api/superuser/users'),
+        fetch('/api/superuser/documents'),
+      ]);
+
+      if (usersResponse.status === 403 || docsResponse.status === 403) {
         router.push('/');
         return;
       }
 
-      if (!response.ok) {
-        throw new Error('Failed to load data');
+      if (!usersResponse.ok) {
+        throw new Error('Failed to load user data');
       }
 
-      const data = await response.json();
-      setAssignedCategories(data.assignedCategories || []);
-      setUsers(data.users || []);
+      const userData = await usersResponse.json();
+      setAssignedCategories(userData.assignedCategories || []);
+      setUsers(userData.users || []);
+
+      if (docsResponse.ok) {
+        const docsData = await docsResponse.json();
+        setDocuments(docsData.documents || []);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load data');
     } finally {
@@ -124,6 +160,75 @@ export default function SuperUserPage() {
     }
   };
 
+  const handleUploadDocument = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!uploadFile || !uploadCategory) return;
+
+    setUploading(true);
+    setError(null);
+
+    try {
+      const formData = new FormData();
+      formData.append('file', uploadFile);
+      formData.append('categoryId', uploadCategory.toString());
+
+      const response = await fetch('/api/superuser/documents', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to upload document');
+      }
+
+      await loadData();
+      setShowUploadModal(false);
+      setUploadFile(null);
+      setUploadCategory(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to upload document');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDeleteDocument = async (docId: number) => {
+    setDeletingDocId(docId);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/superuser/documents/${docId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to delete document');
+      }
+
+      await loadData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete document');
+    } finally {
+      setDeletingDocId(null);
+    }
+  };
+
+  const formatFileSize = (bytes: number): string => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  };
+
+  const formatDate = (dateStr: string): string => {
+    return new Date(dateStr).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -145,7 +250,7 @@ export default function SuperUserPage() {
             </button>
             <div>
               <h1 className="text-xl font-semibold text-gray-900">Super User Dashboard</h1>
-              <p className="text-sm text-gray-500">Manage user subscriptions for your categories</p>
+              <p className="text-sm text-gray-500">Manage documents and user subscriptions for your categories</p>
             </div>
           </div>
         </div>
@@ -169,7 +274,7 @@ export default function SuperUserPage() {
           <div className="px-6 py-4 border-b">
             <h2 className="font-semibold text-gray-900">Your Assigned Categories</h2>
             <p className="text-sm text-gray-500">
-              You can manage user subscriptions for these categories
+              You can manage documents and user subscriptions for these categories
             </p>
           </div>
           <div className="px-6 py-4">
@@ -191,7 +296,141 @@ export default function SuperUserPage() {
           </div>
         </div>
 
+        {/* Tab Navigation */}
+        <div className="flex border-b mb-6">
+          <button
+            onClick={() => setActiveTab('users')}
+            className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
+              activeTab === 'users'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Users size={16} className="inline mr-2" />
+            Users
+          </button>
+          <button
+            onClick={() => setActiveTab('documents')}
+            className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
+              activeTab === 'documents'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <FileText size={16} className="inline mr-2" />
+            Documents
+          </button>
+        </div>
+
+        {/* Documents Section */}
+        {activeTab === 'documents' && (
+          <div className="bg-white rounded-lg border shadow-sm">
+            <div className="px-6 py-4 border-b">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="font-semibold text-gray-900">Documents</h2>
+                  <p className="text-sm text-gray-500">
+                    {documents.length} documents in your categories
+                  </p>
+                </div>
+                <Button
+                  onClick={() => setShowUploadModal(true)}
+                  disabled={assignedCategories.length === 0}
+                >
+                  <Upload size={18} className="mr-2" />
+                  Upload Document
+                </Button>
+              </div>
+            </div>
+
+            {documents.length === 0 ? (
+              <div className="px-6 py-12 text-center">
+                <FileText className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">No documents yet</h3>
+                <p className="text-gray-500 mb-4">
+                  Upload PDF documents to your assigned categories
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-gray-50 text-left text-sm text-gray-600">
+                    <tr>
+                      <th className="px-6 py-3 font-medium">Document</th>
+                      <th className="px-6 py-3 font-medium">Category</th>
+                      <th className="px-6 py-3 font-medium">Size</th>
+                      <th className="px-6 py-3 font-medium">Status</th>
+                      <th className="px-6 py-3 font-medium">Uploaded</th>
+                      <th className="px-6 py-3 font-medium text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y">
+                    {documents.map((doc) => (
+                      <tr key={doc.id} className="hover:bg-gray-50">
+                        <td className="px-6 py-4">
+                          <div className="flex items-center gap-3">
+                            <FileText size={20} className="text-red-500" />
+                            <span className="font-medium text-gray-900">{doc.filename}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-wrap gap-1">
+                            {doc.categories.map(cat => (
+                              <span
+                                key={cat.categoryId}
+                                className="inline-flex items-center gap-1 px-2 py-0.5 text-xs bg-orange-100 text-orange-700 rounded-full"
+                              >
+                                {cat.categoryName}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-600">
+                          {formatFileSize(doc.size)}
+                        </td>
+                        <td className="px-6 py-4">
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 text-xs rounded-full ${
+                              doc.status === 'ready'
+                                ? 'bg-green-100 text-green-700'
+                                : doc.status === 'processing'
+                                ? 'bg-yellow-100 text-yellow-700'
+                                : 'bg-red-100 text-red-700'
+                            }`}
+                          >
+                            {doc.status}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-sm text-gray-600">
+                          {formatDate(doc.uploadedAt)}
+                        </td>
+                        <td className="px-6 py-4">
+                          <div className="flex items-center justify-end">
+                            <button
+                              onClick={() => handleDeleteDocument(doc.id)}
+                              disabled={deletingDocId === doc.id}
+                              className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg disabled:opacity-50"
+                              title="Delete document"
+                            >
+                              {deletingDocId === doc.id ? (
+                                <Spinner size="sm" />
+                              ) : (
+                                <Trash2 size={16} />
+                              )}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Users Section */}
+        {activeTab === 'users' && (
         <div className="bg-white rounded-lg border shadow-sm">
           <div className="px-6 py-4 border-b">
             <div className="flex items-center justify-between">
@@ -290,7 +529,103 @@ export default function SuperUserPage() {
             </div>
           )}
         </div>
+        )}
       </main>
+
+      {/* Upload Document Modal */}
+      <Modal
+        isOpen={showUploadModal}
+        onClose={() => {
+          setShowUploadModal(false);
+          setUploadFile(null);
+          setUploadCategory(null);
+        }}
+        title="Upload Document"
+      >
+        <form onSubmit={handleUploadDocument}>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                PDF File *
+              </label>
+              <div className="border-2 border-dashed rounded-lg p-4">
+                {uploadFile ? (
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <FileText size={20} className="text-red-500" />
+                      <span className="text-sm font-medium">{uploadFile.name}</span>
+                      <span className="text-xs text-gray-500">
+                        ({formatFileSize(uploadFile.size)})
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setUploadFile(null)}
+                      className="p-1 hover:bg-gray-100 rounded"
+                    >
+                      <X size={16} className="text-gray-500" />
+                    </button>
+                  </div>
+                ) : (
+                  <label className="flex flex-col items-center cursor-pointer">
+                    <Upload size={24} className="text-gray-400 mb-2" />
+                    <span className="text-sm text-gray-600">Click to select a PDF file</span>
+                    <span className="text-xs text-gray-400 mt-1">Max size: 50MB</span>
+                    <input
+                      type="file"
+                      accept=".pdf,application/pdf"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        if (file) setUploadFile(file);
+                      }}
+                      className="hidden"
+                    />
+                  </label>
+                )}
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Category *
+              </label>
+              <select
+                value={uploadCategory || ''}
+                onChange={(e) => setUploadCategory(parseInt(e.target.value, 10) || null)}
+                required
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">Select category...</option>
+                {assignedCategories.map(cat => (
+                  <option key={cat.categoryId} value={cat.categoryId}>
+                    {cat.categoryName}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="flex justify-end gap-3 mt-6">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setShowUploadModal(false);
+                setUploadFile(null);
+                setUploadCategory(null);
+              }}
+              disabled={uploading}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              loading={uploading}
+              disabled={!uploadFile || !uploadCategory}
+            >
+              Upload
+            </Button>
+          </div>
+        </form>
+      </Modal>
 
       {/* Add Subscription Modal */}
       <Modal

@@ -960,7 +960,149 @@ Remove a subscription from a user.
 
 ---
 
-### 10. Super User - User Management
+### 10. Super User - Document Management
+
+Super users can upload and manage documents within their assigned categories.
+
+#### `GET /api/superuser/documents`
+
+Get documents in super user's assigned categories.
+
+**Authentication**: Required (superuser only)
+
+**Response** `200 OK`:
+```typescript
+{
+  assignedCategories: [
+    {
+      categoryId: number;
+      categoryName: string;
+      categorySlug: string;
+    }
+  ];
+  documents: [
+    {
+      id: number;
+      filename: string;
+      size: number;
+      status: "processing" | "ready" | "error";
+      uploadedBy: string;
+      uploadedAt: string;
+      categories: [
+        {
+          categoryId: number;
+          categoryName: string;
+        }
+      ];
+    }
+  ];
+}
+```
+
+**Error Responses**:
+
+| Status | Error | Description |
+|--------|-------|-------------|
+| 401 | `"Unauthorized"` | No valid session |
+| 403 | `"Super user access required"` | User is not a super user |
+
+---
+
+#### `POST /api/superuser/documents`
+
+Upload a document to one of super user's assigned categories.
+
+**Authentication**: Required (superuser only)
+
+**Request**: `multipart/form-data`
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `file` | File | Yes | PDF file (max 50MB) |
+| `categoryId` | string | Yes | Category ID (must be assigned to super user) |
+
+**Constraints**:
+- Max 50MB per file
+- PDF only
+- Cannot set `isGlobal` flag (always false for super users)
+- Category must be assigned to the super user
+
+**Response** `202 Accepted`:
+```typescript
+{
+  id: number;
+  filename: string;
+  size: number;
+  status: "processing";
+  message: "Document is being processed";
+  category: {
+    categoryId: number;
+    categoryName: string;
+  };
+}
+```
+
+**Error Responses**:
+
+| Status | Error | Description |
+|--------|-------|-------------|
+| 400 | `"No file provided"` | Missing file in request |
+| 400 | `"Category ID is required"` | Missing categoryId |
+| 400 | `"Only PDF files allowed"` | Invalid file type |
+| 403 | `"You do not have access to upload to this category"` | Category not assigned |
+| 404 | `"Category not found"` | Invalid category ID |
+| 413 | `"File too large (max 50MB)"` | File exceeds size limit |
+
+**Example**:
+```bash
+curl -X POST /api/superuser/documents \
+  -H "Cookie: next-auth.session-token=..." \
+  -F "file=@HR_Policy.pdf" \
+  -F "categoryId=1"
+```
+
+---
+
+#### `DELETE /api/superuser/documents/[docId]`
+
+Delete a document (only if uploaded by this super user).
+
+**Authentication**: Required (superuser only)
+
+**Constraints**:
+- Document must be in one of super user's assigned categories
+- Document must have been uploaded by this super user
+
+**Response** `200 OK`:
+```typescript
+{
+  success: true;
+  deleted: {
+    id: number;
+    filename: string;
+    chunksRemoved: number;
+  };
+}
+```
+
+**Error Responses**:
+
+| Status | Error | Description |
+|--------|-------|-------------|
+| 400 | `"Invalid document ID"` | Non-numeric document ID |
+| 403 | `"You do not have access to delete this document"` | Document not in assigned categories |
+| 403 | `"You can only delete documents you uploaded"` | Not the uploader |
+| 404 | `"Document not found"` | Invalid document ID |
+
+**Example**:
+```bash
+curl -X DELETE /api/superuser/documents/5 \
+  -H "Cookie: next-auth.session-token=..."
+```
+
+---
+
+### 11. Super User - User Management
 
 Super users can manage subscriptions for regular users within their assigned categories.
 
@@ -1088,7 +1230,7 @@ curl -X DELETE "/api/superuser/users?userEmail=user@example.com&categoryId=1" \
 
 ---
 
-### 11. Admin - Settings
+### 12. Admin - Settings
 
 #### `GET /api/admin/settings`
 
@@ -1148,7 +1290,7 @@ Update settings.
 
 ---
 
-### 12. Branding
+### 13. Branding
 
 #### `GET /api/branding`
 
@@ -1182,7 +1324,7 @@ Get branding settings (public endpoint, no authentication required).
 
 ---
 
-### 13. User Subscriptions
+### 14. User Subscriptions
 
 #### `GET /api/user/subscriptions`
 
@@ -1340,4 +1482,14 @@ curl -X POST http://localhost:3000/api/superuser/users \
   -H "Content-Type: application/json" \
   -H "Cookie: next-auth.session-token=TOKEN" \
   -d '{"userEmail": "user@example.com", "categoryId": 1}'
+
+# Super user: upload document to assigned category
+curl -X POST http://localhost:3000/api/superuser/documents \
+  -H "Cookie: next-auth.session-token=TOKEN" \
+  -F "file=@HR_Policy.pdf" \
+  -F "categoryId=1"
+
+# Super user: delete own document
+curl -X DELETE http://localhost:3000/api/superuser/documents/5 \
+  -H "Cookie: next-auth.session-token=TOKEN"
 ```

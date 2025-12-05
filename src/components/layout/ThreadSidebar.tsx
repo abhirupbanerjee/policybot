@@ -58,6 +58,10 @@ export default function ThreadSidebar({
   const userRole = (session?.user as { role?: string })?.role;
   const isAdmin = userRole === 'admin';
   const isSuperUser = userRole === 'superuser';
+  const isRegularUser = userRole === 'user';
+
+  // Regular users must select exactly one category per thread
+  const requiresSingleCategory = isRegularUser;
 
   const loadThreads = useCallback(async () => {
     try {
@@ -433,16 +437,24 @@ export default function ThreadSidebar({
           </div>
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
-              Categories (optional)
+              Category{requiresSingleCategory ? ' *' : ' (optional)'}
             </label>
             <p className="text-xs text-gray-500 mb-2">
-              Select categories to scope RAG queries for this thread
+              {requiresSingleCategory
+                ? 'Select a category for this thread'
+                : 'Select categories to scope RAG queries for this thread'}
             </p>
             <CategorySelector
               selectedIds={newThreadCategories}
               onChange={setNewThreadCategories}
-              placeholder="All available documents"
+              placeholder={requiresSingleCategory ? 'Select a category...' : 'All available documents'}
+              singleSelect={requiresSingleCategory}
             />
+            {requiresSingleCategory && newThreadCategories.length === 0 && (
+              <p className="text-xs text-amber-600 mt-1">
+                You must select a category to create a thread
+              </p>
+            )}
           </div>
         </div>
         <div className="flex justify-end gap-3 mt-6">
@@ -456,6 +468,7 @@ export default function ThreadSidebar({
           <Button
             onClick={createNewThread}
             loading={creating}
+            disabled={requiresSingleCategory && newThreadCategories.length === 0}
           >
             Create Thread
           </Button>
