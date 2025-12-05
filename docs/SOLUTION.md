@@ -402,6 +402,15 @@ Admin/Super User manages subscriptions:
 - Works across modern browsers
 - Graceful fallback for unsupported browsers
 
+### 8. Dynamic Branding System
+- **Sidebar branding**: Admin-configurable bot name and icon stored in SQLite settings
+- **Chat header**: Dynamic based on user's category subscriptions:
+  - Single subscription: "[Category] Assistant"
+  - Multiple subscriptions: "GEA Global Assistant"
+  - No subscriptions (admin): Falls back to configured branding
+- **Preset icons**: 11 industry-specific icons (government, operations, finance, etc.)
+- **Rationale**: Allows deployment customization for different organizations while providing context-aware naming for users
+
 ---
 
 ## Security Considerations

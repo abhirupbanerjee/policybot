@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { MessageSquare, RefreshCw } from 'lucide-react';
-import type { Message, Thread } from '@/types';
+import type { Message, Thread, UserSubscription } from '@/types';
 import MessageBubble from './MessageBubble';
 import MessageInput from './MessageInput';
 import Spinner from '@/components/ui/Spinner';
@@ -10,11 +10,41 @@ import Spinner from '@/components/ui/Spinner';
 interface ChatWindowProps {
   activeThread?: Thread | null;
   onThreadCreated?: (thread: Thread) => void;
+  userSubscriptions?: UserSubscription[];
+  brandingName?: string;
 }
 
-export default function ChatWindow({ activeThread, onThreadCreated }: ChatWindowProps) {
+export default function ChatWindow({ activeThread, onThreadCreated, userSubscriptions = [], brandingName = 'Policy Bot' }: ChatWindowProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [uploads, setUploads] = useState<string[]>([]);
+
+  // Compute dynamic header based on subscriptions
+  const getHeaderInfo = () => {
+    const activeSubscriptions = userSubscriptions.filter(s => s.isActive);
+
+    if (activeSubscriptions.length === 0) {
+      // No subscriptions (admin/superuser) - use branding
+      return {
+        title: brandingName,
+        subtitle: `Ask questions about policy documents`,
+      };
+    } else if (activeSubscriptions.length === 1) {
+      // Single subscription - use category name
+      const categoryName = activeSubscriptions[0].categoryName;
+      return {
+        title: `${categoryName} Assistant`,
+        subtitle: `Ask questions about ${categoryName}`,
+      };
+    } else {
+      // Multiple subscriptions - GEA Global Assistant
+      return {
+        title: 'GEA Global Assistant',
+        subtitle: 'Ask questions about GEA Global',
+      };
+    }
+  };
+
+  const headerInfo = getHeaderInfo();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [threadId, setThreadId] = useState<string | null>(null);
@@ -146,10 +176,10 @@ export default function ChatWindow({ activeThread, onThreadCreated }: ChatWindow
       {/* Header */}
       <header className="bg-white border-b px-6 py-4">
         <h1 className="text-lg font-semibold text-gray-900">
-          {activeThread?.title || 'Policy Bot'}
+          {activeThread?.title || headerInfo.title}
         </h1>
         <p className="text-sm text-gray-500">
-          Ask questions about policy documents
+          {headerInfo.subtitle}
         </p>
       </header>
 
@@ -159,10 +189,10 @@ export default function ChatWindow({ activeThread, onThreadCreated }: ChatWindow
           <div className="flex flex-col items-center justify-center h-full text-center">
             <MessageSquare className="w-12 h-12 text-gray-300 mb-4" />
             <h2 className="text-lg font-medium text-gray-900 mb-2">
-              Welcome to Policy Bot
+              Welcome to {headerInfo.title}
             </h2>
             <p className="text-gray-500 max-w-md">
-              Ask questions about policy documents or upload a document to check
+              {headerInfo.subtitle} or upload a document to check
               for compliance. Start by typing a question below.
             </p>
           </div>

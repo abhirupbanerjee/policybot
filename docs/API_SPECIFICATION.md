@@ -1131,6 +1131,10 @@ Update settings.
   tavilyCacheTtl?: number;
   tavilyEnabled?: boolean;
   systemPrompt?: string;
+  branding?: {
+    botName?: string;
+    botIcon?: string;
+  };
 }
 ```
 
@@ -1139,6 +1143,64 @@ Update settings.
 {
   settings: { /* updated settings */ };
   message: "Settings updated successfully";
+}
+```
+
+---
+
+### 12. Branding
+
+#### `GET /api/branding`
+
+Get branding settings (public endpoint, no authentication required).
+
+**Authentication**: Not required
+
+**Response** `200 OK`:
+```typescript
+{
+  botName: string;   // e.g., "Policy Bot"
+  botIcon: string;   // e.g., "policy"
+  availableIcons: [
+    { key: string; label: string; lucideIcon: string }
+  ];
+}
+```
+
+**Available Icon Keys**:
+- `government` - Landmark icon
+- `operations` - Settings icon
+- `finance` - DollarSign icon
+- `kpi` - BarChart3 icon
+- `logs` - FileText icon
+- `data` - Database icon
+- `monitoring` - Activity icon
+- `architecture` - Layers icon
+- `internet` - Globe icon
+- `systems` - Server icon
+- `policy` - ScrollText icon (default)
+
+---
+
+### 13. User Subscriptions
+
+#### `GET /api/user/subscriptions`
+
+Get the current user's category subscriptions.
+
+**Authentication**: Required
+
+**Response** `200 OK`:
+```typescript
+{
+  subscriptions: [
+    {
+      categoryId: number;
+      categoryName: string;
+      categorySlug: string;
+      isActive: boolean;
+    }
+  ];
 }
 ```
 

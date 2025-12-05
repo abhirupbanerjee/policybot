@@ -13,8 +13,14 @@ import {
   setUploadLimits,
   getRetentionSettings,
   setRetentionSettings,
+  getBrandingSettings,
+  setBrandingSettings,
   getSettingMetadata,
+  setSystemPrompt,
   MODEL_PRESETS,
+  BRANDING_ICONS,
+  DEFAULT_PRESET_ID,
+  getDefaultSystemPrompt,
 } from '@/lib/db/config';
 import { invalidateQueryCache, invalidateTavilyCache } from '@/lib/redis';
 import type { ApiError } from '@/types';
@@ -56,12 +62,14 @@ export async function GET() {
     const tavilySettings = getTavilySettings();
     const uploadLimits = getUploadLimits();
     const retentionSettings = getRetentionSettings();
+    const brandingSettings = getBrandingSettings();
 
     // Get metadata for last updated info
     const ragMeta = getSettingMetadata('rag-settings');
     const llmMeta = getSettingMetadata('llm-settings');
     const acronymsMeta = getSettingMetadata('acronym-mappings');
     const tavilyMeta = getSettingMetadata('tavily-settings');
+    const brandingMeta = getSettingMetadata('branding-settings');
 
     return NextResponse.json({
       rag: {
@@ -85,15 +93,25 @@ export async function GET() {
         updatedAt: tavilyMeta?.updatedAt || new Date().toISOString(),
         updatedBy: tavilyMeta?.updatedBy || 'system',
       },
+      branding: {
+        ...brandingSettings,
+        updatedAt: brandingMeta?.updatedAt || new Date().toISOString(),
+        updatedBy: brandingMeta?.updatedBy || 'system',
+      },
       uploadLimits,
       retentionSettings,
       availableModels: AVAILABLE_MODELS,
       modelPresets: MODEL_PRESETS,
+      brandingIcons: BRANDING_ICONS,
       defaults: {
-        rag: getRagSettings(), // Already returns defaults if not set
-        llm: getLlmSettings(),
+        // Return true hardcoded defaults from the default preset
+        rag: MODEL_PRESETS.find(p => p.id === DEFAULT_PRESET_ID)?.ragSettings,
+        llm: MODEL_PRESETS.find(p => p.id === DEFAULT_PRESET_ID)?.llmSettings,
+        systemPrompt: getDefaultSystemPrompt(),
+        presetId: DEFAULT_PRESET_ID,
         acronyms: { mappings: {} },
         tavily: getTavilySettings(),
+        branding: getBrandingSettings(),
       },
     });
   } catch (error) {
@@ -427,6 +445,79 @@ export async function PUT(request: NextRequest) {
           preset: preset,
           llm: updatedLlm,
           rag: updatedRag,
+        };
+        break;
+      }
+
+      case 'branding': {
+        const { botName, botIcon } = settings;
+
+        // Validate bot name
+        if (typeof botName !== 'string' || botName.trim().length === 0) {
+          return NextResponse.json<ApiError>(
+            { error: 'Bot name is required', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        if (botName.length > 50) {
+          return NextResponse.json<ApiError>(
+            { error: 'Bot name must be 50 characters or less', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Validate bot icon
+        const validIcons = BRANDING_ICONS.map(i => i.key);
+        if (!validIcons.includes(botIcon)) {
+          return NextResponse.json<ApiError>(
+            { error: 'Invalid icon selected', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        result = setBrandingSettings({
+          botName: botName.trim(),
+          botIcon,
+        }, user.email);
+
+        // Return the updated branding with metadata
+        const brandingMeta = getSettingMetadata('branding-settings');
+        return NextResponse.json({
+          success: true,
+          branding: {
+            ...result,
+            updatedAt: brandingMeta?.updatedAt || new Date().toISOString(),
+            updatedBy: brandingMeta?.updatedBy || user.email,
+          },
+        });
+      }
+
+      case 'restoreAllDefaults': {
+        // Find the default preset (gpt-4.1-mini)
+        const defaultPreset = MODEL_PRESETS.find(p => p.id === DEFAULT_PRESET_ID);
+        if (!defaultPreset) {
+          return NextResponse.json<ApiError>(
+            { error: 'Default preset not found', code: 'SERVICE_ERROR' },
+            { status: 500 }
+          );
+        }
+
+        // Apply LLM settings from preset
+        const updatedLlm = setLlmSettings(defaultPreset.llmSettings, user.email);
+
+        // Apply RAG settings from preset
+        const updatedRag = setRagSettings(defaultPreset.ragSettings, user.email);
+
+        // Restore default system prompt
+        const defaultPrompt = getDefaultSystemPrompt();
+        setSystemPrompt(defaultPrompt, user.email);
+
+        result = {
+          llm: updatedLlm,
+          rag: updatedRag,
+          systemPrompt: defaultPrompt,
+          preset: defaultPreset,
         };
         break;
       }

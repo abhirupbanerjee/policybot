@@ -33,6 +33,7 @@ A Retrieval-Augmented Generation (RAG) chatbot that helps government staff query
 - **Super User Management** - Assign categories to super users for delegated management
 - **Web Search Configuration** - Enable/disable and configure Tavily web search settings
 - **LLM & RAG Settings** - Configure model, temperature, chunk sizes, and caching
+- **Custom Branding** - Configure bot name and icon in admin settings
 
 ### Security & Access Control
 - **Multi-Provider Auth** - Azure AD and Google OAuth support
@@ -420,6 +421,20 @@ Policy Bot uses a dual-layer approach:
 2. **Fallback:** pdf-parse - Traditional PDF text extraction
 
 The system automatically falls back to pdf-parse if Mistral OCR fails or is unavailable.
+
+### Branding Configuration
+
+Admins can customize the bot's appearance through the Settings tab:
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| Bot Name | Display name shown in sidebar | "Policy Bot" |
+| Bot Icon | Icon from preset list (government, operations, finance, etc.) | "policy" |
+
+**Dynamic Chat Header:**
+- Users with 1 category subscription see: "[Category] Assistant"
+- Users with 2+ subscriptions see: "GEA Global Assistant"
+- Admins/superusers see the configured bot name
 
 ## User Management
 

@@ -53,6 +53,26 @@ export interface RetentionSettings {
 
 export type AcronymMappings = Record<string, string[]>;
 
+export interface BrandingSettings {
+  botName: string;
+  botIcon: string;
+}
+
+// Available icon options for branding
+export const BRANDING_ICONS = [
+  { key: 'government', label: 'Government', lucideIcon: 'Landmark' },
+  { key: 'operations', label: 'Operations', lucideIcon: 'Settings' },
+  { key: 'finance', label: 'Finance', lucideIcon: 'DollarSign' },
+  { key: 'kpi', label: 'KPI', lucideIcon: 'BarChart3' },
+  { key: 'logs', label: 'Logs', lucideIcon: 'FileText' },
+  { key: 'data', label: 'Data', lucideIcon: 'Database' },
+  { key: 'monitoring', label: 'Monitoring', lucideIcon: 'Activity' },
+  { key: 'architecture', label: 'Architecture', lucideIcon: 'Layers' },
+  { key: 'internet', label: 'Internet', lucideIcon: 'Globe' },
+  { key: 'systems', label: 'Systems', lucideIcon: 'Server' },
+  { key: 'policy', label: 'Policy', lucideIcon: 'ScrollText' },
+] as const;
+
 // ============ Preset Configurations ============
 
 export interface ModelPreset {
@@ -130,6 +150,9 @@ export const MODEL_PRESETS: ModelPreset[] = [
   },
 ];
 
+// Default preset ID (used for "Restore All Defaults")
+export const DEFAULT_PRESET_ID = 'gpt-4.1-mini';
+
 // Setting keys
 export type SettingKey =
   | 'rag-settings'
@@ -138,7 +161,8 @@ export type SettingKey =
   | 'upload-limits'
   | 'system-prompt'
   | 'acronym-mappings'
-  | 'retention-settings';
+  | 'retention-settings'
+  | 'branding-settings';
 
 // ============ Generic Operations ============
 
@@ -206,8 +230,8 @@ export function getSettingMetadata(key: SettingKey): {
  */
 export function getRagSettings(): RagSettings {
   return getSetting<RagSettings>('rag-settings') || {
-    topKChunks: 20,
-    maxContextChunks: 15,
+    topKChunks: 15,           // Match gpt-4.1-mini preset
+    maxContextChunks: 10,     // Match gpt-4.1-mini preset
     similarityThreshold: 0.5,
     chunkSize: 800,
     chunkOverlap: 150,
@@ -222,8 +246,8 @@ export function getRagSettings(): RagSettings {
  */
 export function getLlmSettings(): LlmSettings {
   return getSetting<LlmSettings>('llm-settings') || {
-    model: 'gpt-4o-mini',
-    temperature: 0.3,
+    model: 'gpt-4.1-mini',    // Default to gpt-4.1-mini preset
+    temperature: 0.7,          // Match gpt-4.1-mini preset
     maxTokens: 2000,
   };
 }
@@ -276,6 +300,16 @@ export function getRetentionSettings(): RetentionSettings {
   return getSetting<RetentionSettings>('retention-settings') || {
     threadRetentionDays: 90,
     storageAlertThreshold: 70,
+  };
+}
+
+/**
+ * Get branding settings
+ */
+export function getBrandingSettings(): BrandingSettings {
+  return getSetting<BrandingSettings>('branding-settings') || {
+    botName: 'Policy Bot',
+    botIcon: 'policy',
   };
 }
 
@@ -345,9 +379,19 @@ export function setRetentionSettings(settings: Partial<RetentionSettings>, updat
   return updated;
 }
 
+/**
+ * Update branding settings
+ */
+export function setBrandingSettings(settings: Partial<BrandingSettings>, updatedBy?: string): BrandingSettings {
+  const current = getBrandingSettings();
+  const updated = { ...current, ...settings };
+  setSetting('branding-settings', updated, updatedBy);
+  return updated;
+}
+
 // ============ Default System Prompt ============
 
-function getDefaultSystemPrompt(): string {
+export function getDefaultSystemPrompt(): string {
   return `# SYSTEM ROLE — Government Policy & Strategy Assistant (GPSA)
 
 You help government staff analyse, interpret, and compare policy and strategy documents.
@@ -543,6 +587,7 @@ export function getAllSettings(): {
   systemPrompt: string;
   acronymMappings: AcronymMappings;
   retention: RetentionSettings;
+  branding: BrandingSettings;
 } {
   return {
     rag: getRagSettings(),
@@ -552,5 +597,6 @@ export function getAllSettings(): {
     systemPrompt: getSystemPrompt(),
     acronymMappings: getAcronymMappings(),
     retention: getRetentionSettings(),
+    branding: getBrandingSettings(),
   };
 }

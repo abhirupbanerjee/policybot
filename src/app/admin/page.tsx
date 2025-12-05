@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Upload, RefreshCw, Trash2, FileText, AlertCircle, Users, UserPlus, Shield, User, Settings, Save, FolderOpen, Plus, Edit2, BarChart3, Database, HardDrive, Globe, Tag } from 'lucide-react';
+import { ArrowLeft, Upload, RefreshCw, Trash2, FileText, AlertCircle, Users, UserPlus, Shield, User, Settings, Save, FolderOpen, Plus, Edit2, BarChart3, Database, HardDrive, Globe, Tag, Landmark, DollarSign, Activity, Layers, Server, ScrollText } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import Spinner from '@/components/ui/Spinner';
@@ -106,7 +106,29 @@ interface ModelPreset {
 }
 
 type TabType = 'documents' | 'categories' | 'users' | 'settings' | 'stats';
-type SettingsSection = 'prompt' | 'rag' | 'llm' | 'acronyms' | 'tavily';
+type SettingsSection = 'prompt' | 'rag' | 'llm' | 'acronyms' | 'tavily' | 'branding';
+
+interface BrandingSettings {
+  botName: string;
+  botIcon: string;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+// Available icon options for branding with their Lucide components
+const BRANDING_ICONS = [
+  { key: 'government', label: 'Government', Icon: Landmark },
+  { key: 'operations', label: 'Operations', Icon: Settings },
+  { key: 'finance', label: 'Finance', Icon: DollarSign },
+  { key: 'kpi', label: 'KPI', Icon: BarChart3 },
+  { key: 'logs', label: 'Logs', Icon: FileText },
+  { key: 'data', label: 'Data', Icon: Database },
+  { key: 'monitoring', label: 'Monitoring', Icon: Activity },
+  { key: 'architecture', label: 'Architecture', Icon: Layers },
+  { key: 'internet', label: 'Internet', Icon: Globe },
+  { key: 'systems', label: 'Systems', Icon: Server },
+  { key: 'policy', label: 'Policy', Icon: ScrollText },
+] as const;
 
 interface SystemStats {
   database: {
@@ -211,15 +233,20 @@ export default function AdminPage() {
   const [editedAcronyms, setEditedAcronyms] = useState<string>('');
   const [tavilySettings, setTavilySettings] = useState<TavilySettings | null>(null);
   const [editedTavily, setEditedTavily] = useState<Omit<TavilySettings, 'updatedAt' | 'updatedBy'> | null>(null);
+  const [brandingSettings, setBrandingSettings] = useState<BrandingSettings | null>(null);
+  const [editedBranding, setEditedBranding] = useState<Omit<BrandingSettings, 'updatedAt' | 'updatedBy'> | null>(null);
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
   const [modelPresets, setModelPresets] = useState<ModelPreset[]>([]);
   const [applyingPreset, setApplyingPreset] = useState(false);
+  const [restoringDefaults, setRestoringDefaults] = useState(false);
+  const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
   const [settingsLoading, setSettingsLoading] = useState(true);
   const [savingSettings, setSavingSettings] = useState(false);
   const [ragModified, setRagModified] = useState(false);
   const [llmModified, setLlmModified] = useState(false);
   const [acronymsModified, setAcronymsModified] = useState(false);
   const [tavilyModified, setTavilyModified] = useState(false);
+  const [brandingModified, setBrandingModified] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
   const [refreshingAll, setRefreshingAll] = useState(false);
@@ -376,12 +403,18 @@ export default function AdminPage() {
         excludeDomains: data.tavily.excludeDomains,
         cacheTTLSeconds: data.tavily.cacheTTLSeconds,
       });
+      setBrandingSettings(data.branding);
+      setEditedBranding({
+        botName: data.branding.botName,
+        botIcon: data.branding.botIcon,
+      });
       setAvailableModels(data.availableModels);
       setModelPresets(data.modelPresets || []);
       setRagModified(false);
       setLlmModified(false);
       setAcronymsModified(false);
       setTavilyModified(false);
+      setBrandingModified(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load settings');
     } finally {
@@ -1068,6 +1101,34 @@ export default function AdminPage() {
     }
   };
 
+  // Restore all settings to defaults (gpt-4.1-mini preset + default system prompt)
+  const handleRestoreAllDefaults = async () => {
+    setRestoringDefaults(true);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/admin/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'restoreAllDefaults', settings: {} }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to restore defaults');
+      }
+
+      // Reload all settings
+      await loadSettings();
+      await loadSystemPrompt();
+      setShowRestoreConfirm(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to restore defaults');
+    } finally {
+      setRestoringDefaults(false);
+    }
+  };
+
   // Acronym handlers
   const handleAcronymsChange = (value: string) => {
     setEditedAcronyms(value);
@@ -1180,6 +1241,44 @@ export default function AdminPage() {
         cacheTTLSeconds: tavilySettings.cacheTTLSeconds,
       });
       setTavilyModified(false);
+    }
+  };
+
+  // Branding handlers
+  const handleSaveBranding = async () => {
+    if (!editedBranding || !brandingModified) return;
+
+    setSavingSettings(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/admin/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'branding', settings: editedBranding }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to save branding settings');
+      }
+
+      const data = await response.json();
+      setBrandingSettings(data.branding);
+      setBrandingModified(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save branding settings');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const handleResetBranding = () => {
+    if (brandingSettings) {
+      setEditedBranding({
+        botName: brandingSettings.botName,
+        botIcon: brandingSettings.botIcon,
+      });
+      setBrandingModified(false);
     }
   };
 
@@ -1762,6 +1861,16 @@ export default function AdminPage() {
                 >
                   Web Search
                 </button>
+                <button
+                  onClick={() => setSettingsSection('branding')}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    settingsSection === 'branding'
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  Branding
+                </button>
               </nav>
             </div>
 
@@ -1818,8 +1927,21 @@ export default function AdminPage() {
                   {/* Model Presets Card */}
                   <div className="bg-white rounded-lg border shadow-sm">
                     <div className="px-6 py-4 border-b">
-                      <h2 className="font-semibold text-gray-900">Quick Presets</h2>
-                      <p className="text-sm text-gray-500">Apply recommended model + RAG configurations</p>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h2 className="font-semibold text-gray-900">Quick Presets</h2>
+                          <p className="text-sm text-gray-500">Apply recommended model + RAG configurations</p>
+                        </div>
+                        <Button
+                          variant="secondary"
+                          onClick={() => setShowRestoreConfirm(true)}
+                          disabled={restoringDefaults || applyingPreset}
+                          className="text-orange-600 border-orange-300 hover:bg-orange-50"
+                        >
+                          <RefreshCw size={16} className="mr-2" />
+                          Restore All Defaults
+                        </Button>
+                      </div>
                     </div>
                     <div className="p-6">
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -2303,6 +2425,100 @@ export default function AdminPage() {
                       {tavilySettings && (
                         <p className="text-xs text-gray-500">
                           Last updated: {formatDate(tavilySettings.updatedAt)} by {tavilySettings.updatedBy}
+                        </p>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
+              {/* Branding Section */}
+              {settingsSection === 'branding' && (
+                <div className="bg-white rounded-lg border shadow-sm">
+                  <div className="px-6 py-4 border-b">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h2 className="font-semibold text-gray-900">Branding</h2>
+                        <p className="text-sm text-gray-500">Customize the bot&apos;s name and icon</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {brandingModified && (
+                          <Button variant="secondary" onClick={handleResetBranding} disabled={savingSettings}>
+                            Reset
+                          </Button>
+                        )}
+                        <Button onClick={handleSaveBranding} disabled={!brandingModified || savingSettings} loading={savingSettings}>
+                          <Save size={18} className="mr-2" />
+                          Save
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                  {settingsLoading ? (
+                    <div className="px-6 py-12 flex justify-center"><Spinner size="lg" /></div>
+                  ) : editedBranding ? (
+                    <div className="p-6 space-y-6">
+                      {/* Bot Name */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-900 mb-1">Bot Name</label>
+                        <input
+                          type="text"
+                          value={editedBranding.botName}
+                          onChange={(e) => {
+                            setEditedBranding({ ...editedBranding, botName: e.target.value });
+                            setBrandingModified(true);
+                          }}
+                          placeholder="Policy Bot"
+                          className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                        <p className="mt-1 text-xs text-gray-500">This name appears in the sidebar header</p>
+                      </div>
+
+                      {/* Bot Icon */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-900 mb-2">Bot Icon</label>
+                        <div className="grid grid-cols-4 sm:grid-cols-6 gap-3">
+                          {BRANDING_ICONS.map(({ key, label, Icon }) => (
+                            <button
+                              key={key}
+                              type="button"
+                              onClick={() => {
+                                setEditedBranding({ ...editedBranding, botIcon: key });
+                                setBrandingModified(true);
+                              }}
+                              className={`flex flex-col items-center justify-center p-3 rounded-lg border-2 transition-all ${
+                                editedBranding.botIcon === key
+                                  ? 'border-blue-500 bg-blue-50 text-blue-700'
+                                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-600'
+                              }`}
+                            >
+                              <Icon size={24} />
+                              <span className="mt-1 text-xs">{label}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Preview */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-900 mb-2">Preview</label>
+                        <div className="inline-flex items-center gap-2 px-4 py-3 bg-gray-100 rounded-lg">
+                          {(() => {
+                            const iconData = BRANDING_ICONS.find(i => i.key === editedBranding.botIcon);
+                            if (iconData) {
+                              const IconComponent = iconData.Icon;
+                              return <IconComponent size={24} className="text-blue-600" />;
+                            }
+                            return <ScrollText size={24} className="text-blue-600" />;
+                          })()}
+                          <span className="text-xl font-bold text-gray-900">{editedBranding.botName || 'Policy Bot'}</span>
+                        </div>
+                      </div>
+
+                      {/* Last Updated */}
+                      {brandingSettings?.updatedAt && (
+                        <p className="text-xs text-gray-500">
+                          Last updated: {formatDate(brandingSettings.updatedAt)} by {brandingSettings.updatedBy}
                         </p>
                       )}
                     </div>
@@ -3346,6 +3562,41 @@ export default function AdminPage() {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Restore All Defaults Confirmation Modal */}
+      <Modal
+        isOpen={showRestoreConfirm}
+        onClose={() => setShowRestoreConfirm(false)}
+        title="Restore All Defaults?"
+      >
+        <p className="text-gray-600 mb-4">
+          This will reset ALL settings to their default values:
+        </p>
+        <ul className="text-sm text-gray-600 list-disc list-inside mb-4 space-y-1">
+          <li><strong>LLM:</strong> GPT-4.1 Mini (temp: 0.7, tokens: 2000)</li>
+          <li><strong>RAG:</strong> 15/10 chunks, 0.5 threshold</li>
+          <li><strong>System Prompt:</strong> Default GPSA prompt</li>
+        </ul>
+        <p className="text-sm text-orange-600 font-medium">
+          This action cannot be undone. Your current settings will be overwritten.
+        </p>
+        <div className="flex justify-end gap-3 mt-6">
+          <Button
+            variant="secondary"
+            onClick={() => setShowRestoreConfirm(false)}
+            disabled={restoringDefaults}
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleRestoreAllDefaults}
+            loading={restoringDefaults}
+            className="bg-orange-600 hover:bg-orange-700"
+          >
+            Restore Defaults
+          </Button>
+        </div>
       </Modal>
     </div>
   );

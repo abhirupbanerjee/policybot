@@ -1,13 +1,36 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, MessageSquare, Trash2, Menu, X, Settings, LogOut, Tag, Users } from 'lucide-react';
+import {
+  Plus, MessageSquare, Trash2, Menu, X, Settings, LogOut, Tag, Users,
+  Landmark, DollarSign, BarChart3, FileText, Database, Activity, Layers, Globe, Server, ScrollText
+} from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
 import Link from 'next/link';
 import type { Thread } from '@/types';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import CategorySelector from '@/components/ui/CategorySelector';
+
+// Icon mapping for branding
+const ICON_COMPONENTS: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
+  government: Landmark,
+  operations: Settings,
+  finance: DollarSign,
+  kpi: BarChart3,
+  logs: FileText,
+  data: Database,
+  monitoring: Activity,
+  architecture: Layers,
+  internet: Globe,
+  systems: Server,
+  policy: ScrollText,
+};
+
+interface BrandingData {
+  botName: string;
+  botIcon: string;
+}
 
 interface ThreadSidebarProps {
   onThreadSelect?: (thread: Thread | null) => void;
@@ -30,6 +53,7 @@ export default function ThreadSidebar({
   const [newThreadTitle, setNewThreadTitle] = useState('');
   const [newThreadCategories, setNewThreadCategories] = useState<number[]>([]);
   const [creating, setCreating] = useState(false);
+  const [branding, setBranding] = useState<BrandingData>({ botName: 'Policy Bot', botIcon: 'policy' });
 
   const userRole = (session?.user as { role?: string })?.role;
   const isAdmin = userRole === 'admin';
@@ -56,6 +80,22 @@ export default function ThreadSidebar({
   useEffect(() => {
     loadThreads();
   }, [loadThreads]);
+
+  // Load branding settings
+  useEffect(() => {
+    const loadBranding = async () => {
+      try {
+        const response = await fetch('/api/branding');
+        if (response.ok) {
+          const data = await response.json();
+          setBranding({ botName: data.botName, botIcon: data.botIcon });
+        }
+      } catch (err) {
+        console.error('Failed to load branding:', err);
+      }
+    };
+    loadBranding();
+  }, []);
 
   const openNewThreadModal = () => {
     setNewThreadTitle('');
@@ -198,7 +238,13 @@ export default function ThreadSidebar({
       >
         {/* Header */}
         <div className="p-4 border-b">
-          <h1 className="text-xl font-bold text-gray-900">Policy Bot</h1>
+          <div className="flex items-center gap-2">
+            {(() => {
+              const IconComponent = ICON_COMPONENTS[branding.botIcon] || ScrollText;
+              return <IconComponent size={24} className="text-blue-600" />;
+            })()}
+            <h1 className="text-xl font-bold text-gray-900">{branding.botName}</h1>
+          </div>
         </div>
 
         {/* New Thread Button */}

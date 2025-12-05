@@ -433,6 +433,28 @@ Key-value configuration store.
 | updated_at | DATETIME | Last update timestamp |
 | updated_by | TEXT | Admin email who updated |
 
+**Settings Keys:**
+
+| Key | Type | Description |
+|-----|------|-------------|
+| `rag-settings` | RagSettings | RAG retrieval parameters |
+| `llm-settings` | LlmSettings | LLM model and parameters |
+| `tavily-settings` | TavilySettings | Web search configuration |
+| `upload-limits` | UploadLimits | File upload constraints |
+| `system-prompt` | SystemPrompt | AI system prompt content |
+| `acronym-mappings` | AcronymMappings | Custom acronym expansions |
+| `retention-settings` | RetentionSettings | Data retention policies |
+| `branding-settings` | BrandingSettings | Bot name and icon for sidebar |
+
+**BrandingSettings Interface:**
+
+```typescript
+export interface BrandingSettings {
+  botName: string;    // Display name in sidebar (default: "Policy Bot")
+  botIcon: string;    // Icon key: government, operations, finance, kpi, logs, data, monitoring, architecture, internet, systems, policy
+}
+```
+
 ### storage_alerts
 
 Storage usage alerts for monitoring.
