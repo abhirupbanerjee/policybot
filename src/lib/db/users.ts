@@ -409,9 +409,9 @@ export function getUsersSubscribedToCategory(categoryId: number): Array<{
     user_id: number;
     is_active: number;
     subscribed_by: string;
-    created_at: string;
+    subscribed_at: string;
   }>(`
-    SELECT user_id, is_active, subscribed_by, created_at
+    SELECT user_id, is_active, subscribed_by, subscribed_at
     FROM user_subscriptions
     WHERE category_id = ?
   `, [categoryId]);
@@ -420,7 +420,7 @@ export function getUsersSubscribedToCategory(categoryId: number): Array<{
     userId: r.user_id,
     isActive: r.is_active === 1,
     subscribedBy: r.subscribed_by,
-    subscribedAt: r.created_at,
+    subscribedAt: r.subscribed_at,
   }));
 }
 
