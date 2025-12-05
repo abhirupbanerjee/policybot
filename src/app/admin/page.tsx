@@ -9,6 +9,7 @@ import Spinner from '@/components/ui/Spinner';
 import type { GlobalDocument } from '@/types';
 
 interface AllowedUser {
+  id?: number;
   email: string;
   name?: string;
   role: 'admin' | 'superuser' | 'user';
@@ -702,18 +703,12 @@ export default function AdminPage() {
     setError(null);
 
     try {
-      // Get user ID first
-      const userResponse = await fetch('/api/admin/users');
-      const usersData = await userResponse.json();
-      const userData = usersData.users.find((u: AllowedUser & { id?: number }) =>
-        u.email === managingUserSubs.email
-      );
+      // Use user ID from the managingUserSubs object
+      const userId = managingUserSubs.id;
 
-      if (!userData?.id) {
+      if (!userId) {
         throw new Error('Could not find user ID');
       }
-
-      const userId = userData.id;
 
       if (managingUserSubs.role === 'user') {
         // Get current subscriptions

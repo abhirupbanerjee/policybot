@@ -44,6 +44,7 @@ export async function GET() {
 
         return {
           ...u,
+          id: userId,
           addedAt: u.addedAt.toISOString(),
           subscriptions,
           assignedCategories,
