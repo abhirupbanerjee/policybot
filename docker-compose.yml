@@ -45,7 +45,7 @@ services:
       - "traefik.http.routers.app.tls.certresolver=letsencrypt"
       - "traefik.http.services.app.loadbalancer.server.port=3000"
     volumes:
-      - app_data:/app/data
+      - ./data/app:/app/data
     depends_on:
       chroma:
         condition: service_started
@@ -61,11 +61,12 @@ services:
     image: chromadb/chroma:latest
     container_name: policy-bot-chroma
     volumes:
-      - chroma_data:/chroma/chroma
+      - ./data/chroma:/chroma/chroma
     environment:
       - ANONYMIZED_TELEMETRY=false
       - ALLOW_RESET=false
       - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/chroma/chroma
     networks:
       - policy-bot-network
     restart: unless-stopped
@@ -74,7 +75,7 @@ services:
     image: redis:7-alpine
     container_name: policy-bot-redis
     volumes:
-      - redis_data:/data
+      - ./data/redis:/data
     command: redis-server --appendonly yes
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -115,9 +116,3 @@ networks:
 volumes:
   letsencrypt:
     name: policy-bot-letsencrypt
-  app_data:
-    name: policy-bot-app-data
-  chroma_data:
-    name: policy-bot-chroma-data
-  redis_data:
-    name: policy-bot-redis-data

@@ -124,11 +124,21 @@ interface ModelPreset {
 }
 
 type TabType = 'documents' | 'categories' | 'users' | 'settings' | 'stats';
-type SettingsSection = 'prompt' | 'rag' | 'llm' | 'acronyms' | 'tavily' | 'branding';
+type SettingsSection = 'prompt' | 'rag' | 'llm' | 'acronyms' | 'tavily' | 'branding' | 'reranker';
 
 interface BrandingSettings {
   botName: string;
   botIcon: string;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+interface RerankerSettings {
+  enabled: boolean;
+  provider: 'cohere' | 'local';
+  topKForReranking: number;
+  minRerankerScore: number;
+  cacheTTLSeconds: number;
   updatedAt?: string;
   updatedBy?: string;
 }
@@ -258,6 +268,8 @@ export default function AdminPage() {
   const [editedTavily, setEditedTavily] = useState<Omit<TavilySettings, 'updatedAt' | 'updatedBy'> | null>(null);
   const [brandingSettings, setBrandingSettings] = useState<BrandingSettings | null>(null);
   const [editedBranding, setEditedBranding] = useState<Omit<BrandingSettings, 'updatedAt' | 'updatedBy'> | null>(null);
+  const [rerankerSettings, setRerankerSettings] = useState<RerankerSettings | null>(null);
+  const [editedReranker, setEditedReranker] = useState<Omit<RerankerSettings, 'updatedAt' | 'updatedBy'> | null>(null);
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
   const [modelPresets, setModelPresets] = useState<ModelPreset[]>([]);
   const [providerStatus, setProviderStatus] = useState<Record<string, ProviderStatus>>({});
@@ -273,6 +285,7 @@ export default function AdminPage() {
   const [acronymsModified, setAcronymsModified] = useState(false);
   const [tavilyModified, setTavilyModified] = useState(false);
   const [brandingModified, setBrandingModified] = useState(false);
+  const [rerankerModified, setRerankerModified] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
   const [refreshingAll, setRefreshingAll] = useState(false);
@@ -434,6 +447,14 @@ export default function AdminPage() {
         botName: data.branding.botName,
         botIcon: data.branding.botIcon,
       });
+      setRerankerSettings(data.reranker);
+      setEditedReranker({
+        enabled: data.reranker.enabled,
+        provider: data.reranker.provider,
+        topKForReranking: data.reranker.topKForReranking,
+        minRerankerScore: data.reranker.minRerankerScore,
+        cacheTTLSeconds: data.reranker.cacheTTLSeconds,
+      });
       setAvailableModels(data.availableModels);
       setModelPresets(data.modelPresets || []);
       setRagModified(false);
@@ -441,6 +462,7 @@ export default function AdminPage() {
       setAcronymsModified(false);
       setTavilyModified(false);
       setBrandingModified(false);
+      setRerankerModified(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load settings');
     } finally {
@@ -1352,6 +1374,47 @@ export default function AdminPage() {
     }
   };
 
+  // Reranker handlers
+  const handleSaveReranker = async () => {
+    if (!editedReranker || !rerankerModified) return;
+
+    setSavingSettings(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/admin/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'reranker', settings: editedReranker }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to save reranker settings');
+      }
+
+      const data = await response.json();
+      setRerankerSettings(data.reranker);
+      setRerankerModified(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save reranker settings');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const handleResetReranker = () => {
+    if (rerankerSettings) {
+      setEditedReranker({
+        enabled: rerankerSettings.enabled,
+        provider: rerankerSettings.provider,
+        topKForReranking: rerankerSettings.topKForReranking,
+        minRerankerScore: rerankerSettings.minRerankerScore,
+        cacheTTLSeconds: rerankerSettings.cacheTTLSeconds,
+      });
+      setRerankerModified(false);
+    }
+  };
+
   // Utility functions
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
@@ -2099,6 +2162,16 @@ export default function AdminPage() {
                 >
                   Branding
                 </button>
+                <button
+                  onClick={() => setSettingsSection('reranker')}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    settingsSection === 'reranker'
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  Reranker
+                </button>
               </nav>
             </div>
 
@@ -2845,6 +2918,138 @@ export default function AdminPage() {
                       {brandingSettings?.updatedAt && (
                         <p className="text-xs text-gray-500">
                           Last updated: {formatDate(brandingSettings.updatedAt)} by {brandingSettings.updatedBy}
+                        </p>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
+              {/* Reranker Section */}
+              {settingsSection === 'reranker' && (
+                <div className="bg-white rounded-lg border shadow-sm">
+                  <div className="px-6 py-4 border-b">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h2 className="font-semibold text-gray-900">Reranker Settings</h2>
+                        <p className="text-sm text-gray-500">Configure document reranking for improved RAG quality</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {rerankerModified && (
+                          <Button variant="secondary" onClick={handleResetReranker} disabled={savingSettings}>
+                            Reset
+                          </Button>
+                        )}
+                        <Button onClick={handleSaveReranker} disabled={!rerankerModified || savingSettings} loading={savingSettings}>
+                          <Save size={18} className="mr-2" />
+                          Save
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                  {settingsLoading ? (
+                    <div className="px-6 py-12 flex justify-center"><Spinner size="lg" /></div>
+                  ) : editedReranker ? (
+                    <div className="p-6 space-y-6">
+                      {/* Enable/Disable Toggle */}
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <label className="font-medium text-gray-900">Enable Reranker</label>
+                          <p className="text-sm text-gray-500">Rerank retrieved chunks for better relevance ordering</p>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={editedReranker.enabled}
+                          onChange={(e) => {
+                            setEditedReranker({ ...editedReranker, enabled: e.target.checked });
+                            setRerankerModified(true);
+                          }}
+                          className="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      {/* Provider Selection */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-900 mb-1">Reranker Provider</label>
+                        <select
+                          value={editedReranker.provider}
+                          onChange={(e) => {
+                            setEditedReranker({ ...editedReranker, provider: e.target.value as 'cohere' | 'local' });
+                            setRerankerModified(true);
+                          }}
+                          className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        >
+                          <option value="cohere">Cohere API (Fast, requires API key)</option>
+                          <option value="local">Local (Free, slower first load)</option>
+                        </select>
+                        <p className="mt-1 text-xs text-gray-500">
+                          {editedReranker.provider === 'cohere'
+                            ? 'Uses Cohere rerank-english-v3.0 model. Requires COHERE_API_KEY in environment.'
+                            : 'Uses local all-MiniLM-L6-v2 model with semantic similarity. First load downloads model.'}
+                        </p>
+                      </div>
+
+                      {/* Settings Grid */}
+                      <div className="grid grid-cols-2 gap-6">
+                        {/* Top K for Reranking */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-900 mb-1">Top K for Reranking</label>
+                          <input
+                            type="number"
+                            min="5"
+                            max="100"
+                            value={editedReranker.topKForReranking}
+                            onChange={(e) => {
+                              setEditedReranker({ ...editedReranker, topKForReranking: parseInt(e.target.value) || 50 });
+                              setRerankerModified(true);
+                            }}
+                            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                          <p className="mt-1 text-xs text-gray-500">Number of chunks to rerank (5-100)</p>
+                        </div>
+
+                        {/* Min Score Threshold */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-900 mb-1">Min Score Threshold</label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="1"
+                            step="0.05"
+                            value={editedReranker.minRerankerScore}
+                            onChange={(e) => {
+                              setEditedReranker({ ...editedReranker, minRerankerScore: parseFloat(e.target.value) || 0.3 });
+                              setRerankerModified(true);
+                            }}
+                            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                          <p className="mt-1 text-xs text-gray-500">Chunks below this score are filtered (0-1)</p>
+                        </div>
+
+                        {/* Cache TTL */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-900 mb-1">Cache Duration</label>
+                          <input
+                            type="number"
+                            min="60"
+                            max="86400"
+                            value={editedReranker.cacheTTLSeconds}
+                            onChange={(e) => {
+                              setEditedReranker({ ...editedReranker, cacheTTLSeconds: parseInt(e.target.value) || 3600 });
+                              setRerankerModified(true);
+                            }}
+                            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                          <p className="mt-1 text-xs text-gray-500">
+                            {Math.floor(editedReranker.cacheTTLSeconds / 60)} minutes (60s - 86,400s)
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Last Updated */}
+                      {rerankerSettings?.updatedAt && (
+                        <p className="text-xs text-gray-500">
+                          Last updated: {formatDate(rerankerSettings.updatedAt)} by {rerankerSettings.updatedBy}
                         </p>
                       )}
                     </div>

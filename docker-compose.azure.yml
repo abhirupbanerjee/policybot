@@ -29,7 +29,7 @@ services:
       - "3000:3000"
     volumes:
       # In Azure, mount Azure Files share here
-      - app_data:/app/data
+      - ./data/app:/app/data
     depends_on:
       - chroma
 
@@ -39,12 +39,9 @@ services:
       - ANONYMIZED_TELEMETRY=false
       - ALLOW_RESET=false
       - IS_PERSISTENT=TRUE
+      - PERSIST_DIRECTORY=/chroma/chroma
     volumes:
       # In Azure, mount Azure Files share here
-      - chroma_data:/chroma/chroma
+      - ./data/chroma:/chroma/chroma
     # ChromaDB doesn't need to be exposed externally
     # Only the app container needs access
-
-volumes:
-  app_data:
-  chroma_data:

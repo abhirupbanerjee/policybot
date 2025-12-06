@@ -31,11 +31,18 @@ yarn-error.log*
 .DS_Store
 Thumbs.db
 
-# Runtime data
+# Runtime data (bind mounts for Docker)
+data/app/
+data/chroma/
+data/redis/
 data/threads/
 data/global-docs/*.pdf
 
 # Keep data directory structure
+!data/.gitkeep
+!data/app/.gitkeep
+!data/chroma/.gitkeep
+!data/redis/.gitkeep
 !data/threads/.gitkeep
 !data/global-docs/.gitkeep
 
