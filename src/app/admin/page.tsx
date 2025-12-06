@@ -101,6 +101,15 @@ interface ServiceStatus {
   error?: string;
 }
 
+interface RerankerProviderStatus {
+  provider: string;
+  name: string;
+  available: boolean;
+  configured: boolean;
+  error?: string;
+  latency?: number;
+}
+
 interface ModelPreset {
   id: string;
   name: string;
@@ -286,6 +295,8 @@ export default function AdminPage() {
   const [tavilyModified, setTavilyModified] = useState(false);
   const [brandingModified, setBrandingModified] = useState(false);
   const [rerankerModified, setRerankerModified] = useState(false);
+  const [rerankerStatus, setRerankerStatus] = useState<RerankerProviderStatus[]>([]);
+  const [rerankerStatusLoading, setRerankerStatusLoading] = useState(true);
 
   const [error, setError] = useState<string | null>(null);
   const [refreshingAll, setRefreshingAll] = useState(false);
@@ -519,6 +530,30 @@ export default function AdminPage() {
     }
   }, []);
 
+  // Load reranker provider status
+  const loadRerankerStatus = useCallback(async () => {
+    setRerankerStatusLoading(true);
+    try {
+      const response = await fetch('/api/admin/reranker-status');
+
+      if (response.status === 403) {
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error('Failed to load reranker status');
+      }
+
+      const data = await response.json();
+      setRerankerStatus(data.providers || []);
+    } catch (err) {
+      console.error('Failed to load reranker status:', err);
+      // Don't show error to user - reranker status is optional
+    } finally {
+      setRerankerStatusLoading(false);
+    }
+  }, []);
+
   // Helper to get provider from model name
   const getModelProvider = useCallback((model: string): 'openai' | 'mistral' | 'ollama' | 'azure' => {
     if (model.startsWith('ollama-')) return 'ollama';
@@ -535,7 +570,8 @@ export default function AdminPage() {
     loadSettings();
     loadStats();
     loadProviders();
-  }, [loadDocuments, loadUsers, loadCategories, loadSystemPrompt, loadSettings, loadStats, loadProviders]);
+    loadRerankerStatus();
+  }, [loadDocuments, loadUsers, loadCategories, loadSystemPrompt, loadSettings, loadStats, loadProviders, loadRerankerStatus]);
 
   // Document handlers
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2951,6 +2987,50 @@ export default function AdminPage() {
                     <div className="px-6 py-12 flex justify-center"><Spinner size="lg" /></div>
                   ) : editedReranker ? (
                     <div className="p-6 space-y-6">
+                      {/* Reranker Provider Status */}
+                      {!rerankerStatusLoading && rerankerStatus.length > 0 && (
+                        <div className="mb-2">
+                          <div className="text-xs font-medium text-gray-500 mb-1.5">Provider Status</div>
+                          <div className="flex flex-wrap gap-2">
+                            {rerankerStatus.map((status) => (
+                              <div
+                                key={status.provider}
+                                className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                                  status.available
+                                    ? 'bg-green-100 text-green-800'
+                                    : status.configured
+                                    ? 'bg-yellow-100 text-yellow-800'
+                                    : 'bg-gray-100 text-gray-600'
+                                }`}
+                                title={status.error || (status.available ? `Connected${status.latency ? ` (${status.latency}ms)` : ''}` : 'Not available')}
+                              >
+                                <span className={`w-2 h-2 rounded-full mr-1.5 ${
+                                  status.available
+                                    ? 'bg-green-500'
+                                    : status.configured
+                                    ? 'bg-yellow-500'
+                                    : 'bg-gray-400'
+                                }`} />
+                                {status.name}
+                                {status.available && status.latency && (
+                                  <span className="ml-1 text-green-600">({status.latency}ms)</span>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                          {rerankerStatus.some(s => !s.available && s.error) && (
+                            <div className="mt-2 text-xs text-gray-500">
+                              {rerankerStatus.filter(s => !s.available && s.error).map(s => (
+                                <div key={s.provider} className="flex items-center gap-1">
+                                  <AlertCircle size={12} className="text-yellow-500" />
+                                  <span>{s.name}: {s.error}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
                       {/* Enable/Disable Toggle */}
                       <div className="flex items-center justify-between">
                         <div>
