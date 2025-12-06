@@ -270,6 +270,133 @@ export async function ingestDocument(
 }
 
 /**
+ * Sanitize a filename for filesystem use
+ */
+function sanitizeFilename(name: string): string {
+  return name
+    .replace(/[<>:"/\\|?*]/g, '') // Remove invalid characters
+    .replace(/\s+/g, '-') // Replace spaces with hyphens
+    .replace(/-+/g, '-') // Collapse multiple hyphens
+    .replace(/^-|-$/g, '') // Remove leading/trailing hyphens
+    .slice(0, 200); // Limit length
+}
+
+/**
+ * Ingest text content directly (bypasses document extraction)
+ *
+ * @param content - Raw text content
+ * @param name - Document name (will be saved as .txt file)
+ * @param uploadedBy - User email who uploaded
+ * @param options - Category and global options
+ */
+export async function ingestTextContent(
+  content: string,
+  name: string,
+  uploadedBy: string,
+  options?: {
+    categoryIds?: number[];
+    isGlobal?: boolean;
+  }
+): Promise<GlobalDocument> {
+  const globalDocsDir = getGlobalDocsDir();
+  const categoryIds = options?.categoryIds || [];
+  const isGlobal = options?.isGlobal || false;
+
+  // Create filename from name
+  const sanitizedName = sanitizeFilename(name);
+  const filename = sanitizedName.endsWith('.txt') ? sanitizedName : `${sanitizedName}.txt`;
+  const buffer = Buffer.from(content, 'utf-8');
+
+  // Save file
+  const filePath = path.join(globalDocsDir, filename);
+  await writeFileBuffer(filePath, buffer);
+
+  // Create document record in SQLite
+  const doc = createDocument({
+    filename,
+    filepath: filename,
+    fileSize: buffer.length,
+    uploadedBy,
+    isGlobal,
+    categoryIds,
+  });
+
+  try {
+    // Chunk text directly (no extraction needed)
+    const docId = String(doc.id);
+    const chunks = await chunkText(content, docId, filename, 'global');
+
+    if (chunks.length === 0) {
+      throw new Error('No text content to process');
+    }
+
+    // Get category slugs for ChromaDB collection names
+    const categorySlugs: string[] = [];
+    for (const catId of categoryIds) {
+      const category = getCategoryById(catId);
+      if (category) {
+        categorySlugs.push(category.slug);
+      }
+    }
+
+    // Create embeddings in batches
+    const batchSize = 100;
+    for (let i = 0; i < chunks.length; i += batchSize) {
+      const batch = chunks.slice(i, i + batchSize);
+      const texts = batch.map(c => c.text);
+      const embeddings = await createEmbeddings(texts);
+      const metadatas = batch.map(c => c.metadata);
+
+      if (isGlobal) {
+        // Global documents go into all category collections
+        await addGlobalDocuments(
+          batch.map(c => c.id),
+          embeddings,
+          texts,
+          metadatas
+        );
+      } else if (categorySlugs.length > 0) {
+        // Category-specific documents
+        await addDocumentsToCategories(
+          categorySlugs,
+          batch.map(c => c.id),
+          embeddings,
+          texts,
+          metadatas,
+          false
+        );
+      } else {
+        // Legacy: add to default collection (for uncategorized documents)
+        await addDocuments(
+          batch.map(c => c.id),
+          embeddings,
+          texts,
+          metadatas
+        );
+      }
+    }
+
+    // Update document status
+    updateDocument(doc.id, {
+      chunkCount: chunks.length,
+      status: 'ready',
+    });
+
+    // Fetch updated document
+    const updatedDoc = getDocumentWithCategories(doc.id);
+    return toGlobalDocument(updatedDoc!);
+  } catch (error) {
+    // Update document with error status
+    updateDocument(doc.id, {
+      status: 'error',
+      errorMessage: error instanceof Error ? error.message : 'Unknown error',
+    });
+
+    throw error;
+  }
+}
+
+/**
  * Delete a document and its embeddings
  */
 export async function deleteDocument(docId: string): Promise<{ filename: string; chunksRemoved: number } | null> {

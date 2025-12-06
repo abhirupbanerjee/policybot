@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Upload, RefreshCw, Trash2, FileText, AlertCircle, Users, UserPlus, Shield, User, Settings, Save, FolderOpen, Plus, Edit2, BarChart3, Database, HardDrive, Globe, Tag, Landmark, DollarSign, Activity, Layers, Server, ScrollText, ChevronUp, ChevronDown, ChevronsUpDown, Search, X } from 'lucide-react';
 import Button from '@/components/ui/Button';
@@ -211,7 +211,10 @@ export default function AdminPage() {
 
   // Upload modal state
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadMode, setUploadMode] = useState<'file' | 'text'>('file');
   const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadTextName, setUploadTextName] = useState('');
+  const [uploadTextContent, setUploadTextContent] = useState('');
   const [uploadCategoryIds, setUploadCategoryIds] = useState<number[]>([]);
   const [uploadIsGlobal, setUploadIsGlobal] = useState(false);
 
@@ -300,7 +303,6 @@ export default function AdminPage() {
 
   const [error, setError] = useState<string | null>(null);
   const [refreshingAll, setRefreshingAll] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Stats state
   const [systemStats, setSystemStats] = useState<SystemStats | null>(null);
@@ -574,57 +576,39 @@ export default function AdminPage() {
   }, [loadDocuments, loadUsers, loadCategories, loadSystemPrompt, loadSettings, loadStats, loadProviders, loadRerankerStatus]);
 
   // Document handlers
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const supportedTypes = [
-      'application/pdf',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-      'image/png',
-      'image/jpeg',
-      'image/webp',
-      'image/gif',
-    ];
-    if (!supportedTypes.includes(file.type)) {
-      setError('Invalid file type. Allowed: PDF, DOCX, XLSX, PPTX, PNG, JPG, WEBP, GIF');
-      e.target.value = '';
-      return;
-    }
-
-    if (file.size > 50 * 1024 * 1024) {
-      setError('File too large (max 50MB)');
-      e.target.value = '';
-      return;
-    }
-
-    // Open modal with selected file
-    setUploadFile(file);
-    setUploadCategoryIds([]);
-    setUploadIsGlobal(false);
-    setShowUploadModal(true);
-    e.target.value = '';
-  };
-
   const handleUploadConfirm = async () => {
-    if (!uploadFile) return;
+    if (uploadMode === 'file' && !uploadFile) return;
+    if (uploadMode === 'text' && (!uploadTextName.trim() || !uploadTextContent.trim())) return;
 
     setUploading(true);
     setUploadProgress('Uploading...');
     setError(null);
 
     try {
-      const formData = new FormData();
-      formData.append('file', uploadFile);
-      formData.append('categoryIds', JSON.stringify(uploadCategoryIds));
-      formData.append('isGlobal', String(uploadIsGlobal));
+      let response: Response;
 
-      const response = await fetch('/api/admin/documents', {
-        method: 'POST',
-        body: formData,
-      });
+      if (uploadMode === 'file') {
+        const formData = new FormData();
+        formData.append('file', uploadFile!);
+        formData.append('categoryIds', JSON.stringify(uploadCategoryIds));
+        formData.append('isGlobal', String(uploadIsGlobal));
+
+        response = await fetch('/api/admin/documents', {
+          method: 'POST',
+          body: formData,
+        });
+      } else {
+        response = await fetch('/api/admin/documents/text', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: uploadTextName.trim(),
+            content: uploadTextContent,
+            categoryIds: uploadCategoryIds,
+            isGlobal: uploadIsGlobal,
+          }),
+        });
+      }
 
       if (!response.ok) {
         const data = await response.json();
@@ -635,8 +619,11 @@ export default function AdminPage() {
       await loadDocuments();
       setShowUploadModal(false);
       setUploadFile(null);
+      setUploadTextName('');
+      setUploadTextContent('');
       setUploadCategoryIds([]);
       setUploadIsGlobal(false);
+      setUploadMode('file');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Upload failed');
     } finally {
@@ -1723,18 +1710,18 @@ export default function AdminPage() {
                     <RefreshCw size={18} className={`mr-2 ${refreshingAll ? 'animate-spin' : ''}`} />
                     {refreshingAll ? 'Refreshing...' : 'Refresh All'}
                   </Button>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".pdf,.docx,.xlsx,.pptx,.png,.jpg,.jpeg,.webp,.gif"
-                    onChange={handleFileSelect}
-                    disabled={uploading}
-                    className="hidden"
-                  />
                   <Button
                     disabled={uploading}
                     loading={uploading}
-                    onClick={() => fileInputRef.current?.click()}
+                    onClick={() => {
+                      setUploadMode('file');
+                      setUploadFile(null);
+                      setUploadTextName('');
+                      setUploadTextContent('');
+                      setUploadCategoryIds([]);
+                      setUploadIsGlobal(false);
+                      setShowUploadModal(true);
+                    }}
                   >
                     <Upload size={18} className="mr-2" />
                     {uploadProgress || 'Upload Document'}
@@ -3378,24 +3365,113 @@ export default function AdminPage() {
         onClose={() => {
           setShowUploadModal(false);
           setUploadFile(null);
+          setUploadTextName('');
+          setUploadTextContent('');
           setUploadCategoryIds([]);
           setUploadIsGlobal(false);
+          setUploadMode('file');
         }}
         title="Upload Document"
       >
+        {/* Tabs */}
+        <div className="flex border-b mb-4">
+          <button
+            onClick={() => setUploadMode('file')}
+            className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
+              uploadMode === 'file'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Upload size={16} className="inline mr-2" />
+            File Upload
+          </button>
+          <button
+            onClick={() => setUploadMode('text')}
+            className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
+              uploadMode === 'text'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <FileText size={16} className="inline mr-2" />
+            Text Content
+          </button>
+        </div>
+
         <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              File
-            </label>
-            <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg">
-              <FileText className="w-5 h-5 text-blue-600" />
-              <span className="text-sm text-gray-700 truncate">{uploadFile?.name}</span>
-              <span className="text-xs text-gray-500 ml-auto">
-                {uploadFile && formatFileSize(uploadFile.size)}
-              </span>
+          {/* File Upload Mode */}
+          {uploadMode === 'file' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                File
+              </label>
+              {uploadFile ? (
+                <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg">
+                  <FileText className="w-5 h-5 text-blue-600" />
+                  <span className="text-sm text-gray-700 truncate">{uploadFile.name}</span>
+                  <span className="text-xs text-gray-500 ml-auto">
+                    {formatFileSize(uploadFile.size)}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setUploadFile(null)}
+                    className="p-1 hover:bg-gray-200 rounded"
+                  >
+                    <X size={14} className="text-gray-500" />
+                  </button>
+                </div>
+              ) : (
+                <label className="flex flex-col items-center justify-center w-full h-24 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-blue-400 hover:bg-gray-50 transition-colors">
+                  <Upload size={24} className="text-gray-400 mb-2" />
+                  <span className="text-sm text-gray-500">Click to select a file</span>
+                  <input
+                    type="file"
+                    accept=".pdf,.docx,.xlsx,.pptx,.png,.jpg,.jpeg,.webp,.gif"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      if (file) setUploadFile(file);
+                    }}
+                    className="hidden"
+                  />
+                </label>
+              )}
             </div>
-          </div>
+          )}
+
+          {/* Text Content Mode */}
+          {uploadMode === 'text' && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Document Name *
+                </label>
+                <input
+                  type="text"
+                  value={uploadTextName}
+                  onChange={(e) => setUploadTextName(e.target.value)}
+                  placeholder="e.g., Company Policy Overview"
+                  maxLength={255}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Content *
+                </label>
+                <textarea
+                  value={uploadTextContent}
+                  onChange={(e) => setUploadTextContent(e.target.value)}
+                  placeholder="Paste your text content here..."
+                  rows={8}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-y"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  {uploadTextContent.length.toLocaleString()} characters
+                </p>
+              </div>
+            </>
+          )}
 
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -3477,8 +3553,11 @@ export default function AdminPage() {
             onClick={() => {
               setShowUploadModal(false);
               setUploadFile(null);
+              setUploadTextName('');
+              setUploadTextContent('');
               setUploadCategoryIds([]);
               setUploadIsGlobal(false);
+              setUploadMode('file');
             }}
             disabled={uploading}
           >
@@ -3487,7 +3566,7 @@ export default function AdminPage() {
           <Button
             onClick={handleUploadConfirm}
             loading={uploading}
-            disabled={!uploadFile}
+            disabled={uploadMode === 'file' ? !uploadFile : (!uploadTextName.trim() || !uploadTextContent.trim())}
           >
             <Upload size={18} className="mr-2" />
             {uploadProgress || 'Upload'}

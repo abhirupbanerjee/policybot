@@ -60,7 +60,10 @@ export default function SuperUserPage() {
   // Documents state
   const [documents, setDocuments] = useState<ManagedDocument[]>([]);
   const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadMode, setUploadMode] = useState<'file' | 'text'>('file');
   const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadTextName, setUploadTextName] = useState('');
+  const [uploadTextContent, setUploadTextContent] = useState('');
   const [uploadCategory, setUploadCategory] = useState<number | null>(null);
   const [uploading, setUploading] = useState(false);
   const [deletingDocId, setDeletingDocId] = useState<number | null>(null);
@@ -168,20 +171,36 @@ export default function SuperUserPage() {
 
   const handleUploadDocument = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!uploadFile || !uploadCategory) return;
+    if (!uploadCategory) return;
+    if (uploadMode === 'file' && !uploadFile) return;
+    if (uploadMode === 'text' && (!uploadTextName.trim() || !uploadTextContent.trim())) return;
 
     setUploading(true);
     setError(null);
 
     try {
-      const formData = new FormData();
-      formData.append('file', uploadFile);
-      formData.append('categoryId', uploadCategory.toString());
+      let response: Response;
 
-      const response = await fetch('/api/superuser/documents', {
-        method: 'POST',
-        body: formData,
-      });
+      if (uploadMode === 'file') {
+        const formData = new FormData();
+        formData.append('file', uploadFile!);
+        formData.append('categoryId', uploadCategory.toString());
+
+        response = await fetch('/api/superuser/documents', {
+          method: 'POST',
+          body: formData,
+        });
+      } else {
+        response = await fetch('/api/superuser/documents/text', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: uploadTextName.trim(),
+            content: uploadTextContent,
+            categoryId: uploadCategory,
+          }),
+        });
+      }
 
       if (!response.ok) {
         const data = await response.json();
@@ -191,7 +210,10 @@ export default function SuperUserPage() {
       await loadData();
       setShowUploadModal(false);
       setUploadFile(null);
+      setUploadTextName('');
+      setUploadTextContent('');
       setUploadCategory(null);
+      setUploadMode('file');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to upload document');
     } finally {
@@ -698,52 +720,121 @@ export default function SuperUserPage() {
         onClose={() => {
           setShowUploadModal(false);
           setUploadFile(null);
+          setUploadTextName('');
+          setUploadTextContent('');
           setUploadCategory(null);
+          setUploadMode('file');
         }}
         title="Upload Document"
       >
+        {/* Tabs */}
+        <div className="flex border-b mb-4">
+          <button
+            type="button"
+            onClick={() => setUploadMode('file')}
+            className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
+              uploadMode === 'file'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Upload size={16} className="inline mr-2" />
+            File Upload
+          </button>
+          <button
+            type="button"
+            onClick={() => setUploadMode('text')}
+            className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
+              uploadMode === 'text'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <FileText size={16} className="inline mr-2" />
+            Text Content
+          </button>
+        </div>
+
         <form onSubmit={handleUploadDocument}>
           <div className="space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                PDF File *
-              </label>
-              <div className="border-2 border-dashed rounded-lg p-4">
-                {uploadFile ? (
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <FileText size={20} className="text-red-500" />
-                      <span className="text-sm font-medium">{uploadFile.name}</span>
-                      <span className="text-xs text-gray-500">
-                        ({formatFileSize(uploadFile.size)})
-                      </span>
+            {/* File Upload Mode */}
+            {uploadMode === 'file' && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  PDF File *
+                </label>
+                <div className="border-2 border-dashed rounded-lg p-4">
+                  {uploadFile ? (
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <FileText size={20} className="text-red-500" />
+                        <span className="text-sm font-medium">{uploadFile.name}</span>
+                        <span className="text-xs text-gray-500">
+                          ({formatFileSize(uploadFile.size)})
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setUploadFile(null)}
+                        className="p-1 hover:bg-gray-100 rounded"
+                      >
+                        <X size={16} className="text-gray-500" />
+                      </button>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setUploadFile(null)}
-                      className="p-1 hover:bg-gray-100 rounded"
-                    >
-                      <X size={16} className="text-gray-500" />
-                    </button>
-                  </div>
-                ) : (
-                  <label className="flex flex-col items-center cursor-pointer">
-                    <Upload size={24} className="text-gray-400 mb-2" />
-                    <span className="text-sm text-gray-600">Click to select a PDF file</span>
-                    <span className="text-xs text-gray-400 mt-1">Max size: 50MB</span>
-                    <input
-                      type="file"
-                      accept=".pdf,application/pdf"
-                      onChange={(e) => {
-                        const file = e.target.files?.[0];
-                        if (file) setUploadFile(file);
-                      }}
-                      className="hidden"
-                    />
-                  </label>
-                )}
+                  ) : (
+                    <label className="flex flex-col items-center cursor-pointer">
+                      <Upload size={24} className="text-gray-400 mb-2" />
+                      <span className="text-sm text-gray-600">Click to select a PDF file</span>
+                      <span className="text-xs text-gray-400 mt-1">Max size: 50MB</span>
+                      <input
+                        type="file"
+                        accept=".pdf,application/pdf"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) setUploadFile(file);
+                        }}
+                        className="hidden"
+                      />
+                    </label>
+                  )}
+                </div>
               </div>
-            </div>
+            )}
+
+            {/* Text Content Mode */}
+            {uploadMode === 'text' && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Document Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={uploadTextName}
+                    onChange={(e) => setUploadTextName(e.target.value)}
+                    placeholder="e.g., Company Policy Overview"
+                    maxLength={255}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Content *
+                  </label>
+                  <textarea
+                    value={uploadTextContent}
+                    onChange={(e) => setUploadTextContent(e.target.value)}
+                    placeholder="Paste your text content here..."
+                    rows={8}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm resize-y"
+                  />
+                  <p className="text-xs text-gray-400 mt-1">
+                    {uploadTextContent.length.toLocaleString()} characters
+                  </p>
+                </div>
+              </>
+            )}
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Category *
@@ -770,7 +861,10 @@ export default function SuperUserPage() {
               onClick={() => {
                 setShowUploadModal(false);
                 setUploadFile(null);
+                setUploadTextName('');
+                setUploadTextContent('');
                 setUploadCategory(null);
+                setUploadMode('file');
               }}
               disabled={uploading}
             >
@@ -779,7 +873,10 @@ export default function SuperUserPage() {
             <Button
               type="submit"
               loading={uploading}
-              disabled={!uploadFile || !uploadCategory}
+              disabled={
+                !uploadCategory ||
+                (uploadMode === 'file' ? !uploadFile : (!uploadTextName.trim() || !uploadTextContent.trim()))
+              }
             >
               Upload
             </Button>
