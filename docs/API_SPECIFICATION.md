@@ -698,6 +698,63 @@ Reindex an existing document (re-extract and re-embed).
 
 ---
 
+#### `POST /api/admin/documents/text`
+
+Upload text content directly as a document (bypasses file upload and OCR extraction).
+
+**Authentication**: Required (admin only)
+
+**Request Body**:
+```typescript
+{
+  name: string;           // Required: document name (max 255 chars)
+  content: string;        // Required: text content (min 10 chars, max 10MB)
+  categoryIds?: number[]; // Optional: category IDs to assign
+  isGlobal?: boolean;     // Optional: index in all categories
+}
+```
+
+**Response** `202 Accepted`:
+```typescript
+{
+  id: string;
+  filename: string;      // Name with .txt extension
+  size: number;          // Content size in bytes
+  status: "processing";
+  message: "Document is being processed";
+}
+```
+
+**Error Responses**:
+
+| Status | Error | Description |
+|--------|-------|-------------|
+| 400 | `"Document name is required"` | Missing name |
+| 400 | `"Content is required"` | Missing content |
+| 400 | `"Content must be at least 10 characters"` | Content too short |
+| 409 | `"Document with this name already exists"` | Duplicate filename |
+| 413 | `"Content too large (max 10MB)"` | Content exceeds size limit |
+
+**Example**:
+```bash
+curl -X POST /api/admin/documents/text \
+  -H "Content-Type: application/json" \
+  -H "Cookie: next-auth.session-token=..." \
+  -d '{
+    "name": "Company Policy Overview",
+    "content": "This is the policy content...",
+    "categoryIds": [1, 2],
+    "isGlobal": false
+  }'
+```
+
+**Notes**:
+- Content is saved as a `.txt` file in the knowledge base
+- Bypasses OCR/document extraction (text is used directly)
+- Ideal for pasting text content without creating a file first
+
+---
+
 ### 8. Admin - User Management
 
 #### `GET /api/admin/users`
@@ -1059,6 +1116,67 @@ curl -X POST /api/superuser/documents \
   -H "Cookie: next-auth.session-token=..." \
   -F "file=@HR_Policy.pdf" \
   -F "categoryId=1"
+```
+
+---
+
+#### `POST /api/superuser/documents/text`
+
+Upload text content directly to one of super user's assigned categories.
+
+**Authentication**: Required (superuser only)
+
+**Request Body**:
+```typescript
+{
+  name: string;       // Required: document name (max 255 chars)
+  content: string;    // Required: text content (min 10 chars, max 10MB)
+  categoryId: number; // Required: category ID (must be assigned to super user)
+}
+```
+
+**Constraints**:
+- Category must be assigned to the super user
+- Cannot set `isGlobal` flag (always false for super users)
+
+**Response** `202 Accepted`:
+```typescript
+{
+  id: string;
+  filename: string;      // Name with .txt extension
+  size: number;          // Content size in bytes
+  status: "processing";
+  message: "Document is being processed";
+  category: {
+    categoryId: number;
+    categoryName: string;
+  };
+}
+```
+
+**Error Responses**:
+
+| Status | Error | Description |
+|--------|-------|-------------|
+| 400 | `"Document name is required"` | Missing name |
+| 400 | `"Content is required"` | Missing content |
+| 400 | `"Category ID is required"` | Missing categoryId |
+| 400 | `"Content must be at least 10 characters"` | Content too short |
+| 403 | `"You do not have access to upload to this category"` | Category not assigned |
+| 404 | `"Category not found"` | Invalid category ID |
+| 409 | `"Document with this name already exists in this category"` | Duplicate filename |
+| 413 | `"Content too large (max 10MB)"` | Content exceeds size limit |
+
+**Example**:
+```bash
+curl -X POST /api/superuser/documents/text \
+  -H "Content-Type: application/json" \
+  -H "Cookie: next-auth.session-token=..." \
+  -d '{
+    "name": "HR Policy Update",
+    "content": "This is the policy content...",
+    "categoryId": 1
+  }'
 ```
 
 ---

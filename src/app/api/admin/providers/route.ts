@@ -10,12 +10,14 @@ interface ProviderStatus {
 }
 
 interface ServiceStatus {
+  category: 'llm' | 'embedding' | 'transcribe' | 'ocr' | 'reranker';
   name: string;
   model: string;
   provider: string;
   available: boolean;
   configured: boolean;
   error?: string;
+  latency?: number;
 }
 
 // Check if environment variables are configured for each provider
@@ -28,28 +30,51 @@ function checkProviderConfig(): Record<string, boolean> {
   };
 }
 
-// Service definitions for embedding, OCR/extraction, and audio
-const SERVICES = {
-  embedding: {
-    name: 'Embeddings',
-    model: process.env.EMBEDDING_MODEL || 'text-embedding-3-large',
-    getProvider: () => {
-      const model = process.env.EMBEDDING_MODEL || 'text-embedding-3-large';
-      if (model.includes('ollama')) return 'ollama';
-      if (model.includes('mistral')) return 'mistral';
-      return 'openai';
-    },
-  },
-  ocr: {
-    name: 'Document OCR/Extraction',
-    model: 'Azure Document Intelligence',
-    getProvider: () => 'azure-di',
-  },
-  audio: {
-    name: 'Audio Transcription',
-    model: 'whisper-1',
-    getProvider: () => 'openai', // Whisper via OpenAI/LiteLLM
-  },
+// All configured models organized by category
+const MODEL_CONFIG = {
+  llm: [
+    // OpenAI
+    { model: 'gpt-4.1', name: 'GPT-4.1', provider: 'openai' },
+    { model: 'gpt-4.1-mini', name: 'GPT-4.1 Mini', provider: 'openai' },
+    { model: 'gpt-4.1-nano', name: 'GPT-4.1 Nano', provider: 'openai' },
+    { model: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', provider: 'openai' },
+    // Mistral
+    { model: 'mistral-large-3', name: 'Mistral Large 3', provider: 'mistral' },
+    { model: 'mistral-medium-3.1', name: 'Mistral Medium 3.1', provider: 'mistral' },
+    { model: 'mistral-small-3.2', name: 'Mistral Small 3.2', provider: 'mistral' },
+    { model: 'ministral-8b', name: 'Ministral 8B', provider: 'mistral' },
+    { model: 'ministral-3b', name: 'Ministral 3B', provider: 'mistral' },
+    // Ollama
+    { model: 'ollama-llama3.2', name: 'Llama 3.2', provider: 'ollama' },
+    { model: 'ollama-llama3.1', name: 'Llama 3.1', provider: 'ollama' },
+    { model: 'ollama-mistral', name: 'Mistral (Local)', provider: 'ollama' },
+    { model: 'ollama-qwen2.5', name: 'Qwen 2.5', provider: 'ollama' },
+    { model: 'ollama-phi4', name: 'Phi-4', provider: 'ollama' },
+  ],
+  embedding: [
+    // OpenAI
+    { model: 'text-embedding-3-large', name: 'Embedding 3 Large', provider: 'openai' },
+    { model: 'text-embedding-3-small', name: 'Embedding 3 Small', provider: 'openai' },
+    // Mistral
+    { model: 'mistral-embed', name: 'Mistral Embed', provider: 'mistral' },
+    { model: 'codestral-embed', name: 'Codestral Embed', provider: 'mistral' },
+    // Ollama
+    { model: 'ollama-nomic-embed', name: 'Nomic Embed', provider: 'ollama' },
+    { model: 'ollama-mxbai-embed', name: 'MxBai Embed', provider: 'ollama' },
+  ],
+  transcribe: [
+    // OpenAI
+    { model: 'whisper-1', name: 'Whisper', provider: 'openai' },
+    // Mistral
+    { model: 'voxtral-small', name: 'Voxtral Small', provider: 'mistral' },
+    { model: 'voxtral-mini', name: 'Voxtral Mini', provider: 'mistral' },
+  ],
+  ocr: [
+    // Azure
+    { model: 'prebuilt-read', name: 'Azure Document Intelligence', provider: 'azure-di' },
+    // Mistral
+    { model: 'pixtral-12b-2409', name: 'Pixtral OCR', provider: 'mistral' },
+  ],
 };
 
 // Check Azure Document Intelligence availability
@@ -86,58 +111,50 @@ async function testAzureDI(): Promise<{ available: boolean; error?: string }> {
   }
 }
 
-// Get service availability based on provider status
-async function getServiceStatus(
+// Get all services with status organized by category
+async function getAllServicesStatus(
   providerStatus: Record<string, ProviderStatus>
-): Promise<Record<string, ServiceStatus>> {
-  const services: Record<string, ServiceStatus> = {};
+): Promise<ServiceStatus[]> {
+  const services: ServiceStatus[] = [];
 
-  // Embedding service
-  const embeddingProvider = SERVICES.embedding.getProvider();
-  const embeddingProviderStatus = providerStatus[embeddingProvider];
-  services.embedding = {
-    name: SERVICES.embedding.name,
-    model: SERVICES.embedding.model,
-    provider: embeddingProvider,
-    available: embeddingProviderStatus?.available ?? false,
-    configured: embeddingProviderStatus?.configured ?? false,
-    error: embeddingProviderStatus?.error,
-  };
-
-  // OCR/Extraction service (Azure Document Intelligence)
+  // Azure DI special handling
   const azureDIConfigured = Boolean(process.env.AZURE_DI_ENDPOINT && process.env.AZURE_DI_KEY);
+  let azureDIResult: { available: boolean; error?: string } | null = null;
   if (azureDIConfigured) {
-    const azureDIResult = await testAzureDI();
-    services.ocr = {
-      name: SERVICES.ocr.name,
-      model: SERVICES.ocr.model,
-      provider: 'azure-di',
-      available: azureDIResult.available,
-      configured: true,
-      error: azureDIResult.error,
-    };
-  } else {
-    services.ocr = {
-      name: SERVICES.ocr.name,
-      model: SERVICES.ocr.model,
-      provider: 'azure-di',
-      available: false,
-      configured: false,
-      error: 'Azure DI not configured',
-    };
+    azureDIResult = await testAzureDI();
   }
 
-  // Audio transcription service
-  const audioProvider = SERVICES.audio.getProvider();
-  const audioProviderStatus = providerStatus[audioProvider];
-  services.audio = {
-    name: SERVICES.audio.name,
-    model: SERVICES.audio.model,
-    provider: audioProvider,
-    available: audioProviderStatus?.available ?? false,
-    configured: audioProviderStatus?.configured ?? false,
-    error: audioProviderStatus?.error,
-  };
+  // Process all categories
+  for (const [category, models] of Object.entries(MODEL_CONFIG)) {
+    for (const modelDef of models) {
+      let available = false;
+      let configured = false;
+      let error: string | undefined;
+
+      if (modelDef.provider === 'azure-di') {
+        // Special handling for Azure Document Intelligence
+        configured = azureDIConfigured;
+        available = azureDIResult?.available ?? false;
+        error = azureDIConfigured ? azureDIResult?.error : 'Azure DI not configured';
+      } else {
+        // Use provider status for standard providers
+        const status = providerStatus[modelDef.provider];
+        configured = status?.configured ?? false;
+        available = status?.available ?? false;
+        error = status?.error;
+      }
+
+      services.push({
+        category: category as ServiceStatus['category'],
+        name: modelDef.name,
+        model: modelDef.model,
+        provider: modelDef.provider,
+        available,
+        configured,
+        error: configured && !available ? error : (configured ? undefined : 'Not configured'),
+      });
+    }
+  }
 
   return services;
 }
@@ -342,8 +359,8 @@ export async function GET() {
       providerStatus[result.provider] = result;
     }
 
-    // Get service availability (embedding, OCR, audio)
-    const services = await getServiceStatus(providerStatus);
+    // Get all services with status (LLM, Embedding, Transcribe, OCR)
+    const services = await getAllServicesStatus(providerStatus);
 
     return NextResponse.json({
       providers: providerStatus,

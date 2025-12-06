@@ -93,12 +93,14 @@ interface ProviderStatus {
 }
 
 interface ServiceStatus {
+  category: 'llm' | 'embedding' | 'transcribe' | 'ocr' | 'reranker';
   name: string;
   model: string;
   provider: string;
   available: boolean;
   configured: boolean;
   error?: string;
+  latency?: number;
 }
 
 interface RerankerProviderStatus {
@@ -285,7 +287,12 @@ export default function AdminPage() {
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
   const [modelPresets, setModelPresets] = useState<ModelPreset[]>([]);
   const [providerStatus, setProviderStatus] = useState<Record<string, ProviderStatus>>({});
-  const [serviceStatus, setServiceStatus] = useState<Record<string, ServiceStatus>>({});
+  const [serviceStatus, setServiceStatus] = useState<ServiceStatus[]>([]);
+
+  // Dashboard filters and search
+  const [dashboardCategoryFilter, setDashboardCategoryFilter] = useState<string>('all');
+  const [dashboardProviderFilter, setDashboardProviderFilter] = useState<string>('all');
+  const [dashboardSearch, setDashboardSearch] = useState<string>('');
   const [providersLoading, setProvidersLoading] = useState(true);
   const [applyingPreset, setApplyingPreset] = useState(false);
   const [restoringDefaults, setRestoringDefaults] = useState(false);
@@ -523,7 +530,7 @@ export default function AdminPage() {
 
       const data = await response.json();
       setProviderStatus(data.providers || {});
-      setServiceStatus(data.services || {});
+      setServiceStatus(data.services || []);
     } catch (err) {
       console.error('Failed to load provider status:', err);
       // Don't show error to user - providers status is optional
@@ -1541,6 +1548,66 @@ export default function AdminPage() {
     return result;
   }, [documents, docSearchTerm, docSortKey, docSortDirection]);
 
+  // Dashboard services filter and search
+  const filteredDashboardServices = useMemo(() => {
+    // Combine services from API with reranker status
+    const allServices: ServiceStatus[] = [
+      ...serviceStatus,
+      ...rerankerStatus.map(r => ({
+        category: 'reranker' as const,
+        name: r.name,
+        model: r.provider === 'cohere' ? 'rerank-english-v3.0' : 'Transformers.js',
+        provider: r.provider === 'cohere' ? 'Cohere' : 'Local',
+        available: r.available,
+        configured: r.configured,
+        error: r.error,
+        latency: r.latency,
+      })),
+    ];
+
+    let result = allServices;
+
+    // Apply category filter
+    if (dashboardCategoryFilter !== 'all') {
+      result = result.filter(s => s.category === dashboardCategoryFilter);
+    }
+
+    // Apply provider filter
+    if (dashboardProviderFilter !== 'all') {
+      result = result.filter(s => s.provider.toLowerCase() === dashboardProviderFilter.toLowerCase());
+    }
+
+    // Apply search
+    if (dashboardSearch.trim()) {
+      const search = dashboardSearch.toLowerCase();
+      result = result.filter(s =>
+        s.name.toLowerCase().includes(search) ||
+        s.model.toLowerCase().includes(search)
+      );
+    }
+
+    return result;
+  }, [serviceStatus, rerankerStatus, dashboardCategoryFilter, dashboardProviderFilter, dashboardSearch]);
+
+  // Get unique providers from services for filter dropdown
+  const dashboardProviders = useMemo(() => {
+    const allServices: ServiceStatus[] = [
+      ...serviceStatus,
+      ...rerankerStatus.map(r => ({
+        category: 'reranker' as const,
+        name: r.name,
+        model: r.provider === 'cohere' ? 'rerank-english-v3.0' : 'Transformers.js',
+        provider: r.provider === 'cohere' ? 'Cohere' : 'Local',
+        available: r.available,
+        configured: r.configured,
+        error: r.error,
+        latency: r.latency,
+      })),
+    ];
+    const providers = new Set(allServices.map(s => s.provider));
+    return Array.from(providers).sort();
+  }, [serviceStatus, rerankerStatus]);
+
   // Toggle sort for documents
   const handleDocSort = (key: keyof GlobalDocument) => {
     if (docSortKey === key) {
@@ -1708,7 +1775,11 @@ export default function AdminPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <h2 className="font-semibold text-gray-900">System Status</h2>
-                    <p className="text-sm text-gray-500">Monitor LLM providers, services, and rerankers</p>
+                    <p className="text-sm text-gray-500">
+                      {dashboardCategoryFilter !== 'all' || dashboardProviderFilter !== 'all' || dashboardSearch
+                        ? `${filteredDashboardServices.length} of ${serviceStatus.length + rerankerStatus.length} services`
+                        : `${serviceStatus.length + rerankerStatus.length} services`}
+                    </p>
                   </div>
                   <Button
                     variant="secondary"
@@ -1740,6 +1811,63 @@ export default function AdminPage() {
                   </span>
                 </div>
 
+                {/* Filters and Search */}
+                <div className="flex flex-wrap gap-4 mb-4">
+                  {/* Category Filter */}
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-medium text-gray-600">Category:</label>
+                    <select
+                      value={dashboardCategoryFilter}
+                      onChange={(e) => setDashboardCategoryFilter(e.target.value)}
+                      className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="all">All</option>
+                      <option value="llm">LLM</option>
+                      <option value="embedding">Embedding</option>
+                      <option value="transcribe">Transcribe</option>
+                      <option value="ocr">OCR</option>
+                      <option value="reranker">Reranker</option>
+                    </select>
+                  </div>
+
+                  {/* Provider Filter */}
+                  <div className="flex items-center gap-2">
+                    <label className="text-sm font-medium text-gray-600">Provider:</label>
+                    <select
+                      value={dashboardProviderFilter}
+                      onChange={(e) => setDashboardProviderFilter(e.target.value)}
+                      className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="all">All</option>
+                      {dashboardProviders.map(p => (
+                        <option key={p} value={p.toLowerCase()}>{p}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Search */}
+                  <div className="flex-1 min-w-[200px]">
+                    <div className="relative">
+                      <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                      <input
+                        type="text"
+                        value={dashboardSearch}
+                        onChange={(e) => setDashboardSearch(e.target.value)}
+                        placeholder="Search service / model..."
+                        className="w-full pl-9 pr-8 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      {dashboardSearch && (
+                        <button
+                          onClick={() => setDashboardSearch('')}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 rounded"
+                        >
+                          <X size={14} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
                 {/* Status Table */}
                 {(providersLoading || rerankerStatusLoading) ? (
                   <div className="py-12 flex justify-center">
@@ -1757,83 +1885,40 @@ export default function AdminPage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y">
-                        {/* LLM Providers */}
-                        {Object.entries(providerStatus).map(([key, status]) => (
-                          <tr key={`llm-${key}`} className="hover:bg-gray-50">
-                            <td className="px-4 py-3 text-gray-500">LLM</td>
-                            <td className="px-4 py-3 font-medium text-gray-900 capitalize">{status.provider}</td>
-                            <td className="px-4 py-3 text-gray-600">
-                              {status.provider === 'openai' && 'gpt-4.1-mini'}
-                              {status.provider === 'mistral' && 'mistral-small-3.2'}
-                              {status.provider === 'ollama' && 'Local Models'}
-                              {status.provider === 'azure' && 'Azure OpenAI'}
-                            </td>
-                            <td className="px-4 py-3">
-                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
-                                status.available
-                                  ? 'bg-green-100 text-green-800'
-                                  : status.configured
-                                  ? 'bg-yellow-100 text-yellow-800'
-                                  : 'bg-gray-100 text-gray-600'
-                              }`}>
-                                <span className={`w-2 h-2 rounded-full ${
-                                  status.available ? 'bg-green-500' : status.configured ? 'bg-yellow-500' : 'bg-gray-400'
-                                }`} />
-                                {status.available ? 'Online' : status.configured ? 'Error' : 'N/A'}
-                              </span>
+                        {filteredDashboardServices.length === 0 ? (
+                          <tr>
+                            <td colSpan={4} className="px-4 py-8 text-center text-gray-500">
+                              No services match your filters
                             </td>
                           </tr>
-                        ))}
-
-                        {/* Services */}
-                        {Object.entries(serviceStatus).map(([key, service]) => (
-                          <tr key={`service-${key}`} className="hover:bg-gray-50">
-                            <td className="px-4 py-3 text-gray-500">Service</td>
-                            <td className="px-4 py-3 font-medium text-gray-900 capitalize">{service.provider}</td>
-                            <td className="px-4 py-3 text-gray-600">{service.name}</td>
-                            <td className="px-4 py-3">
-                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
-                                service.available
-                                  ? 'bg-green-100 text-green-800'
-                                  : service.configured
-                                  ? 'bg-yellow-100 text-yellow-800'
-                                  : 'bg-gray-100 text-gray-600'
-                              }`}>
-                                <span className={`w-2 h-2 rounded-full ${
-                                  service.available ? 'bg-green-500' : service.configured ? 'bg-yellow-500' : 'bg-gray-400'
-                                }`} />
-                                {service.available ? 'Online' : service.configured ? 'Error' : 'N/A'}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
-
-                        {/* Rerankers */}
-                        {rerankerStatus.map((status) => (
-                          <tr key={`reranker-${status.provider}`} className="hover:bg-gray-50">
-                            <td className="px-4 py-3 text-gray-500">Reranker</td>
-                            <td className="px-4 py-3 font-medium text-gray-900 capitalize">{status.provider === 'cohere' ? 'Cohere' : 'Local'}</td>
-                            <td className="px-4 py-3 text-gray-600">
-                              {status.provider === 'cohere' ? 'rerank-english-v3.0' : 'Transformers.js'}
-                            </td>
-                            <td className="px-4 py-3">
-                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
-                                status.available
-                                  ? 'bg-green-100 text-green-800'
-                                  : status.configured
-                                  ? 'bg-yellow-100 text-yellow-800'
-                                  : 'bg-gray-100 text-gray-600'
-                              }`}>
-                                <span className={`w-2 h-2 rounded-full ${
-                                  status.available ? 'bg-green-500' : status.configured ? 'bg-yellow-500' : 'bg-gray-400'
-                                }`} />
-                                {status.available
-                                  ? (status.latency ? `${status.latency}ms` : 'Ready')
-                                  : status.configured ? 'Error' : 'N/A'}
-                              </span>
-                            </td>
-                          </tr>
-                        ))}
+                        ) : (
+                          filteredDashboardServices.map((service, idx) => (
+                            <tr key={`${service.category}-${service.model}-${idx}`} className="hover:bg-gray-50">
+                              <td className="px-4 py-3 text-gray-500 capitalize">{service.category}</td>
+                              <td className="px-4 py-3 font-medium text-gray-900 capitalize">{service.provider}</td>
+                              <td className="px-4 py-3 text-gray-600">
+                                <div>{service.name}</div>
+                                <div className="text-xs text-gray-400">{service.model}</div>
+                              </td>
+                              <td className="px-4 py-3">
+                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+                                  service.available
+                                    ? 'bg-green-100 text-green-800'
+                                    : service.configured
+                                    ? 'bg-yellow-100 text-yellow-800'
+                                    : 'bg-gray-100 text-gray-600'
+                                }`}>
+                                  <span className={`w-2 h-2 rounded-full ${
+                                    service.available ? 'bg-green-500' : service.configured ? 'bg-yellow-500' : 'bg-gray-400'
+                                  }`} />
+                                  {service.available
+                                    ? (service.latency ? `${service.latency}ms` : 'Online')
+                                    : service.configured ? 'Error' : 'N/A'}
+                                </span>
+                              </td>
+                            </tr>
+                          ))
+                        )}
                       </tbody>
                     </table>
                   </div>
@@ -1841,25 +1926,9 @@ export default function AdminPage() {
 
                 {/* Error Details */}
                 {(() => {
-                  const errors: { category: string; provider: string; error: string }[] = [];
-
-                  Object.values(providerStatus).forEach(status => {
-                    if (!status.available && status.error) {
-                      errors.push({ category: 'LLM', provider: status.provider, error: status.error });
-                    }
-                  });
-
-                  Object.values(serviceStatus).forEach(service => {
-                    if (!service.available && service.error) {
-                      errors.push({ category: 'Service', provider: service.name, error: service.error });
-                    }
-                  });
-
-                  rerankerStatus.forEach(status => {
-                    if (!status.available && status.error) {
-                      errors.push({ category: 'Reranker', provider: status.name, error: status.error });
-                    }
-                  });
+                  const errors = filteredDashboardServices
+                    .filter(s => !s.available && s.error)
+                    .map(s => ({ category: s.category, provider: s.name, error: s.error! }));
 
                   if (errors.length === 0) return null;
 
@@ -1873,7 +1942,7 @@ export default function AdminPage() {
                         {errors.map((err, idx) => (
                           <div key={idx} className="flex items-start gap-2 text-gray-600">
                             <span className="text-gray-400">•</span>
-                            <span><span className="font-medium">{err.provider}:</span> {err.error}</span>
+                            <span><span className="font-medium capitalize">{err.category} - {err.provider}:</span> {err.error}</span>
                           </div>
                         ))}
                       </div>

@@ -886,12 +886,15 @@ Admin Creates User
 
 ### Document Upload with Categories
 
+Two upload methods are supported: file upload and text content upload.
+
+#### File Upload Flow
 ```
-Admin Upload
+Admin/Super User File Upload
     │
     ▼
 ┌─────────────────┐
-│ Validate PDF    │
+│ Validate file   │
 │ (type, ≤50MB)   │
 └─────────────────┘
     │
@@ -924,6 +927,63 @@ Admin Upload
     ▼
 ┌─────────────────┐
 │ Chunk + Embed   │
+└─────────────────┘
+    │
+    ▼
+┌─────────────────────────────────┐
+│ Store in ChromaDB:              │
+│ - Global: ALL policy_* colls   │
+│ - Category: specific colls     │
+└─────────────────────────────────┘
+    │
+    ▼
+┌─────────────────┐
+│ Update document │
+│ status=ready    │
+│ chunk_count=N   │
+└─────────────────┘
+```
+
+#### Text Content Upload Flow
+```
+Admin/Super User Text Upload
+    │
+    ▼
+┌─────────────────┐
+│ Validate input  │
+│ (name ≤255 char │
+│  content ≥10)   │
+└─────────────────┘
+    │
+    ▼
+┌─────────────────┐
+│ Save as .txt    │
+│ to global-docs/ │
+└─────────────────┘
+    │
+    ▼
+┌─────────────────┐
+│ Insert into     │
+│ documents       │
+│ (status=process)│
+└─────────────────┘
+    │
+    ├── is_global=true ──▶ No document_categories entries
+    │                      (indexed in ALL collections)
+    │
+    └── is_global=false ─▶ Insert document_categories
+                           for each selected category
+    │
+    ▼
+┌─────────────────┐
+│ Chunk text      │  ◀── Bypasses OCR extraction
+│ directly        │      (text already plain)
+└─────────────────┘
+    │
+    ▼
+┌─────────────────┐
+│ Create          │
+│ embeddings      │
 └─────────────────┘
     │
     ▼
@@ -1141,11 +1201,14 @@ docker run --rm -v policy-bot_chroma_data:/data -v $BACKUP_DIR:/backup \
 
 ### Document Constraints
 
-| Constraint | Admin Uploads | User Uploads |
-|------------|---------------|--------------|
-| Max file size | 50 MB | 5 MB |
-| Allowed types | PDF only | PDF only |
-| Max per thread | N/A | 3 files |
+| Constraint | Admin File Upload | Admin Text Upload | Super User File Upload | Super User Text Upload | User Uploads |
+|------------|-------------------|-------------------|------------------------|------------------------|--------------|
+| Max file size | 50 MB | 10 MB | 50 MB | 10 MB | 5 MB |
+| Allowed types | PDF, DOCX, XLSX, PPTX, images | Text (.txt) | PDF only | Text (.txt) | PDF only |
+| Max per thread | N/A | N/A | N/A | N/A | 3 files |
+| Min content length | N/A | 10 chars | N/A | 10 chars | N/A |
+| Max name length | N/A | 255 chars | N/A | 255 chars | N/A |
+| Global option | Yes | Yes | No | No | N/A |
 
 ### Thread Constraints
 

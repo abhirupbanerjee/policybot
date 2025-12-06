@@ -184,16 +184,17 @@ User Query
 
 ### 3. Document Ingestion
 
-Documents are now ingested with category assignments:
+Documents are ingested with category assignments. Two ingestion paths are supported:
 
+#### File Upload (PDF, DOCX, Images)
 ```
-PDF Upload
+File Upload
     │
     ▼
 ┌─────────────────┐
 │ Extract Text    │
 │ (Mistral OCR or │
-│  pdf-parse)     │
+│  Azure DI)      │
 └─────────────────┘
     │
     ▼
@@ -228,6 +229,46 @@ PDF Upload
 │ Document record │
 └─────────────────┘
 ```
+
+#### Text Content Upload (Direct Text)
+```
+Text Content
+    │
+    ▼
+┌─────────────────┐
+│ Save as .txt    │
+│ file to         │
+│ global-docs/    │
+└─────────────────┘
+    │
+    ▼
+┌─────────────────┐
+│ Chunk Text      │  ◀── Bypasses OCR/extraction
+│ (Configurable   │      (text is already plain)
+│  size/overlap)  │
+└─────────────────┘
+    │
+    ▼
+┌─────────────────┐
+│ Batch Embed     │
+│ All Chunks      │
+└─────────────────┘
+    │
+    ▼
+┌─────────────────────────────────────┐
+│ Store in ChromaDB                   │
+│ - Global: ALL category collections  │
+│ - Category: Specific collections    │
+└─────────────────────────────────────┘
+    │
+    ▼
+┌─────────────────┐
+│ Update SQLite   │
+│ Document record │
+└─────────────────┘
+```
+
+**Note**: Text content upload is more efficient than file upload as it skips the OCR/document extraction step, directly chunking the provided text.
 
 ### 4. Thread Management
 
@@ -302,6 +343,8 @@ User Access
 - Can access `/superuser` dashboard
 - Manage users subscribed to their assigned categories
 - Add/remove user subscriptions for assigned categories
+- Upload documents (PDF files or text content) to assigned categories only
+- Cannot upload global documents
 - Cannot manage other super users or admins
 - All standard user capabilities
 
@@ -339,22 +382,47 @@ User Access
 
 ### Document Upload Flow (Admin)
 
+Admin can upload documents via two methods: file upload or text content paste.
+
+#### File Upload
 ```
 1. Admin accesses /admin page - Documents tab
-2. Admin clicks Upload, selects file
-3. Modal appears with category selection
+2. Admin clicks Upload, selects "File Upload" tab
+3. Admin selects file (PDF, DOCX, XLSX, PPTX, or images)
+4. Category selection modal appears
    - Select one or more categories
    - Or mark as "Global" for all categories
-4. Admin submits upload
-5. Backend validates PDF, size ≤ 50MB
-6. Saves to global-docs folder
-7. Creates SQLite document record
-8. Triggers ingestion pipeline:
-   a. Extract text (Mistral OCR or pdf-parse)
+5. Admin submits upload
+6. Backend validates file type and size (≤ 50MB)
+7. Saves to global-docs folder
+8. Creates SQLite document record
+9. Triggers ingestion pipeline:
+   a. Extract text (Mistral OCR or Azure DI)
    b. Chunk text with current settings
    c. Create embeddings
    d. Store in appropriate ChromaDB collections
-9. Update document status to "ready"
+10. Update document status to "ready"
+```
+
+#### Text Content Upload
+```
+1. Admin accesses /admin page - Documents tab
+2. Admin clicks Upload, selects "Text Content" tab
+3. Admin enters:
+   - Document name (required, max 255 chars)
+   - Text content (required, min 10 chars, max 10MB)
+4. Category selection available
+   - Select one or more categories
+   - Or mark as "Global" for all categories
+5. Admin submits
+6. Backend validates name and content
+7. Saves content as .txt file to global-docs folder
+8. Creates SQLite document record
+9. Triggers direct text ingestion (bypasses OCR):
+   a. Chunk text directly
+   b. Create embeddings
+   c. Store in appropriate ChromaDB collections
+10. Update document status to "ready"
 ```
 
 ### User Subscription Management

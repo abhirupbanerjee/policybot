@@ -131,9 +131,15 @@
 - [ ] Admin → Documents page
   - [ ] Header shows "Knowledge Base Documents" ✅
   - [ ] Document list displays correctly
-  - [ ] Upload works
+  - [ ] File upload works (PDF, DOCX, images)
+  - [ ] Text content upload works (paste text with name)
   - [ ] Delete works
   - [ ] Reindex works
+
+- [ ] Super User → Documents page
+  - [ ] Document list displays for assigned categories
+  - [ ] File upload works (PDF to assigned category)
+  - [ ] Text content upload works (paste text to assigned category)
 
 - [ ] Chat Interface
   - [ ] New thread creation works

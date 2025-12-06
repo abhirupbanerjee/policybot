@@ -15,6 +15,8 @@ A Retrieval-Augmented Generation (RAG) chatbot that helps government staff query
 ### Document Management
 - **Category-Based Organization** - Documents organized into categories for targeted access
 - **Global Documents** - Admin-managed documents available across all categories
+- **File Upload** - Upload PDF, DOCX, XLSX, PPTX, and image files (up to 50MB)
+- **Text Content Upload** - Paste text directly without creating a file first (bypasses OCR)
 - **User Uploads** - Upload up to 3 PDFs per thread (max 5MB each) for compliance checking
 - **Automatic Processing** - Documents are chunked, embedded, and indexed automatically
 - **Compliance Checking** - Compare user documents against organizational policies
@@ -50,7 +52,7 @@ A Retrieval-Augmented Generation (RAG) chatbot that helps government staff query
 | Role | Permissions |
 |------|-------------|
 | **Admin** | Full access: manage all users, categories, documents, and settings |
-| **Super User** | Manage users subscribed to their assigned categories |
+| **Super User** | Manage users and upload documents to assigned categories |
 | **User** | Access chat and documents from subscribed categories |
 
 ## Solution Architecture
@@ -340,7 +342,8 @@ policy-bot/
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | GET | `/api/admin/documents` | List all documents with categories |
-| POST | `/api/admin/documents` | Upload document (with category IDs, isGlobal) |
+| POST | `/api/admin/documents` | Upload file (with category IDs, isGlobal) |
+| POST | `/api/admin/documents/text` | Upload text content (bypasses OCR) |
 | GET | `/api/admin/documents/{id}` | Get document details |
 | DELETE | `/api/admin/documents/{id}` | Delete document |
 | PUT | `/api/admin/documents/{id}` | Reindex document |
@@ -377,6 +380,10 @@ policy-bot/
 ### Super User
 | Method | Endpoint | Description |
 |--------|----------|-------------|
+| GET | `/api/superuser/documents` | Get documents in assigned categories |
+| POST | `/api/superuser/documents` | Upload file to assigned category |
+| POST | `/api/superuser/documents/text` | Upload text content to assigned category |
+| DELETE | `/api/superuser/documents/{id}` | Delete own document |
 | GET | `/api/superuser/users` | Get users in assigned categories |
 | POST | `/api/superuser/users` | Add user subscription |
 | DELETE | `/api/superuser/users` | Remove user subscription |
