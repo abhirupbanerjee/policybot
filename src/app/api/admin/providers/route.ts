@@ -142,39 +142,71 @@ async function getServiceStatus(
   return services;
 }
 
+// Test a model via LiteLLM proxy with a minimal completion request
+async function testModelViaProxy(
+  model: string,
+  timeout: number
+): Promise<{ available: boolean; error?: string }> {
+  const baseUrl = process.env.OPENAI_BASE_URL;
+  const apiKey = process.env.LITELLM_MASTER_KEY || process.env.OPENAI_API_KEY;
+
+  if (!baseUrl || !apiKey) {
+    return { available: false, error: 'Proxy not configured' };
+  }
+
+  try {
+    const response = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model,
+        messages: [{ role: 'user', content: 'test' }],
+        max_tokens: 1,
+      }),
+      signal: AbortSignal.timeout(timeout),
+    });
+
+    if (response.ok) {
+      return { available: true };
+    }
+
+    // Parse error for more details
+    const errorData = await response.json().catch(() => null);
+    const errorMsg = errorData?.error?.message || `HTTP ${response.status}`;
+    return { available: false, error: errorMsg };
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.name === 'TimeoutError' || error.name === 'AbortError') {
+        return { available: false, error: 'Request timeout' };
+      }
+      return { available: false, error: error.message };
+    }
+    return { available: false, error: 'Unknown error' };
+  }
+}
+
 // Test if a provider is reachable
 async function testProvider(provider: string): Promise<{ available: boolean; error?: string }> {
-  const timeout = 5000; // 5 second timeout
+  const timeout = 8000; // 8 second timeout for actual API calls
 
   try {
     switch (provider) {
       case 'openai': {
-        // Test via LiteLLM proxy or direct OpenAI
-        const baseUrl = process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1';
         const apiKey = process.env.OPENAI_API_KEY;
-
         if (!apiKey) {
           return { available: false, error: 'API key not configured' };
         }
 
-        // Use LiteLLM health endpoint if using proxy
-        if (baseUrl.includes('localhost') || baseUrl.includes('litellm')) {
-          const healthUrl = baseUrl.replace('/v1', '/health');
-          const response = await fetch(healthUrl, {
-            method: 'GET',
-            headers: {
-              'Authorization': `Bearer ${process.env.LITELLM_MASTER_KEY || apiKey}`,
-            },
-            signal: AbortSignal.timeout(timeout),
-          });
-
-          if (response.ok) {
-            return { available: true };
-          }
-          return { available: false, error: `LiteLLM health check failed: ${response.status}` };
+        // If using LiteLLM proxy, test with an actual OpenAI model request
+        if (process.env.OPENAI_BASE_URL) {
+          return testModelViaProxy('gpt-4.1-mini', timeout);
         }
 
         // Direct OpenAI - test models endpoint
+        const baseUrl = 'https://api.openai.com/v1';
         const response = await fetch(`${baseUrl}/models`, {
           method: 'GET',
           headers: {
@@ -195,10 +227,9 @@ async function testProvider(provider: string): Promise<{ available: boolean; err
           return { available: false, error: 'API key not configured' };
         }
 
-        // If using LiteLLM proxy, check if OpenAI (proxy) is available instead
-        // The actual Mistral connectivity is handled by LiteLLM
+        // If using LiteLLM proxy, test with an actual Mistral model request
         if (process.env.OPENAI_BASE_URL) {
-          return { available: true }; // Assume available if key is configured and proxy is used
+          return testModelViaProxy('mistral-small-3.2', timeout);
         }
 
         // Direct Mistral API test
