@@ -254,7 +254,9 @@ export function getThreadCategorySlugs(threadId: string): string[] {
     JOIN thread_categories tc ON c.id = tc.category_id
     WHERE tc.thread_id = ?
   `, [threadId]);
-  return results.map(r => r.slug);
+  const slugs = results.map(r => r.slug);
+  console.log('[DB] getThreadCategorySlugs:', { threadId, slugs, resultCount: results.length });
+  return slugs;
 }
 
 /**

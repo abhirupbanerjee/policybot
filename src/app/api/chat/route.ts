@@ -60,6 +60,7 @@ export async function POST(request: NextRequest) {
 
     // Get thread categories for category-based search
     const categorySlugs = await getThreadCategorySlugsForQuery(threadId);
+    console.log('[Chat API] Thread categories:', { threadId, categorySlugs });
 
     // Run RAG query with category context
     const { answer, sources } = await ragQuery(
