@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Plus, MessageSquare, Trash2, Menu, X, Settings, LogOut, Tag, Users,
+  Plus, MessageSquare, Trash2, Menu, X, Settings, LogOut, Users,
   Landmark, DollarSign, BarChart3, FileText, Database, Activity, Layers, Globe, Server, ScrollText
 } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
@@ -25,6 +25,25 @@ const ICON_COMPONENTS: Record<string, React.ComponentType<{ size?: number; class
   internet: Globe,
   systems: Server,
   policy: ScrollText,
+};
+
+// Color palette for subscription badges
+const SUBSCRIPTION_COLORS = [
+  { bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-200' },
+  { bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-200' },
+  { bg: 'bg-purple-100', text: 'text-purple-700', border: 'border-purple-200' },
+  { bg: 'bg-orange-100', text: 'text-orange-700', border: 'border-orange-200' },
+  { bg: 'bg-pink-100', text: 'text-pink-700', border: 'border-pink-200' },
+  { bg: 'bg-cyan-100', text: 'text-cyan-700', border: 'border-cyan-200' },
+  { bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-200' },
+  { bg: 'bg-indigo-100', text: 'text-indigo-700', border: 'border-indigo-200' },
+  { bg: 'bg-rose-100', text: 'text-rose-700', border: 'border-rose-200' },
+  { bg: 'bg-teal-100', text: 'text-teal-700', border: 'border-teal-200' },
+];
+
+// Get consistent color for a category based on its ID
+const getCategoryColor = (categoryId: number) => {
+  return SUBSCRIPTION_COLORS[categoryId % SUBSCRIPTION_COLORS.length];
 };
 
 interface BrandingData {
@@ -302,15 +321,23 @@ export default function ThreadSidebar({
                           <span className="text-xs text-gray-500">
                             {formatDate(thread.updatedAt)}
                           </span>
-                          {thread.categories && thread.categories.length > 0 && (
-                            <div className="flex items-center gap-0.5">
-                              <Tag size={10} className="text-gray-400" />
-                              <span className="text-xs text-gray-400">
-                                {thread.categories.length}
-                              </span>
-                            </div>
-                          )}
                         </div>
+                        {thread.categories && thread.categories.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {thread.categories.map((category) => {
+                              const colors = getCategoryColor(category.id);
+                              return (
+                                <span
+                                  key={category.id}
+                                  className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium border ${colors.bg} ${colors.text} ${colors.border}`}
+                                  title={category.name}
+                                >
+                                  {category.name}
+                                </span>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                       <button
                         onClick={(e) => {
