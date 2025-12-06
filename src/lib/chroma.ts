@@ -194,6 +194,16 @@ export async function queryCollection(
 }> {
   try {
     const collection = await getCollectionByName(collectionName);
+
+    // Check collection count before querying
+    const count = await collection.count();
+    console.log(`[ChromaDB] Collection ${collectionName} has ${count} documents`);
+
+    if (count === 0) {
+      console.log(`[ChromaDB] Collection ${collectionName} is empty, skipping query`);
+      return { ids: [], documents: [], metadatas: [], distances: [] };
+    }
+
     const results = await collection.query({
       queryEmbeddings: [queryEmbedding],
       nResults,
