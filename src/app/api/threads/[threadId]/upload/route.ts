@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { saveUpload, deleteUpload, getThread } from '@/lib/threads';
+import { isSupportedMimeType } from '@/lib/document-extractor';
 import type { UploadResponse, ApiError } from '@/types';
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
@@ -50,9 +51,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Validate file type
-    if (file.type !== 'application/pdf') {
+    if (!isSupportedMimeType(file.type)) {
       return NextResponse.json<ApiError>(
-        { error: 'Only PDF files allowed', code: 'INVALID_FILE_TYPE' },
+        { error: 'Invalid file type. Allowed: PDF, DOCX, XLSX, PPTX, PNG, JPG, WEBP, GIF', code: 'INVALID_FILE_TYPE' },
         { status: 400 }
       );
     }

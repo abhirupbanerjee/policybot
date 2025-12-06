@@ -16,6 +16,7 @@
     "docker:logs": "docker compose logs -f app"
   },
   "dependencies": {
+    "@azure/ai-form-recognizer": "^5.1.0",
     "@langchain/textsplitters": "^0.1.0",
     "@mistralai/mistralai": "^1.10.0",
     "better-sqlite3": "^12.5.0",

@@ -48,8 +48,18 @@ export default function FileUpload({
       return;
     }
 
-    if (file.type !== 'application/pdf') {
-      setError('Only PDF files are allowed');
+    const supportedTypes = [
+      'application/pdf',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'image/png',
+      'image/jpeg',
+      'image/webp',
+      'image/gif',
+    ];
+    if (!supportedTypes.includes(file.type)) {
+      setError('Invalid file type. Allowed: PDF, DOCX, XLSX, PPTX, PNG, JPG, WEBP, GIF');
       return;
     }
 
@@ -113,7 +123,7 @@ export default function FileUpload({
         onClick={() => setIsModalOpen(true)}
         disabled={disabled || !threadId}
         className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        title="Attach PDF"
+        title="Attach document"
       >
         <Paperclip size={20} />
       </button>
@@ -142,7 +152,7 @@ export default function FileUpload({
             <>
               <Upload className="w-10 h-10 text-gray-400 mx-auto mb-3" />
               <p className="text-gray-600 mb-2">
-                Drag & drop a PDF here, or{' '}
+                Drag & drop a file here, or{' '}
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   className="text-blue-600 hover:underline"
@@ -151,7 +161,7 @@ export default function FileUpload({
                 </button>
               </p>
               <p className="text-sm text-gray-500">
-                Max 5MB, PDF only
+                Max 5MB. PDF, DOCX, XLSX, PPTX, or images
               </p>
             </>
           )}
@@ -160,7 +170,7 @@ export default function FileUpload({
         <input
           ref={fileInputRef}
           type="file"
-          accept=".pdf,application/pdf"
+          accept=".pdf,.docx,.xlsx,.pptx,.png,.jpg,.jpeg,.webp,.gif"
           onChange={handleFileSelect}
           className="hidden"
         />

@@ -18,22 +18,47 @@ export interface MistralPageText {
   text: string;
 }
 
+/**
+ * Check if the MIME type is an image type supported by Mistral OCR
+ */
+function isImageMimeType(mimeType: string): boolean {
+  return mimeType.startsWith('image/');
+}
+
+/**
+ * Extract text using Mistral OCR
+ *
+ * Supports:
+ * - PDF documents (type: document_url)
+ * - Images: PNG, JPG, WEBP, GIF (type: image_url)
+ */
 export async function extractTextWithMistral(
-  pdfBuffer: Buffer
+  buffer: Buffer,
+  mimeType: string = 'application/pdf'
 ): Promise<{ text: string; numPages: number; pages: MistralPageText[] }> {
   const client = getMistralClient();
 
   // Convert buffer to base64 data URL
-  const base64Pdf = pdfBuffer.toString('base64');
-  const dataUrl = `data:application/pdf;base64,${base64Pdf}`;
+  const base64Data = buffer.toString('base64');
+  const dataUrl = `data:${mimeType};base64,${base64Data}`;
 
-  // Call Mistral OCR API using document_url with data URL
+  // Determine document type based on MIME type
+  // Images use image_url, PDFs use document_url
+  const isImage = isImageMimeType(mimeType);
+
+  // Call Mistral OCR API with appropriate document type
   const response = await client.ocr.process({
     model: 'mistral-ocr-latest',
-    document: {
-      type: 'document_url',
-      documentUrl: dataUrl,
-    },
+    document: isImage
+      ? {
+          type: 'image_url',
+          imageUrl: dataUrl,
+        }
+      : {
+          type: 'document_url',
+          documentUrl: dataUrl,
+        },
+    ...(isImage && { includeImageBase64: true }),
   });
 
   // Extract text from each page

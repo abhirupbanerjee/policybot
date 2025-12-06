@@ -16,6 +16,7 @@ import {
   deleteFile,
   writeFileBuffer,
 } from './storage';
+import { isSupportedExtension } from './document-extractor';
 import { getUserId } from './users';
 import { getUploadLimits } from './db/config';
 import {
@@ -138,7 +139,7 @@ export async function getThread(
   // Get uploads from filesystem
   const uploadsDir = getThreadUploadPath(userId, threadId);
   const uploadFiles = await listFiles(uploadsDir);
-  const uploads = uploadFiles.filter(f => f.endsWith('.pdf'));
+  const uploads = uploadFiles.filter(f => isSupportedExtension(f));
 
   return {
     id: threadDetails.id,
@@ -420,7 +421,7 @@ export async function getUploadPaths(
 
   const uploads = dbGetThreadUploads(threadId);
   return uploads
-    .filter(u => u.filename.endsWith('.pdf'))
+    .filter(u => isSupportedExtension(u.filename))
     .map(u => u.filepath);
 }
 

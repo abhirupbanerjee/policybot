@@ -9,7 +9,7 @@ import { createEmbeddings, generateResponseWithTools } from './openai';
 import type { OpenAI } from 'openai';
 import { queryDocuments, queryCategories } from './chroma';
 import { getCachedQuery, cacheQuery, hashQuery } from './redis';
-import { extractTextFromPDF, chunkText } from './ingest';
+import { extractTextFromDocument, chunkText } from './ingest';
 import { readFileBuffer } from './storage';
 import { getSystemPrompt, getRagSettings, getAcronymMappings } from './db/config';
 import type { Message, Source, RetrievedChunk, RAGResponse } from '@/types';
@@ -149,8 +149,8 @@ export async function buildContext(
   for (const docPath of userDocPaths) {
     try {
       const buffer = await readFileBuffer(docPath);
-      const { text, pages } = await extractTextFromPDF(buffer);
-      const filename = docPath.split('/').pop() || 'user-document.pdf';
+      const filename = docPath.split('/').pop() || 'user-document';
+      const { text, pages } = await extractTextFromDocument(buffer, filename);
 
       // Create temporary chunks from user document with page info
       const chunks = await chunkText(text, 'user-temp', filename, 'user', undefined, undefined, pages);

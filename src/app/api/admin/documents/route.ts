@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { listGlobalDocuments, ingestDocument } from '@/lib/ingest';
+import { isSupportedMimeType } from '@/lib/document-extractor';
 import type { AdminDocumentsResponse, AdminUploadResponse, ApiError } from '@/types';
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
@@ -67,9 +68,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Validate file type
-    if (file.type !== 'application/pdf') {
+    if (!isSupportedMimeType(file.type)) {
       return NextResponse.json<ApiError>(
-        { error: 'Only PDF files allowed', code: 'INVALID_FILE_TYPE' },
+        { error: 'Invalid file type. Allowed: PDF, DOCX, XLSX, PPTX, PNG, JPG, WEBP, GIF', code: 'INVALID_FILE_TYPE' },
         { status: 400 }
       );
     }
@@ -105,6 +106,7 @@ export async function POST(request: NextRequest) {
     const doc = await ingestDocument(buffer, file.name, user.email, {
       categoryIds,
       isGlobal,
+      mimeType: file.type,
     });
 
     return NextResponse.json<AdminUploadResponse>(

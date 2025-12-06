@@ -4,10 +4,11 @@
  * Supports category-based document ingestion with SQLite metadata storage.
  * Documents can be assigned to categories or marked as global.
  * Global documents are indexed into all category collections.
+ *
+ * Supports: PDF, DOCX, XLSX, PPTX, PNG, JPG, WEBP, GIF
  */
 
 import { RecursiveCharacterTextSplitter } from '@langchain/textsplitters';
-import pdf from 'pdf-parse';
 import path from 'path';
 import { createEmbeddings } from './openai';
 import {
@@ -31,7 +32,7 @@ import {
   type DocumentWithCategories,
 } from './db/documents';
 import { getCategoryById } from './db/categories';
-import { extractTextWithMistral } from './mistral-ocr';
+import { extractText, getMimeTypeFromFilename, type ExtractedPage } from './document-extractor';
 import type { DocumentChunk, GlobalDocument } from '@/types';
 
 // Create splitter with configurable settings
@@ -52,57 +53,27 @@ function createSplitter(chunkSize?: number, chunkOverlap?: number): RecursiveCha
   });
 }
 
-export interface PageText {
-  pageNumber: number;
-  text: string;
+// Re-export PageText type for backward compatibility
+export type PageText = ExtractedPage;
+
+/**
+ * Extract text from a PDF document
+ * @deprecated Use extractText from document-extractor.ts for new code
+ */
+export async function extractTextFromPDF(buffer: Buffer): Promise<{ text: string; numPages: number; pages: PageText[] }> {
+  return extractText(buffer, 'application/pdf', 'document.pdf');
 }
 
-export async function extractTextFromPDF(buffer: Buffer): Promise<{ text: string; numPages: number; pages: PageText[] }> {
-  // Try Mistral OCR first (if API key is available)
-  if (process.env.MISTRAL_API_KEY) {
-    try {
-      console.log('Attempting PDF extraction with Mistral OCR...');
-      const mistralResult = await extractTextWithMistral(buffer);
-      console.log(`Mistral OCR succeeded: ${mistralResult.numPages} pages extracted`);
-      return mistralResult;
-    } catch (error) {
-      console.warn('Mistral OCR failed, falling back to pdf-parse:', error);
-      // Fall through to pdf-parse fallback
-    }
-  }
-
-  // Fallback to pdf-parse
-  console.log('Using pdf-parse for PDF extraction...');
-  const pages: PageText[] = [];
-
-  // Custom page render to capture text per page
-  const data = await pdf(buffer, {
-    pagerender: function(pageData: { pageIndex: number; getTextContent: () => Promise<{ items: Array<{ str: string }> }> }) {
-      return pageData.getTextContent().then(function(textContent) {
-        const pageText = textContent.items
-          .map((item) => item.str)
-          .join(' ')
-          .replace(/\s+/g, ' ')
-          .trim();
-
-        pages.push({
-          pageNumber: pageData.pageIndex + 1, // 1-indexed
-          text: pageText,
-        });
-
-        return pageText;
-      });
-    }
-  });
-
-  // Sort pages by page number (in case they were processed out of order)
-  pages.sort((a, b) => a.pageNumber - b.pageNumber);
-
-  return {
-    text: data.text,
-    numPages: data.numpages,
-    pages,
-  };
+/**
+ * Extract text from any supported document type
+ */
+export async function extractTextFromDocument(
+  buffer: Buffer,
+  filename: string,
+  mimeType?: string
+): Promise<{ text: string; numPages: number; pages: PageText[] }> {
+  const resolvedMimeType = mimeType || getMimeTypeFromFilename(filename);
+  return extractText(buffer, resolvedMimeType, filename);
 }
 
 export async function chunkText(
@@ -188,10 +159,10 @@ function toGlobalDocument(doc: DocumentWithCategories): GlobalDocument {
 /**
  * Ingest a document with category support
  *
- * @param buffer - PDF file buffer
+ * @param buffer - File buffer
  * @param filename - Original filename
  * @param uploadedBy - User email who uploaded
- * @param options - Category and global options
+ * @param options - Category, global, and MIME type options
  */
 export async function ingestDocument(
   buffer: Buffer,
@@ -200,15 +171,17 @@ export async function ingestDocument(
   options?: {
     categoryIds?: number[];
     isGlobal?: boolean;
+    mimeType?: string;
   }
 ): Promise<GlobalDocument> {
   const globalDocsDir = getGlobalDocsDir();
   const categoryIds = options?.categoryIds || [];
   const isGlobal = options?.isGlobal || false;
+  const mimeType = options?.mimeType || getMimeTypeFromFilename(filename);
 
-  // Save PDF file
-  const pdfPath = path.join(globalDocsDir, filename);
-  await writeFileBuffer(pdfPath, buffer);
+  // Save file
+  const filePath = path.join(globalDocsDir, filename);
+  await writeFileBuffer(filePath, buffer);
 
   // Create document record in SQLite
   const doc = createDocument({
@@ -222,12 +195,12 @@ export async function ingestDocument(
 
   try {
     // Extract and chunk text
-    const { text, pages } = await extractTextFromPDF(buffer);
+    const { text, pages } = await extractText(buffer, mimeType, filename);
     const docId = String(doc.id);
     const chunks = await chunkText(text, docId, filename, 'global', undefined, undefined, pages);
 
     if (chunks.length === 0) {
-      throw new Error('No text content extracted from PDF');
+      throw new Error('No text content extracted from document');
     }
 
     // Get category slugs for ChromaDB collection names
@@ -372,7 +345,8 @@ export async function reindexDocument(docId: string): Promise<GlobalDocument | n
   try {
     // Re-extract and chunk
     const buffer = await readFileBuffer(pdfPath);
-    const { text, pages } = await extractTextFromPDF(buffer);
+    const mimeType = getMimeTypeFromFilename(doc.filename);
+    const { text, pages } = await extractText(buffer, mimeType, doc.filename);
     const chunks = await chunkText(text, docId, doc.filename, 'global', undefined, undefined, pages);
 
     // Create embeddings in batches
@@ -482,9 +456,10 @@ export async function updateDocumentCategories(
     // Re-add to new categories
     if (newSlugs.length > 0) {
       const globalDocsDir = getGlobalDocsDir();
-      const pdfPath = path.join(globalDocsDir, doc.filepath);
-      const buffer = await readFileBuffer(pdfPath);
-      const { text, pages } = await extractTextFromPDF(buffer);
+      const filePath = path.join(globalDocsDir, doc.filepath);
+      const buffer = await readFileBuffer(filePath);
+      const mimeType = getMimeTypeFromFilename(doc.filename);
+      const { text, pages } = await extractText(buffer, mimeType, doc.filename);
       const chunks = await chunkText(text, docId, doc.filename, 'global', undefined, undefined, pages);
 
       const batchSize = 100;
@@ -527,9 +502,10 @@ export async function toggleDocumentGlobal(
   // If document has embeddings and status is changing, need to re-index
   if (doc.chunk_count > 0 && doc.status === 'ready' && doc.isGlobal !== isGlobal) {
     const globalDocsDir = getGlobalDocsDir();
-    const pdfPath = path.join(globalDocsDir, doc.filepath);
-    const buffer = await readFileBuffer(pdfPath);
-    const { text, pages } = await extractTextFromPDF(buffer);
+    const filePath = path.join(globalDocsDir, doc.filepath);
+    const buffer = await readFileBuffer(filePath);
+    const mimeType = getMimeTypeFromFilename(doc.filename);
+    const { text, pages } = await extractText(buffer, mimeType, doc.filename);
     const chunks = await chunkText(text, docId, doc.filename, 'global', undefined, undefined, pages);
 
     // Delete from current locations
