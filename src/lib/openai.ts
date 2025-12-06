@@ -17,8 +17,14 @@ const TOOL_CAPABLE_MODELS = new Set([
 
 function getOpenAI(): OpenAI {
   if (!openaiClient) {
+    // When using LiteLLM proxy, use LITELLM_MASTER_KEY for authentication
+    // Otherwise fall back to OPENAI_API_KEY for direct OpenAI access
+    const apiKey = process.env.OPENAI_BASE_URL
+      ? (process.env.LITELLM_MASTER_KEY || process.env.OPENAI_API_KEY)
+      : process.env.OPENAI_API_KEY;
+
     openaiClient = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
+      apiKey,
       baseURL: process.env.OPENAI_BASE_URL || undefined,
     });
   }
