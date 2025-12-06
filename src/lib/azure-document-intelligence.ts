@@ -79,13 +79,16 @@ export async function extractTextWithAzureDI(
 
   const result = await poller.pollUntilDone();
 
-  if (!result.pages || result.pages.length === 0) {
-    throw new Error('No pages extracted from document');
-  }
+  // The result.content field contains the full text for all document types
+  // This is the primary source for text extraction (works for DOCX, XLSX, PPTX, PDF, images)
+  const fullText = result.content || '';
 
-  // Extract text from each page
-  const pages: AzureDIPage[] = result.pages.map((page, index) => {
-    // Get all lines from the page and join them
+  // For page-level information, extract from pages if available
+  // Note: For Office documents, pages may not have line-level data
+  const numPages = result.pages?.length || 1;
+
+  const pages: AzureDIPage[] = result.pages?.map((page, index) => {
+    // Try to get page-specific text from lines, fall back to empty
     const pageText = page.lines
       ?.map(line => line.content)
       .join('\n') || '';
@@ -94,14 +97,19 @@ export async function extractTextWithAzureDI(
       pageNumber: index + 1,
       text: pageText,
     };
-  });
+  }) || [{ pageNumber: 1, text: fullText }];
 
-  // Combine all pages with double newlines between them
-  const fullText = pages.map(p => p.text).join('\n\n');
+  // If we have content but pages don't have text (common for Office docs),
+  // put all content in the first page for consistency
+  if (fullText && pages.every(p => !p.text)) {
+    pages[0] = { pageNumber: 1, text: fullText };
+  }
+
+  console.log(`Azure DI extracted ${fullText.length} chars from ${numPages} page(s)`);
 
   return {
     text: fullText,
-    numPages: pages.length,
+    numPages,
     pages,
   };
 }

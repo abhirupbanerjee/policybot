@@ -1,7 +1,10 @@
 /**
  * Test script for multi-tier document extraction
  *
- * Usage: npx tsx scripts/test-document-extraction.ts
+ * Usage:
+ *   npx tsx scripts/test-document-extraction.ts [file-path]
+ *   npx tsx scripts/test-document-extraction.ts /path/to/file.docx
+ *   npx tsx scripts/test-document-extraction.ts  # Tests first file in data/global-docs/
  */
 
 import dotenv from 'dotenv';
@@ -27,7 +30,7 @@ async function main() {
 
   // Test MIME type detection
   console.log('\n📋 MIME Type Detection:');
-  const testFiles = [
+  const testFileNames = [
     'document.pdf',
     'report.docx',
     'data.xlsx',
@@ -39,67 +42,87 @@ async function main() {
     'unknown.xyz',
   ];
 
-  for (const file of testFiles) {
+  for (const file of testFileNames) {
     const mimeType = getMimeTypeFromFilename(file);
     const supported = isSupportedMimeType(mimeType);
     console.log(`  ${file} → ${mimeType} ${supported ? '✅' : '❌'}`);
   }
 
-  // Check for test files in data directory
-  const dataDir = path.join(process.cwd(), 'data');
-  const globalDocsDir = path.join(dataDir, 'global-docs');
-
-  console.log('\n📋 Looking for test documents...');
+  // Check for command line argument for specific file
+  const argFile = process.argv[2];
 
   let testFile: string | null = null;
-  let testFilePath: string | null = null;
   let buffer: Buffer | null = null;
   let mimeType: string | null = null;
 
-  try {
-    const files = await fs.readdir(globalDocsDir);
-    const supportedFiles = files.filter(f => {
-      const mt = getMimeTypeFromFilename(f);
-      return isSupportedMimeType(mt);
-    });
-
-    if (supportedFiles.length > 0) {
-      testFile = supportedFiles[0];
-      testFilePath = path.join(globalDocsDir, testFile);
-      buffer = await fs.readFile(testFilePath);
+  if (argFile) {
+    // Use specified file
+    console.log(`\n📋 Using specified file: ${argFile}`);
+    try {
+      const filePath = path.isAbsolute(argFile) ? argFile : path.join(process.cwd(), argFile);
+      buffer = await fs.readFile(filePath);
+      testFile = path.basename(filePath);
       mimeType = getMimeTypeFromFilename(testFile);
-      console.log(`  Found ${supportedFiles.length} supported file(s)`);
-    }
-  } catch {
-    // Directory might not exist
-  }
-
-  // If no files found, try to use a test file from /tmp
-  if (!buffer) {
-    console.log('  No documents found in data/global-docs/');
-
-    // Check for test files in /tmp
-    const testFiles = [
-      { path: '/tmp/test-document.pdf', mime: 'application/pdf' },
-      { path: '/tmp/test-image.png', mime: 'image/png' },
-      { path: '/tmp/test-image.jpg', mime: 'image/jpeg' },
-    ];
-
-    for (const tf of testFiles) {
-      try {
-        buffer = await fs.readFile(tf.path);
-        testFile = path.basename(tf.path);
-        mimeType = tf.mime;
-        console.log(`  Using test file from ${tf.path}`);
-        break;
-      } catch {
-        // Try next
-      }
-    }
-
-    if (!buffer) {
-      console.log('  No test files available. Place a PDF or image in /tmp/ or data/global-docs/');
+    } catch (err) {
+      console.log(`  ❌ Failed to read file: ${err instanceof Error ? err.message : String(err)}`);
       return;
+    }
+  } else {
+    // Check for test files in data directory
+    const dataDir = path.join(process.cwd(), 'data');
+    const globalDocsDir = path.join(dataDir, 'global-docs');
+
+    console.log('\n📋 Looking for test documents in data/global-docs/...');
+
+    try {
+      const files = await fs.readdir(globalDocsDir);
+      const supportedFiles = files.filter(f => {
+        const mt = getMimeTypeFromFilename(f);
+        return isSupportedMimeType(mt);
+      });
+
+      if (supportedFiles.length > 0) {
+        testFile = supportedFiles[0];
+        const testFilePath = path.join(globalDocsDir, testFile);
+        buffer = await fs.readFile(testFilePath);
+        mimeType = getMimeTypeFromFilename(testFile);
+        console.log(`  Found ${supportedFiles.length} supported file(s)`);
+      }
+    } catch {
+      // Directory might not exist
+    }
+
+    // If no files found, try to use a test file from /tmp
+    if (!buffer) {
+      console.log('  No documents found in data/global-docs/');
+
+      // Check for test files in /tmp
+      const tmpFiles = [
+        { path: '/tmp/test-document.pdf', mime: 'application/pdf' },
+        { path: '/tmp/test-document.docx', mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
+        { path: '/tmp/test-document.xlsx', mime: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' },
+        { path: '/tmp/test-document.pptx', mime: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' },
+        { path: '/tmp/test-image.png', mime: 'image/png' },
+        { path: '/tmp/test-image.jpg', mime: 'image/jpeg' },
+      ];
+
+      for (const tf of tmpFiles) {
+        try {
+          buffer = await fs.readFile(tf.path);
+          testFile = path.basename(tf.path);
+          mimeType = tf.mime;
+          console.log(`  Using test file from ${tf.path}`);
+          break;
+        } catch {
+          // Try next
+        }
+      }
+
+      if (!buffer) {
+        console.log('  No test files available.');
+        console.log('  Usage: npx tsx scripts/test-document-extraction.ts /path/to/file.docx');
+        return;
+      }
     }
   }
 
