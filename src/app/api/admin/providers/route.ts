@@ -9,6 +9,15 @@ interface ProviderStatus {
   error?: string;
 }
 
+interface ServiceStatus {
+  name: string;
+  model: string;
+  provider: string;
+  available: boolean;
+  configured: boolean;
+  error?: string;
+}
+
 // Check if environment variables are configured for each provider
 function checkProviderConfig(): Record<string, boolean> {
   return {
@@ -17,6 +26,120 @@ function checkProviderConfig(): Record<string, boolean> {
     ollama: Boolean(process.env.OLLAMA_API_BASE),
     azure: Boolean(process.env.AZURE_API_KEY && process.env.AZURE_API_BASE),
   };
+}
+
+// Service definitions for embedding, OCR/extraction, and audio
+const SERVICES = {
+  embedding: {
+    name: 'Embeddings',
+    model: process.env.EMBEDDING_MODEL || 'text-embedding-3-large',
+    getProvider: () => {
+      const model = process.env.EMBEDDING_MODEL || 'text-embedding-3-large';
+      if (model.includes('ollama')) return 'ollama';
+      if (model.includes('mistral')) return 'mistral';
+      return 'openai';
+    },
+  },
+  ocr: {
+    name: 'Document OCR/Extraction',
+    model: 'Azure Document Intelligence',
+    getProvider: () => 'azure-di',
+  },
+  audio: {
+    name: 'Audio Transcription',
+    model: 'whisper-1',
+    getProvider: () => 'openai', // Whisper via OpenAI/LiteLLM
+  },
+};
+
+// Check Azure Document Intelligence availability
+async function testAzureDI(): Promise<{ available: boolean; error?: string }> {
+  const endpoint = process.env.AZURE_DI_ENDPOINT;
+  const key = process.env.AZURE_DI_KEY;
+
+  if (!endpoint || !key) {
+    return { available: false, error: 'Azure DI endpoint or key not configured' };
+  }
+
+  try {
+    // Test the Azure DI info endpoint
+    const response = await fetch(`${endpoint}documentintelligence/info?api-version=2024-11-30`, {
+      method: 'GET',
+      headers: {
+        'Ocp-Apim-Subscription-Key': key,
+      },
+      signal: AbortSignal.timeout(5000),
+    });
+
+    if (response.ok) {
+      return { available: true };
+    }
+    return { available: false, error: `Azure DI error: ${response.status}` };
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.name === 'TimeoutError' || error.name === 'AbortError') {
+        return { available: false, error: 'Connection timeout' };
+      }
+      return { available: false, error: error.message };
+    }
+    return { available: false, error: 'Unknown error' };
+  }
+}
+
+// Get service availability based on provider status
+async function getServiceStatus(
+  providerStatus: Record<string, ProviderStatus>
+): Promise<Record<string, ServiceStatus>> {
+  const services: Record<string, ServiceStatus> = {};
+
+  // Embedding service
+  const embeddingProvider = SERVICES.embedding.getProvider();
+  const embeddingProviderStatus = providerStatus[embeddingProvider];
+  services.embedding = {
+    name: SERVICES.embedding.name,
+    model: SERVICES.embedding.model,
+    provider: embeddingProvider,
+    available: embeddingProviderStatus?.available ?? false,
+    configured: embeddingProviderStatus?.configured ?? false,
+    error: embeddingProviderStatus?.error,
+  };
+
+  // OCR/Extraction service (Azure Document Intelligence)
+  const azureDIConfigured = Boolean(process.env.AZURE_DI_ENDPOINT && process.env.AZURE_DI_KEY);
+  if (azureDIConfigured) {
+    const azureDIResult = await testAzureDI();
+    services.ocr = {
+      name: SERVICES.ocr.name,
+      model: SERVICES.ocr.model,
+      provider: 'azure-di',
+      available: azureDIResult.available,
+      configured: true,
+      error: azureDIResult.error,
+    };
+  } else {
+    services.ocr = {
+      name: SERVICES.ocr.name,
+      model: SERVICES.ocr.model,
+      provider: 'azure-di',
+      available: false,
+      configured: false,
+      error: 'Azure DI not configured',
+    };
+  }
+
+  // Audio transcription service
+  const audioProvider = SERVICES.audio.getProvider();
+  const audioProviderStatus = providerStatus[audioProvider];
+  services.audio = {
+    name: SERVICES.audio.name,
+    model: SERVICES.audio.model,
+    provider: audioProvider,
+    available: audioProviderStatus?.available ?? false,
+    configured: audioProviderStatus?.configured ?? false,
+    error: audioProviderStatus?.error,
+  };
+
+  return services;
 }
 
 // Test if a provider is reachable
@@ -188,8 +311,12 @@ export async function GET() {
       providerStatus[result.provider] = result;
     }
 
+    // Get service availability (embedding, OCR, audio)
+    const services = await getServiceStatus(providerStatus);
+
     return NextResponse.json({
       providers: providerStatus,
+      services,
       usingProxy: Boolean(process.env.OPENAI_BASE_URL),
       proxyUrl: process.env.OPENAI_BASE_URL || null,
     });

@@ -92,6 +92,15 @@ interface ProviderStatus {
   error?: string;
 }
 
+interface ServiceStatus {
+  name: string;
+  model: string;
+  provider: string;
+  available: boolean;
+  configured: boolean;
+  error?: string;
+}
+
 interface ModelPreset {
   id: string;
   name: string;
@@ -252,6 +261,7 @@ export default function AdminPage() {
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
   const [modelPresets, setModelPresets] = useState<ModelPreset[]>([]);
   const [providerStatus, setProviderStatus] = useState<Record<string, ProviderStatus>>({});
+  const [serviceStatus, setServiceStatus] = useState<Record<string, ServiceStatus>>({});
   const [providersLoading, setProvidersLoading] = useState(true);
   const [applyingPreset, setApplyingPreset] = useState(false);
   const [restoringDefaults, setRestoringDefaults] = useState(false);
@@ -478,6 +488,7 @@ export default function AdminPage() {
 
       const data = await response.json();
       setProviderStatus(data.providers || {});
+      setServiceStatus(data.services || {});
     } catch (err) {
       console.error('Failed to load provider status:', err);
       // Don't show error to user - providers status is optional
@@ -2161,31 +2172,68 @@ export default function AdminPage() {
                       </div>
                     </div>
                     <div className="p-6">
-                      {/* Provider Status Summary */}
-                      {!providersLoading && Object.keys(providerStatus).length > 0 && (
-                        <div className="mb-4 flex flex-wrap gap-2">
-                          {Object.entries(providerStatus).map(([provider, status]) => (
-                            <div
-                              key={provider}
-                              className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
-                                status.available
-                                  ? 'bg-green-100 text-green-800'
-                                  : status.configured
-                                  ? 'bg-yellow-100 text-yellow-800'
-                                  : 'bg-gray-100 text-gray-600'
-                              }`}
-                              title={status.error || (status.available ? 'Connected' : 'Not available')}
-                            >
-                              <span className={`w-2 h-2 rounded-full mr-1.5 ${
-                                status.available
-                                  ? 'bg-green-500'
-                                  : status.configured
-                                  ? 'bg-yellow-500'
-                                  : 'bg-gray-400'
-                              }`} />
-                              {provider.charAt(0).toUpperCase() + provider.slice(1)}
+                      {/* Provider & Services Status */}
+                      {!providersLoading && (Object.keys(providerStatus).length > 0 || Object.keys(serviceStatus).length > 0) && (
+                        <div className="mb-4 space-y-3">
+                          {/* LLM Providers */}
+                          <div>
+                            <div className="text-xs font-medium text-gray-500 mb-1.5">LLM Providers</div>
+                            <div className="flex flex-wrap gap-2">
+                              {Object.entries(providerStatus).map(([provider, status]) => (
+                                <div
+                                  key={provider}
+                                  className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                                    status.available
+                                      ? 'bg-green-100 text-green-800'
+                                      : status.configured
+                                      ? 'bg-yellow-100 text-yellow-800'
+                                      : 'bg-gray-100 text-gray-600'
+                                  }`}
+                                  title={status.error || (status.available ? 'Connected' : 'Not available')}
+                                >
+                                  <span className={`w-2 h-2 rounded-full mr-1.5 ${
+                                    status.available
+                                      ? 'bg-green-500'
+                                      : status.configured
+                                      ? 'bg-yellow-500'
+                                      : 'bg-gray-400'
+                                  }`} />
+                                  {provider.charAt(0).toUpperCase() + provider.slice(1)}
+                                </div>
+                              ))}
                             </div>
-                          ))}
+                          </div>
+
+                          {/* Services (Embedding, OCR, Audio) */}
+                          {Object.keys(serviceStatus).length > 0 && (
+                            <div>
+                              <div className="text-xs font-medium text-gray-500 mb-1.5">Services</div>
+                              <div className="flex flex-wrap gap-2">
+                                {Object.entries(serviceStatus).map(([key, service]) => (
+                                  <div
+                                    key={key}
+                                    className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                                      service.available
+                                        ? 'bg-green-100 text-green-800'
+                                        : service.configured
+                                        ? 'bg-yellow-100 text-yellow-800'
+                                        : 'bg-gray-100 text-gray-600'
+                                    }`}
+                                    title={`${service.model} (${service.provider})${service.error ? ` - ${service.error}` : ''}`}
+                                  >
+                                    <span className={`w-2 h-2 rounded-full mr-1.5 ${
+                                      service.available
+                                        ? 'bg-green-500'
+                                        : service.configured
+                                        ? 'bg-yellow-500'
+                                        : 'bg-gray-400'
+                                    }`} />
+                                    {service.name}
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
 
