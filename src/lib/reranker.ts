@@ -81,9 +81,12 @@ async function rerankWithCohere(
   }
 }
 
+// Lazy-loaded local reranker pipeline
+let localReranker: ReturnType<typeof import('@xenova/transformers').pipeline> | null = null;
+
 /**
  * Rerank chunks using local @xenova/transformers
- * Uses cross-encoder model for reranking
+ * Uses feature-extraction to compute query-document similarity
  */
 async function rerankWithLocal(
   query: string,
@@ -92,36 +95,46 @@ async function rerankWithLocal(
 ): Promise<RetrievedChunk[]> {
   try {
     // Dynamic import for @xenova/transformers
-    const { pipeline, env } = await import('@xenova/transformers');
+    const { pipeline, env, cos_sim } = await import('@xenova/transformers');
 
     // Disable local model caching warnings
     env.allowLocalModels = false;
 
-    // Use a cross-encoder model for reranking
-    // BGE reranker models work well for this
-    const reranker = await pipeline(
-      'text-classification',
-      'Xenova/ms-marco-MiniLM-L-6-v2',
-      { quantized: true }
-    );
+    // Lazy-load the feature extraction pipeline
+    // Using all-MiniLM-L6-v2 for semantic similarity (well-tested, fast)
+    if (!localReranker) {
+      console.log('[Reranker] Loading local model (first time may take a moment)...');
+      localReranker = pipeline(
+        'feature-extraction',
+        'Xenova/all-MiniLM-L6-v2',
+        { quantized: true }
+      );
+    }
 
-    // Score each chunk against the query
+    // Cast to a simpler function type for feature extraction
+    type FeatureExtractor = (text: string, options?: { pooling?: string; normalize?: boolean }) => Promise<{ data: Float32Array }>;
+    const extractor = (await localReranker) as unknown as FeatureExtractor;
+
+    // Get query embedding
+    const queryOutput = await extractor(query, { pooling: 'mean', normalize: true });
+    const queryEmbedding = Array.from(queryOutput.data);
+
+    // Score each chunk against the query using cosine similarity
     const scoredChunks: RetrievedChunk[] = [];
 
     for (const chunk of chunks) {
       try {
-        // Cross-encoder takes query-document pairs
-        const result = await reranker(`${query} [SEP] ${chunk.text}`);
+        // Get chunk embedding
+        // Truncate long chunks to avoid model issues
+        const truncatedText = chunk.text.slice(0, 512);
+        const chunkOutput = await extractor(truncatedText, { pooling: 'mean', normalize: true });
+        const chunkEmbedding = Array.from(chunkOutput.data);
 
-        // Extract score from result (handle various output formats)
-        let score = 0;
-        if (Array.isArray(result) && result.length > 0) {
-          const firstResult = result[0] as { score?: number; label?: string };
-          score = firstResult.score ?? 0;
-        } else if (typeof result === 'object' && result !== null) {
-          const singleResult = result as { score?: number };
-          score = singleResult.score ?? 0;
-        }
+        // Calculate cosine similarity
+        const similarity = cos_sim(queryEmbedding, chunkEmbedding);
+
+        // Normalize similarity from [-1, 1] to [0, 1]
+        const score = (similarity + 1) / 2;
 
         if (score >= minScore) {
           scoredChunks.push({
@@ -138,6 +151,7 @@ async function rerankWithLocal(
       }
     }
 
+    console.log(`[Reranker] Local scoring complete: ${scoredChunks.length} chunks passed threshold`);
     return scoredChunks.sort((a, b) => b.score - a.score);
   } catch (error) {
     console.error('[Reranker] Local reranker error:', error);
