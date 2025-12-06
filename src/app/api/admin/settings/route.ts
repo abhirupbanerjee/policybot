@@ -25,18 +25,22 @@ import {
 import { invalidateQueryCache, invalidateTavilyCache } from '@/lib/redis';
 import type { ApiError } from '@/types';
 
-// Available models for selection (includes preset models + legacy models)
-const AVAILABLE_MODELS = [
-  // Preset models (recommended)
-  { id: 'gpt-5.1', name: 'GPT-5.1', description: 'Most capable - high accuracy for complex policy analysis' },
-  { id: 'gpt-5.1-mini', name: 'GPT-5.1 Mini', description: 'Balanced - fast and affordable for most queries' },
-  { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini', description: 'Cost-effective - simpler queries, faster responses' },
-  // Legacy models
-  { id: 'gpt-4o-mini', name: 'GPT-4o Mini', description: 'Fast and affordable for most tasks' },
-  { id: 'gpt-4o', name: 'GPT-4o', description: 'Most capable model for complex tasks' },
-  { id: 'gpt-4-turbo', name: 'GPT-4 Turbo', description: 'High performance with larger context' },
-  { id: 'gpt-3.5-turbo', name: 'GPT-3.5 Turbo', description: 'Fast and cost-effective' },
-];
+// Dynamically generate available models from MODEL_PRESETS (single source of truth)
+// Each preset becomes an available model option
+const AVAILABLE_MODELS = MODEL_PRESETS.map(preset => ({
+  id: preset.model,
+  name: preset.name,
+  description: preset.description,
+  provider: getProviderFromModel(preset.model),
+}));
+
+// Helper to determine provider from model name
+function getProviderFromModel(model: string): 'openai' | 'mistral' | 'ollama' | 'azure' {
+  if (model.startsWith('ollama-')) return 'ollama';
+  if (model.startsWith('mistral') || model.startsWith('ministral')) return 'mistral';
+  if (model.startsWith('azure-')) return 'azure';
+  return 'openai';
+}
 
 export async function GET() {
   try {

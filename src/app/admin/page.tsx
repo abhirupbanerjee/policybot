@@ -82,6 +82,14 @@ interface AvailableModel {
   id: string;
   name: string;
   description: string;
+  provider?: 'openai' | 'mistral' | 'ollama' | 'azure';
+}
+
+interface ProviderStatus {
+  provider: string;
+  available: boolean;
+  configured: boolean;
+  error?: string;
 }
 
 interface ModelPreset {
@@ -243,6 +251,8 @@ export default function AdminPage() {
   const [editedBranding, setEditedBranding] = useState<Omit<BrandingSettings, 'updatedAt' | 'updatedBy'> | null>(null);
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
   const [modelPresets, setModelPresets] = useState<ModelPreset[]>([]);
+  const [providerStatus, setProviderStatus] = useState<Record<string, ProviderStatus>>({});
+  const [providersLoading, setProvidersLoading] = useState(true);
   const [applyingPreset, setApplyingPreset] = useState(false);
   const [restoringDefaults, setRestoringDefaults] = useState(false);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
@@ -452,6 +462,38 @@ export default function AdminPage() {
     }
   }, [router]);
 
+  // Load provider availability status
+  const loadProviders = useCallback(async () => {
+    setProvidersLoading(true);
+    try {
+      const response = await fetch('/api/admin/providers');
+
+      if (response.status === 403) {
+        return;
+      }
+
+      if (!response.ok) {
+        throw new Error('Failed to load provider status');
+      }
+
+      const data = await response.json();
+      setProviderStatus(data.providers || {});
+    } catch (err) {
+      console.error('Failed to load provider status:', err);
+      // Don't show error to user - providers status is optional
+    } finally {
+      setProvidersLoading(false);
+    }
+  }, []);
+
+  // Helper to get provider from model name
+  const getModelProvider = useCallback((model: string): 'openai' | 'mistral' | 'ollama' | 'azure' => {
+    if (model.startsWith('ollama-')) return 'ollama';
+    if (model.startsWith('mistral') || model.startsWith('ministral')) return 'mistral';
+    if (model.startsWith('azure-')) return 'azure';
+    return 'openai';
+  }, []);
+
   useEffect(() => {
     loadDocuments();
     loadUsers();
@@ -459,7 +501,8 @@ export default function AdminPage() {
     loadSystemPrompt();
     loadSettings();
     loadStats();
-  }, [loadDocuments, loadUsers, loadCategories, loadSystemPrompt, loadSettings, loadStats]);
+    loadProviders();
+  }, [loadDocuments, loadUsers, loadCategories, loadSystemPrompt, loadSettings, loadStats, loadProviders]);
 
   // Document handlers
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -2118,32 +2161,82 @@ export default function AdminPage() {
                       </div>
                     </div>
                     <div className="p-6">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        {modelPresets.map((preset) => (
-                          <div
-                            key={preset.id}
-                            className={`relative p-4 rounded-lg border-2 transition-all cursor-pointer ${
-                              editedLlm?.model === preset.model
-                                ? 'border-blue-500 bg-blue-50'
-                                : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                            }`}
-                            onClick={() => !applyingPreset && handleApplyPreset(preset.id)}
-                          >
-                            {editedLlm?.model === preset.model && (
-                              <div className="absolute top-2 right-2">
-                                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                                  Active
-                                </span>
-                              </div>
-                            )}
-                            <h3 className="font-medium text-gray-900 pr-12">{preset.name}</h3>
-                            <p className="text-sm text-gray-500 mt-1">{preset.description}</p>
-                            <div className="mt-3 text-xs text-gray-400 space-y-1">
-                              <div>Temp: {preset.llmSettings.temperature} | Tokens: {preset.llmSettings.maxTokens}</div>
-                              <div>Chunks: {preset.ragSettings.topKChunks}/{preset.ragSettings.maxContextChunks}</div>
+                      {/* Provider Status Summary */}
+                      {!providersLoading && Object.keys(providerStatus).length > 0 && (
+                        <div className="mb-4 flex flex-wrap gap-2">
+                          {Object.entries(providerStatus).map(([provider, status]) => (
+                            <div
+                              key={provider}
+                              className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
+                                status.available
+                                  ? 'bg-green-100 text-green-800'
+                                  : status.configured
+                                  ? 'bg-yellow-100 text-yellow-800'
+                                  : 'bg-gray-100 text-gray-600'
+                              }`}
+                              title={status.error || (status.available ? 'Connected' : 'Not available')}
+                            >
+                              <span className={`w-2 h-2 rounded-full mr-1.5 ${
+                                status.available
+                                  ? 'bg-green-500'
+                                  : status.configured
+                                  ? 'bg-yellow-500'
+                                  : 'bg-gray-400'
+                              }`} />
+                              {provider.charAt(0).toUpperCase() + provider.slice(1)}
                             </div>
-                          </div>
-                        ))}
+                          ))}
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        {modelPresets.map((preset) => {
+                          const provider = getModelProvider(preset.model);
+                          const status = providerStatus[provider];
+                          const available = status?.available ?? true;
+                          const configured = status?.configured ?? true;
+
+                          return (
+                            <div
+                              key={preset.id}
+                              className={`relative p-4 rounded-lg border-2 transition-all ${
+                                !available
+                                  ? 'border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed'
+                                  : editedLlm?.model === preset.model
+                                  ? 'border-blue-500 bg-blue-50 cursor-pointer'
+                                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50 cursor-pointer'
+                              }`}
+                              onClick={() => available && !applyingPreset && handleApplyPreset(preset.id)}
+                              title={!available ? (status?.error || 'Provider not available') : undefined}
+                            >
+                              {/* Status badges */}
+                              <div className="absolute top-2 right-2 flex gap-1">
+                                {editedLlm?.model === preset.model && (
+                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                    Active
+                                  </span>
+                                )}
+                                {!providersLoading && (
+                                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
+                                    available
+                                      ? 'bg-green-100 text-green-700'
+                                      : configured
+                                      ? 'bg-yellow-100 text-yellow-700'
+                                      : 'bg-gray-100 text-gray-500'
+                                  }`}>
+                                    {available ? '✓' : configured ? '!' : '—'}
+                                  </span>
+                                )}
+                              </div>
+                              <h3 className="font-medium text-gray-900 pr-16">{preset.name}</h3>
+                              <p className="text-sm text-gray-500 mt-1">{preset.description}</p>
+                              <div className="mt-3 text-xs text-gray-400 space-y-1">
+                                <div>Temp: {preset.llmSettings.temperature} | Tokens: {preset.llmSettings.maxTokens}</div>
+                                <div>Chunks: {preset.ragSettings.topKChunks}/{preset.ragSettings.maxContextChunks}</div>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                       {applyingPreset && (
                         <div className="mt-4 flex items-center justify-center text-sm text-gray-500">
@@ -2185,9 +2278,20 @@ export default function AdminPage() {
                           onChange={(e) => handleLlmChange('model', e.target.value)}
                           className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         >
-                          {availableModels.map((model) => (
-                            <option key={model.id} value={model.id}>{model.name}</option>
-                          ))}
+                          {availableModels.map((model) => {
+                            const provider = model.provider || getModelProvider(model.id);
+                            const status = providerStatus[provider];
+                            const available = status?.available ?? true;
+                            return (
+                              <option
+                                key={model.id}
+                                value={model.id}
+                                disabled={!available}
+                              >
+                                {model.name} {!available ? '(unavailable)' : ''}
+                              </option>
+                            );
+                          })}
                         </select>
                         <p className="mt-1 text-xs text-gray-500">
                           {availableModels.find(m => m.id === editedLlm.model)?.description}
