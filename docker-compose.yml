@@ -34,6 +34,8 @@ services:
       - CHROMA_PORT=8000
       - REDIS_URL=redis://redis:6379
       - DATA_DIR=/app/data
+      # Point to LiteLLM proxy for multi-provider LLM support
+      - OPENAI_BASE_URL=http://litellm:4000/v1
     env_file:
       - .env
     labels:
@@ -48,6 +50,8 @@ services:
       chroma:
         condition: service_started
       redis:
+        condition: service_healthy
+      litellm:
         condition: service_healthy
     networks:
       - policy-bot-network
@@ -74,6 +78,28 @@ services:
     command: redis-server --appendonly yes
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - policy-bot-network
+    restart: unless-stopped
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: policy-bot-litellm
+    volumes:
+      - ./litellm-proxy/litellm_config.yaml:/app/config.yaml:ro
+    env_file:
+      - .env
+    environment:
+      # Clear OPENAI_BASE_URL so LiteLLM uses direct OpenAI endpoint (prevents loop)
+      - OPENAI_BASE_URL=
+      - STORE_MODEL_IN_DB=False
+      - DISABLE_SPEND_LOGS=True
+    command: --config /app/config.yaml --port 4000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
