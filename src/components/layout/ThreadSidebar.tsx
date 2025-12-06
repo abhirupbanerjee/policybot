@@ -420,6 +420,7 @@ export default function ThreadSidebar({
         isOpen={showNewThreadModal}
         onClose={() => setShowNewThreadModal(false)}
         title="New Thread"
+        allowOverflow
       >
         <div className="space-y-4">
           <div>

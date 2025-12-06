@@ -150,50 +150,59 @@ export default function CategorySelector({
 
       {/* Dropdown */}
       {isOpen && (
-        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-60 overflow-y-auto">
-          {categories.map(cat => {
-            const isSelected = selectedIds.includes(cat.id);
-            return (
-              <button
-                key={cat.id}
-                type="button"
-                onClick={() => toggleCategory(cat.id)}
-                className={`
-                  w-full px-3 py-2 text-left flex items-center gap-2
-                  hover:bg-gray-50 transition-colors
-                  ${isSelected ? 'bg-blue-50' : ''}
-                `}
-              >
-                {singleSelect ? (
-                  // Radio button for single-select
-                  <div className={`
-                    w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0
-                    ${isSelected ? 'border-blue-600' : 'border-gray-300'}
-                  `}>
-                    {isSelected && <div className="w-2 h-2 rounded-full bg-blue-600" />}
-                  </div>
-                ) : (
-                  // Checkbox for multi-select
-                  <div className={`
-                    w-4 h-4 rounded border flex items-center justify-center shrink-0
-                    ${isSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-300'}
-                  `}>
-                    {isSelected && <Check size={12} className="text-white" />}
-                  </div>
-                )}
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium text-gray-900 truncate">
-                    {cat.name}
-                  </div>
-                  {cat.description && (
-                    <div className="text-xs text-gray-500 truncate">
-                      {cat.description}
+        <div className="absolute z-50 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg">
+          {/* Show all categories with scroll after 5 items (approx 220px) */}
+          <div className="max-h-[220px] overflow-y-auto">
+            {categories.map(cat => {
+              const isSelected = selectedIds.includes(cat.id);
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => toggleCategory(cat.id)}
+                  className={`
+                    w-full px-3 py-2.5 text-left flex items-center gap-2
+                    hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-b-0
+                    ${isSelected ? 'bg-blue-50' : ''}
+                  `}
+                >
+                  {singleSelect ? (
+                    // Radio button for single-select
+                    <div className={`
+                      w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0
+                      ${isSelected ? 'border-blue-600' : 'border-gray-300'}
+                    `}>
+                      {isSelected && <div className="w-2 h-2 rounded-full bg-blue-600" />}
+                    </div>
+                  ) : (
+                    // Checkbox for multi-select
+                    <div className={`
+                      w-4 h-4 rounded border flex items-center justify-center shrink-0
+                      ${isSelected ? 'bg-blue-600 border-blue-600' : 'border-gray-300'}
+                    `}>
+                      {isSelected && <Check size={12} className="text-white" />}
                     </div>
                   )}
-                </div>
-              </button>
-            );
-          })}
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium text-gray-900">
+                      {cat.name}
+                    </div>
+                    {cat.description && (
+                      <div className="text-xs text-gray-500 line-clamp-1">
+                        {cat.description}
+                      </div>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          {/* Scroll indicator when there are more than 5 categories */}
+          {categories.length > 5 && (
+            <div className="px-3 py-1.5 text-xs text-gray-400 text-center border-t border-gray-100 bg-gray-50">
+              Scroll to see more
+            </div>
+          )}
         </div>
       )}
     </div>

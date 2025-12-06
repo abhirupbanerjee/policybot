@@ -722,8 +722,26 @@ for (const slug of categoryCollections) {
 | Key Pattern | TTL | Purpose |
 |-------------|-----|---------|
 | `query:{hash}` | Configurable (1h default) | Cached RAG responses |
-| `tavily:{hash}` | Configurable (1d default) | Cached web search results |
+| `query:tavily:{hash}` | Configurable (1d default) | Cached web search results |
 | `session:{token}` | 24 hours | User session data |
+
+### Cache Management Commands
+
+```bash
+# 1. Flush complete Redis database (all cache)
+docker exec policy-bot-redis redis-cli FLUSHALL
+
+# 2. Flush RAG query cache only (excludes Tavily)
+docker exec policy-bot-redis redis-cli --scan --pattern "query:*" --count 1000 | grep -v "tavily" | xargs -r docker exec -i policy-bot-redis redis-cli DEL
+
+# 3. Flush Tavily web search cache only
+docker exec policy-bot-redis redis-cli --scan --pattern "query:tavily:*" | xargs -r docker exec -i policy-bot-redis redis-cli DEL
+
+# Verify cache entries
+docker exec policy-bot-redis redis-cli KEYS "*"
+```
+
+> **Note:** The Admin Documents page "Refresh" button performs a complete Redis flush (`FLUSHALL`) plus reindexes all documents.
 
 ### Query Cache Schema
 

@@ -192,20 +192,25 @@ export async function queryCollection(
   metadatas: ChunkMetadata[];
   distances: number[];
 }> {
-  const collection = await getCollectionByName(collectionName);
-  const results = await collection.query({
-    queryEmbeddings: [queryEmbedding],
-    nResults,
-    where: whereFilter,
-    include: [IncludeEnum.Documents, IncludeEnum.Metadatas, IncludeEnum.Distances],
-  });
+  try {
+    const collection = await getCollectionByName(collectionName);
+    const results = await collection.query({
+      queryEmbeddings: [queryEmbedding],
+      nResults,
+      where: whereFilter,
+      include: [IncludeEnum.Documents, IncludeEnum.Metadatas, IncludeEnum.Distances],
+    });
 
-  return {
-    ids: (results.ids[0] || []) as string[],
-    documents: (results.documents?.[0] || []) as string[],
-    metadatas: (results.metadatas?.[0] || []) as unknown as ChunkMetadata[],
-    distances: (results.distances?.[0] || []) as number[],
-  };
+    return {
+      ids: (results.ids[0] || []) as string[],
+      documents: (results.documents?.[0] || []) as string[],
+      metadatas: (results.metadatas?.[0] || []) as unknown as ChunkMetadata[],
+      distances: (results.distances?.[0] || []) as number[],
+    };
+  } catch (error) {
+    console.error(`[ChromaDB] queryCollection failed for ${collectionName}:`, error);
+    throw error;
+  }
 }
 
 /**
@@ -244,6 +249,12 @@ export async function queryCategories(
     GLOBAL_COLLECTION_NAME,
   ];
 
+  console.log('[ChromaDB] queryCategories called:', {
+    collectionsToQuery,
+    nResults,
+    embeddingLength: queryEmbedding.length,
+  });
+
   // Query each collection
   const allResults: {
     id: string;
@@ -254,7 +265,9 @@ export async function queryCategories(
 
   for (const collectionName of collectionsToQuery) {
     try {
+      console.log(`[ChromaDB] Querying collection: ${collectionName}`);
       const results = await queryCollection(collectionName, queryEmbedding, nResults, whereFilter);
+      console.log(`[ChromaDB] ${collectionName} returned ${results.ids.length} results`);
 
       for (let i = 0; i < results.ids.length; i++) {
         allResults.push({
@@ -264,7 +277,8 @@ export async function queryCategories(
           distance: results.distances[i],
         });
       }
-    } catch {
+    } catch (error) {
+      console.error(`[ChromaDB] Failed to query ${collectionName}:`, error);
       // Collection may not exist, skip it
     }
   }

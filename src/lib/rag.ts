@@ -84,6 +84,14 @@ export async function buildContext(
   const ragSettings = settings || getRagSettings();
   const { topKChunks, maxContextChunks, similarityThreshold } = ragSettings;
 
+  console.log('[RAG] buildContext called with:', {
+    categorySlugs,
+    topKChunks,
+    maxContextChunks,
+    similarityThreshold,
+    embeddingCount: 1 + additionalEmbeddings.length,
+  });
+
   // Collect all embeddings (original + expanded queries)
   const allEmbeddings = [queryEmbedding, ...additionalEmbeddings];
 
@@ -96,11 +104,18 @@ export async function buildContext(
     // Use category-based search if categories specified, otherwise legacy
     if (categorySlugs && categorySlugs.length > 0) {
       // Query across all specified categories + global collection
+      console.log('[RAG] Querying categories:', categorySlugs);
       results = await queryCategories(categorySlugs, embedding, topKChunks);
     } else {
       // Legacy: query the default collection
+      console.log('[RAG] No categories - using legacy collection query');
       results = await queryDocuments(embedding, topKChunks, { source: 'global' });
     }
+
+    console.log('[RAG] Query returned:', {
+      documentCount: results.documents.length,
+      ids: results.ids.slice(0, 3),
+    });
 
     const chunks: RetrievedChunk[] = results.documents.map((doc, i) => ({
       id: results.ids[i],
@@ -115,9 +130,18 @@ export async function buildContext(
   }
 
   // Deduplicate and filter by similarity threshold
-  const globalChunks = deduplicateChunks(allGlobalChunks)
+  const beforeFilter = deduplicateChunks(allGlobalChunks);
+  const globalChunks = beforeFilter
     .filter(chunk => chunk.score >= similarityThreshold)
     .slice(0, maxContextChunks);
+
+  console.log('[RAG] After filtering:', {
+    beforeDedup: allGlobalChunks.length,
+    afterDedup: beforeFilter.length,
+    afterThresholdFilter: globalChunks.length,
+    threshold: similarityThreshold,
+    topScores: beforeFilter.slice(0, 3).map(c => ({ score: c.score, doc: c.documentName })),
+  });
 
   // Process user documents if provided
   const userChunks: RetrievedChunk[] = [];

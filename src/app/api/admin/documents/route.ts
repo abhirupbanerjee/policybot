@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { listGlobalDocuments, ingestDocument } from '@/lib/ingest';
-import { getDocumentCount } from '@/lib/chroma';
 import type { AdminDocumentsResponse, AdminUploadResponse, ApiError } from '@/types';
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
@@ -24,7 +23,8 @@ export async function GET() {
     }
 
     const documents = await listGlobalDocuments();
-    const totalChunks = await getDocumentCount();
+    // Calculate total chunks from SQLite data instead of querying legacy ChromaDB collection
+    const totalChunks = documents.reduce((sum, doc) => sum + doc.chunkCount, 0);
 
     return NextResponse.json<AdminDocumentsResponse>({
       documents,

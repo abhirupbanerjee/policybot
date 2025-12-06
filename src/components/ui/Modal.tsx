@@ -8,9 +8,11 @@ interface ModalProps {
   onClose: () => void;
   title: string;
   children: ReactNode;
+  /** Allow content to overflow (useful for dropdowns). Default false. */
+  allowOverflow?: boolean;
 }
 
-export default function Modal({ isOpen, onClose, title, children }: ModalProps) {
+export default function Modal({ isOpen, onClose, title, children, allowOverflow = false }: ModalProps) {
   const overlayRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -45,8 +47,8 @@ export default function Modal({ isOpen, onClose, title, children }: ModalProps) 
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
       onClick={handleOverlayClick}
     >
-      <div className="bg-white rounded-lg shadow-xl max-w-lg w-full mx-4 max-h-[90vh] overflow-hidden">
-        <div className="flex items-center justify-between px-6 py-4 border-b">
+      <div className="bg-white rounded-lg shadow-xl max-w-lg w-full mx-4 max-h-[90vh] flex flex-col">
+        <div className="flex items-center justify-between px-6 py-4 border-b shrink-0">
           <h2 className="text-lg font-semibold text-gray-900">{title}</h2>
           <button
             onClick={onClose}
@@ -55,7 +57,7 @@ export default function Modal({ isOpen, onClose, title, children }: ModalProps) 
             <X size={20} />
           </button>
         </div>
-        <div className="p-6 overflow-y-auto max-h-[calc(90vh-8rem)]">
+        <div className={`p-6 ${allowOverflow ? 'overflow-visible' : 'overflow-y-auto max-h-[calc(90vh-8rem)]'}`}>
           {children}
         </div>
       </div>
