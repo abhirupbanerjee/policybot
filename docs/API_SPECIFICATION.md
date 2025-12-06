@@ -1348,6 +1348,165 @@ Get the current user's category subscriptions.
 
 ---
 
+### 15. User Categories
+
+#### `GET /api/user/categories`
+
+Get categories available to the current user based on their role.
+
+**Authentication**: Required
+
+**Response** `200 OK`:
+```typescript
+{
+  categories: [
+    {
+      id: number;
+      name: string;
+      slug: string;
+      description?: string;
+    }
+  ];
+}
+```
+
+**Role-Based Behavior**:
+
+| Role | Categories Returned |
+|------|---------------------|
+| `admin` | All categories |
+| `superuser` | Assigned categories |
+| `user` | Subscribed categories |
+
+---
+
+### 16. Admin - System Stats
+
+#### `GET /api/admin/stats`
+
+Get system statistics for the admin dashboard.
+
+**Authentication**: Required (admin only)
+
+**Response** `200 OK`:
+```typescript
+{
+  database: {
+    users: number;
+    categories: number;
+    documents: number;
+    threads: number;
+    messages: number;
+  };
+  chromadb: {
+    collections: number;
+    totalVectors: number;
+  };
+  storage: {
+    totalBytes: number;
+    documentsBytes: number;
+    threadsBytes: number;
+    percentUsed: number;
+  };
+  recentActivity: [
+    {
+      type: 'user_added' | 'document_uploaded' | 'thread_created';
+      description: string;
+      timestamp: string;
+    }
+  ];
+}
+```
+
+---
+
+### 17. Admin - Provider Status
+
+#### `GET /api/admin/providers`
+
+Check the status and availability of configured LLM providers.
+
+**Authentication**: Required (admin only)
+
+**Response** `200 OK`:
+```typescript
+{
+  providers: {
+    openai: {
+      provider: 'openai';
+      available: boolean;
+      configured: boolean;
+      error?: string;
+    };
+    mistral: {
+      provider: 'mistral';
+      available: boolean;
+      configured: boolean;
+      error?: string;
+    };
+    ollama: {
+      provider: 'ollama';
+      available: boolean;
+      configured: boolean;
+      error?: string;
+    };
+    azure: {
+      provider: 'azure';
+      available: boolean;
+      configured: boolean;
+      error?: string;
+    };
+  };
+  services: {
+    embedding: {
+      name: string;
+      model: string;
+      provider: string;
+      available: boolean;
+      configured: boolean;
+      error?: string;
+    };
+    ocr: {
+      name: string;
+      model: string;
+      provider: string;
+      available: boolean;
+      configured: boolean;
+      error?: string;
+    };
+    audio: {
+      name: string;
+      model: string;
+      provider: string;
+      available: boolean;
+      configured: boolean;
+      error?: string;
+    };
+  };
+  usingProxy: boolean;
+  proxyUrl: string | null;
+}
+```
+
+**Provider Configuration**:
+
+| Provider | Required Environment Variables |
+|----------|--------------------------------|
+| `openai` | `OPENAI_API_KEY` |
+| `mistral` | `MISTRAL_API_KEY` |
+| `ollama` | `OLLAMA_API_BASE` |
+| `azure` | `AZURE_API_KEY`, `AZURE_API_BASE` |
+
+**Service Definitions**:
+
+| Service | Description | Default Provider |
+|---------|-------------|------------------|
+| `embedding` | Vector embeddings for RAG | OpenAI (text-embedding-3-large) |
+| `ocr` | Document text extraction | Azure Document Intelligence |
+| `audio` | Voice transcription | OpenAI (whisper-1) |
+
+---
+
 ## Error Response Format
 
 All error responses follow a consistent format:

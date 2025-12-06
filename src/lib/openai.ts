@@ -2,6 +2,7 @@ import OpenAI from 'openai';
 import type { Message, ToolCall } from '@/types';
 import { getLLMSettings } from './storage';
 import { getToolDefinitions, executeTool } from './tools';
+import { getEmbeddingSettings } from './db/config';
 
 let openaiClient: OpenAI | null = null;
 
@@ -33,7 +34,9 @@ function getOpenAI(): OpenAI {
 
 export async function createEmbedding(text: string): Promise<number[]> {
   const openai = getOpenAI();
-  const model = process.env.EMBEDDING_MODEL || 'text-embedding-3-large';
+  const embeddingSettings = getEmbeddingSettings();
+  // Use database config, fall back to env var for backward compatibility
+  const model = embeddingSettings.model || process.env.EMBEDDING_MODEL || 'text-embedding-3-large';
 
   const response = await openai.embeddings.create({
     model,
@@ -46,7 +49,9 @@ export async function createEmbeddings(texts: string[]): Promise<number[][]> {
   if (texts.length === 0) return [];
 
   const openai = getOpenAI();
-  const model = process.env.EMBEDDING_MODEL || 'text-embedding-3-large';
+  const embeddingSettings = getEmbeddingSettings();
+  // Use database config, fall back to env var for backward compatibility
+  const model = embeddingSettings.model || process.env.EMBEDDING_MODEL || 'text-embedding-3-large';
 
   const response = await openai.embeddings.create({
     model,

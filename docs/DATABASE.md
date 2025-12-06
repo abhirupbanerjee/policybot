@@ -446,9 +446,47 @@ Key-value configuration store.
 | `retention-settings` | RetentionSettings | Data retention policies |
 | `branding-settings` | BrandingSettings | Bot name and icon for sidebar |
 
-**BrandingSettings Interface:**
+**Settings Interfaces:**
 
 ```typescript
+export interface RagSettings {
+  topKChunks: number;           // Number of chunks to retrieve (default: 20)
+  maxContextChunks: number;     // Max chunks in context (default: 15)
+  similarityThreshold: number;  // Min similarity score (default: 0.5)
+  chunkSize: number;            // Characters per chunk (default: 800)
+  chunkOverlap: number;         // Overlap between chunks (default: 150)
+  queryExpansionEnabled: boolean; // Expand acronyms (default: true)
+  cacheEnabled: boolean;        // Redis caching (default: true)
+  cacheTTLSeconds: number;      // Cache TTL (default: 3600)
+}
+
+export interface LlmSettings {
+  model: string;       // Model name routed via LiteLLM (default: 'gpt-4.1-mini')
+  temperature: number; // Response randomness (default: 0.3)
+  maxTokens: number;   // Max response tokens (default: 2000)
+}
+
+export interface TavilySettings {
+  enabled: boolean;                              // Enable web search (default: false)
+  defaultTopic: 'general' | 'news' | 'finance'; // Search category
+  defaultSearchDepth: 'basic' | 'advanced';     // Search depth
+  maxResults: number;                            // Max results (default: 5)
+  includeDomains: string[];                      // Whitelist domains
+  excludeDomains: string[];                      // Blacklist domains
+  cacheTTLSeconds: number;                       // Web cache TTL (default: 3600)
+}
+
+export interface UploadLimits {
+  maxFilesPerThread: number;   // Max files per thread (default: 5)
+  maxFileSizeMB: number;       // Max file size in MB (default: 10)
+  allowedTypes: string[];      // MIME types (default: ['application/pdf'])
+}
+
+export interface RetentionSettings {
+  threadRetentionDays: number;     // Days to keep threads (default: 90)
+  storageAlertThreshold: number;   // Storage alert % (default: 70)
+}
+
 export interface BrandingSettings {
   botName: string;    // Display name in sidebar (default: "Policy Bot")
   botIcon: string;    // Icon key: government, operations, finance, kpi, logs, data, monitoring, architecture, internet, systems, policy
@@ -691,11 +729,13 @@ interface ChromaDocument {
 
 ### Chunking Strategy
 
-| Parameter | Value | Rationale |
-|-----------|-------|-----------|
-| Chunk Size | Configurable (default 500) | Balance between context and specificity |
-| Overlap | Configurable (default 50) | Ensure continuity across chunks |
+| Parameter | Default | Rationale |
+|-----------|---------|-----------|
+| Chunk Size | 800 characters | Balance between context and specificity |
+| Overlap | 150 characters | Ensure continuity across chunks |
 | Separators | `['\n\n', '\n', '. ', ' ', '']` | Preserve paragraph/sentence boundaries |
+
+**Note**: Chunk size and overlap are configurable via admin settings (`rag-settings`).
 
 ### Query Pattern
 
@@ -877,7 +917,8 @@ Admin Upload
     ▼
 ┌─────────────────┐
 │ Extract text    │
-│ (Mistral OCR)   │
+│ (Azure DI or    │
+│  Mistral OCR)   │
 └─────────────────┘
     │
     ▼
@@ -942,7 +983,7 @@ User Query
     ▼
 ┌─────────────────┐
 │ Generate answer │
-│ with GPT        │
+│ via LiteLLM     │
 └─────────────────┘
 ```
 
@@ -1116,7 +1157,49 @@ docker run --rm -v policy-bot_chroma_data:/data -v $BACKUP_DIR:/backup \
 
 ---
 
-## 12. Migration from JSON Files
+## 12. LLM Model Presets
+
+Model presets are defined in code (`src/lib/db/config.ts`) and allow admins to quickly switch between optimized configurations.
+
+### Available Presets
+
+| Preset ID | Model | Provider | Use Case |
+|-----------|-------|----------|----------|
+| `gpt-4.1` | gpt-4.1 | OpenAI | Complex analysis, 1M context |
+| `gpt-4.1-mini` | gpt-4.1-mini | OpenAI | Most queries (default) |
+| `gpt-4.1-nano` | gpt-4.1-nano | OpenAI | Simple queries, fastest |
+| `mistral-large-3` | mistral-large-3 | Mistral | Strong reasoning, 256K context |
+| `mistral-small-3.2` | mistral-small-3.2 | Mistral | Routine queries |
+| `ministral-8b` | ministral-8b | Mistral | Lowest cost |
+| `ollama-llama3.2` | ollama-llama3.2 | Ollama | Local, no API cost |
+| `ollama-qwen2.5` | ollama-qwen2.5 | Ollama | Local, excellent reasoning |
+
+### Preset Configuration Structure
+
+```typescript
+export interface ModelPreset {
+  id: string;
+  name: string;
+  description: string;
+  model: string;
+  llmSettings: LlmSettings;
+  ragSettings: RagSettings;
+}
+```
+
+### LiteLLM Model Routing
+
+All models are routed through LiteLLM proxy (`http://litellm:4000/v1`):
+
+| App Model Name | LiteLLM Route | Actual Model |
+|----------------|---------------|--------------|
+| `gpt-4.1-mini` | `openai/gpt-4.1-mini` | OpenAI GPT-4.1 Mini |
+| `mistral-large-3` | `mistral/mistral-large-latest` | Mistral Large |
+| `ollama-llama3.2` | `ollama/llama3.2` | Local Llama 3.2 |
+
+---
+
+## 13. Migration from JSON Files
 
 If migrating from the previous JSON-based storage:
 

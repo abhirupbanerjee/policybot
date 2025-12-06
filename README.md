@@ -1,6 +1,6 @@
 # Policy Bot
 
-A Retrieval-Augmented Generation (RAG) chatbot that helps government staff query  documents grouped by categories (HR, Finance, Procurement, Operations, etc) and check document compliance. Built with Next.js, ChromaDB, SQLite, Tavily and OpenAI.
+A Retrieval-Augmented Generation (RAG) chatbot that helps government staff query policy documents grouped by categories (HR, Finance, Procurement, Operations, etc) and check document compliance. Built with Next.js, ChromaDB, SQLite, and multi-provider LLM support via LiteLLM (OpenAI, Mistral, Ollama).
 
 ## Features
 
@@ -32,7 +32,10 @@ A Retrieval-Augmented Generation (RAG) chatbot that helps government staff query
 - **User Subscriptions** - Assign default category subscriptions when creating users
 - **Super User Management** - Assign categories to super users for delegated management
 - **Web Search Configuration** - Enable/disable and configure Tavily web search settings
-- **LLM & RAG Settings** - Configure model, temperature, chunk sizes, and caching
+- **Multi-Provider LLM Settings** - Switch between OpenAI, Mistral, and Ollama models via LiteLLM
+- **Model Presets** - Quick-select from 8 pre-configured model+RAG combinations
+- **Provider Status Dashboard** - Real-time status of LLM providers and services
+- **RAG Configuration** - Configure chunk sizes, similarity thresholds, and caching
 - **Custom Branding** - Configure bot name and icon in admin settings
 
 ### Security & Access Control
@@ -74,9 +77,17 @@ A Retrieval-Augmented Generation (RAG) chatbot that helps government staff query
         │                 │                 │
         ▼                 ▼                 ▼
 ┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐
-│    SQLite     │ │   ChromaDB    │ │     Redis     │ │   OpenAI API  │
-│   Metadata    │ │ Vector Search │ │ Query Cache   │ │ GPT + Embed   │
-└───────────────┘ └───────────────┘ └───────────────┘ └───────────────┘
+│    SQLite     │ │   ChromaDB    │ │     Redis     │ │ LiteLLM Proxy │
+│   Metadata    │ │ Vector Search │ │ Query Cache   │ │  (Port 4000)  │
+└───────────────┘ └───────────────┘ └───────────────┘ └───────┬───────┘
+                                                              │
+                          ┌───────────────────────────────────┼───────────────────────────────────┐
+                          │                                   │                                   │
+                          ▼                                   ▼                                   ▼
+                  ┌───────────────┐                   ┌───────────────┐                   ┌───────────────┐
+                  │   OpenAI API  │                   │  Mistral AI   │                   │    Ollama     │
+                  │ GPT-4.1-mini  │                   │ mistral-large │                   │   (Local)     │
+                  └───────────────┘                   └───────────────┘                   └───────────────┘
 ```
 
 ### RAG Pipeline Flow
@@ -86,7 +97,7 @@ A Retrieval-Augmented Generation (RAG) chatbot that helps government staff query
 4. **Embedding** - Query converted to vector using `text-embedding-3-large` (3072 dimensions)
 5. **Search** - ChromaDB performs semantic search across category-specific collections
 6. **Context Building** - Top results combined with conversation history
-7. **Generation** - GPT generates response with OpenAI function calling
+7. **Generation** - LLM generates response via LiteLLM proxy with function calling
 8. **Web Search** (if needed) - LLM automatically triggers Tavily web search for current information
 9. **Combined Response** - Merges policy documents and web sources with [WEB] tags
 10. **Cache & Return** - Response cached and returned with source metadata
@@ -98,9 +109,10 @@ A Retrieval-Augmented Generation (RAG) chatbot that helps government staff query
 | Service | Image | Port | Purpose |
 |---------|-------|------|---------|
 | **app** | Node.js 20-alpine | 3000 | Next.js application |
-| **traefik** | Traefik 3.0 | 443, 80 | Reverse proxy + TLS |
+| **traefik** | Traefik v3.0 | 443, 80 | Reverse proxy + TLS |
 | **chroma** | chromadb/chroma | 8000 | Vector database |
 | **redis** | Redis 7-alpine | 6379 | Cache + sessions |
+| **litellm** | ghcr.io/berriai/litellm | 4000 | Multi-provider LLM gateway |
 
 ### Volumes
 - `app_data` - SQLite database, thread data, user uploads, global documents
@@ -128,25 +140,26 @@ A Retrieval-Augmented Generation (RAG) chatbot that helps government staff query
 - **TypeScript** - Type safety
 - **better-sqlite3** - SQLite database driver
 
-### AI/ML
-- **OpenAI GPT-5 Mini** - Primary chat completions (configurable)
-- **OpenAI GPT-5** - Advanced reasoning for complex queries
-- **OpenAI GPT-4.1 Mini** - Fast, cost-effective alternative
+### AI/ML - LLM Providers (via LiteLLM)
+- **OpenAI** - GPT-4.1, GPT-4.1-mini, GPT-4.1-nano
+- **Mistral AI** - mistral-large-3, mistral-small-3.2, ministral-8b
+- **Ollama** - llama3.2, qwen2.5 (local, no API cost)
 - **OpenAI text-embedding-3-large** - Vector embeddings (3072 dimensions)
 - **OpenAI Whisper** - Voice transcription
-- **Mistral OCR** - Advanced PDF text extraction with markdown support (fallback to pdf-parse)
-- **Tavily API** - Real-time web search for current information (optional, configurable via admin panel)
+- **Azure Document Intelligence** - Primary OCR for PDF/image extraction
+- **Mistral OCR** - Fallback PDF text extraction
+- **Tavily API** - Real-time web search (optional, configurable via admin panel)
 
 ### Data Storage
 - **SQLite** - Users, categories, documents, subscriptions, and configuration
 - **ChromaDB** - Vector database with category-based collections
-- **Redis** - Query caching and sessions
+- **Redis 7** - Query caching and sessions
 - **Filesystem** - Thread messages and uploaded files
 
 ### Infrastructure
-- **Docker** - Containerization
-- **Docker Compose** - Multi-container orchestration
-- **Traefik** - Reverse proxy with automatic Let's Encrypt TLS
+- **Docker Compose** - Container orchestration
+- **LiteLLM Proxy** - Multi-provider LLM gateway (OpenAI-compatible API)
+- **Traefik v3.0** - Reverse proxy with automatic Let's Encrypt TLS
 
 ### Authentication
 - **NextAuth.js** - Authentication framework
@@ -180,8 +193,15 @@ OPENAI_API_KEY=sk-...
 AUTH_DISABLED=true
 DATA_DIR=./data
 
-# Optional - Mistral OCR for advanced PDF extraction
+# LiteLLM Proxy (routes all LLM requests)
+OPENAI_BASE_URL=http://litellm:4000/v1
+
+# Optional - Mistral models
 MISTRAL_API_KEY=your-mistral-api-key
+
+# Optional - Azure Document Intelligence (OCR)
+AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT=https://...
+AZURE_DOCUMENT_INTELLIGENCE_KEY=...
 
 # Optional - Tavily Web Search (configure via admin panel after setup)
 # TAVILY_API_KEY is stored in database
@@ -208,11 +228,16 @@ npm run dev
 DOMAIN=policybot.example.com
 ACME_EMAIL=admin@example.com
 
-# OpenAI
+# LLM Providers
 OPENAI_API_KEY=sk-...
+MISTRAL_API_KEY=your-mistral-api-key  # Optional
 
-# Mistral OCR (optional but recommended)
-MISTRAL_API_KEY=your-mistral-api-key
+# LiteLLM Proxy
+OPENAI_BASE_URL=http://litellm:4000/v1
+
+# Azure Document Intelligence (recommended for OCR)
+AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT=https://...
+AZURE_DOCUMENT_INTELLIGENCE_KEY=...
 
 # Embeddings (defaults to text-embedding-3-large, 3072 dimensions)
 EMBEDDING_MODEL=text-embedding-3-large
@@ -370,6 +395,7 @@ policy-bot/
 | POST | `/api/admin/system-prompt` | Update system prompt |
 | POST | `/api/admin/refresh` | Re-index documents with current settings |
 | GET | `/api/admin/stats` | Get system statistics |
+| GET | `/api/admin/providers` | Get LLM provider and service status |
 
 ## Database Schema
 
@@ -392,17 +418,36 @@ See [docs/DATABASE.md](docs/DATABASE.md) for complete schema details.
 
 ## Admin Configuration
 
-### LLM Model Selection
+### LLM Model Selection (via LiteLLM)
 
-Policy Bot supports multiple OpenAI models, configurable through the admin panel:
+Policy Bot supports multiple LLM providers through LiteLLM proxy, configurable via the admin panel:
 
-| Model | Speed | Cost | Best For |
-|-------|-------|------|----------|
-| **GPT-5** | Slow (2.8s) | High | Complex reasoning, analysis |
-| **GPT-5 Mini** | Fast (1.2s) | Medium | Balanced use (recommended) |
-| **GPT-4.1 Mini** | Fastest (0.5s) | Low | High volume, simple queries |
+| Provider | Models | Use Case |
+|----------|--------|----------|
+| **OpenAI** | GPT-4.1, GPT-4.1-mini, GPT-4.1-nano | Production workloads |
+| **Mistral** | mistral-large-3, mistral-small-3.2, ministral-8b | Alternative provider |
+| **Ollama** | llama3.2, qwen2.5 | Local development, no API cost |
 
-**Note:** GPT-5 models use default temperature=1 and cannot be customized. GPT-4.1 Mini supports custom temperature settings.
+### Model Presets
+
+The admin panel provides 8 pre-configured model presets that optimize both LLM and RAG settings:
+
+| Preset | Model | Temperature | Max Tokens | Chunks |
+|--------|-------|-------------|------------|--------|
+| GPT-4.1 (High Performance) | gpt-4.1 | 0.3 | 4000 | 25/20 |
+| GPT-4.1 Mini (Balanced) | gpt-4.1-mini | 0.5 | 3000 | 20/15 |
+| GPT-4.1 Nano (Cost-Effective) | gpt-4.1-nano | 0.7 | 2000 | 15/10 |
+| Mistral Large 3 | mistral-large-3 | 0.3 | 4000 | 25/20 |
+| Mistral Small 3.2 | mistral-small-3.2 | 0.5 | 3000 | 20/15 |
+| Ministral 8B | ministral-8b | 0.7 | 2000 | 15/10 |
+| Ollama Llama 3.2 | ollama-llama3.2 | 0.5 | 2000 | 15/10 |
+| Ollama Qwen 2.5 | ollama-qwen2.5 | 0.3 | 3000 | 20/15 |
+
+### Provider Status Dashboard
+
+The admin settings page displays real-time status of:
+- **LLM Providers**: OpenAI, Mistral, Ollama, Azure (connected/configured/unavailable)
+- **Services**: Embeddings, Document OCR, Audio Transcription
 
 ### Embedding Configuration
 
@@ -414,13 +459,30 @@ EMBEDDING_DIMENSIONS=3072
 
 **Important:** Changing embedding dimensions requires re-indexing all documents.
 
-### PDF Text Extraction
+### Document Text Extraction (OCR)
 
-Policy Bot uses a dual-layer approach:
-1. **Primary:** Mistral OCR (if `MISTRAL_API_KEY` is set) - Advanced OCR with markdown support
-2. **Fallback:** pdf-parse - Traditional PDF text extraction
+Policy Bot uses a multi-layer approach for extracting text from documents:
 
-The system automatically falls back to pdf-parse if Mistral OCR fails or is unavailable.
+1. **Primary:** Azure Document Intelligence (if configured) - Enterprise OCR for PDFs and images
+2. **Secondary:** Mistral OCR (if `MISTRAL_API_KEY` is set) - Advanced OCR with markdown support
+3. **Fallback:** pdf-parse - Traditional PDF text extraction
+
+The system automatically falls back through the chain if a service fails or is unavailable.
+
+### RAG Configuration
+
+Configurable via admin panel Settings > RAG Settings:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Top K Chunks | 20 | Number of chunks to retrieve |
+| Max Context Chunks | 15 | Chunks sent to LLM |
+| Similarity Threshold | 0.5 | Minimum relevance score (0-1) |
+| Chunk Size | 800 | Characters per chunk |
+| Chunk Overlap | 150 | Overlap between chunks |
+| Query Expansion | Enabled | Expand acronyms automatically |
+| Response Caching | Enabled | Cache responses in Redis |
+| Cache TTL | 3600s | Cache expiration (1 hour) |
 
 ### Branding Configuration
 
@@ -531,15 +593,44 @@ npm run docker:prod:down # Stop production stack
 npm run docker:logs      # View application logs
 ```
 
+## LiteLLM Configuration
+
+Policy Bot uses LiteLLM as a unified gateway to multiple LLM providers. Configuration is stored in `litellm-proxy/litellm_config.yaml`:
+
+```yaml
+model_list:
+  - model_name: gpt-4.1-mini
+    litellm_params:
+      model: openai/gpt-4.1-mini
+      api_key: os.environ/OPENAI_API_KEY
+
+  - model_name: mistral-large-3
+    litellm_params:
+      model: mistral/mistral-large-latest
+      api_key: os.environ/MISTRAL_API_KEY
+
+  - model_name: ollama-llama3.2
+    litellm_params:
+      model: ollama/llama3.2
+      api_base: http://host.docker.internal:11434
+```
+
+### Benefits
+- **Unified API**: Single OpenAI-compatible endpoint for all providers
+- **Hot-Swappable Models**: Change models via admin UI without redeployment
+- **Cost Optimization**: Use cheaper models for simple queries
+- **Local Models**: Run Ollama models for zero API cost during development
+
 ## Documentation
 
 See [docs/README.md](docs/README.md) for complete documentation index.
 
 **Core Docs:**
-- [Solution Architecture](docs/SOLUTION.md) - System design and components
+- [Solution Architecture](docs/SOLUTION.md) - System design and LiteLLM integration
 - [API Specification](docs/API_SPECIFICATION.md) - REST API reference
 - [Infrastructure Guide](docs/INFRASTRUCTURE.md) - Docker and deployment
-- [Database Schema](docs/DATABASE.md) - SQLite schema and relationships
+- [Database Schema](docs/DATABASE.md) - SQLite schema, settings, and model presets
+- [UI Wireframes](docs/UI_WIREFRAMES.md) - Admin dashboard and component designs
 - [Web Search Integration](docs/web-search.md) - Tavily web search setup
 - [Deployment Checklist](docs/DEPLOYMENT_CHECKLIST.md) - Production deployment guide
 

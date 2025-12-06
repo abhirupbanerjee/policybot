@@ -15,6 +15,10 @@ import {
   setRetentionSettings,
   getBrandingSettings,
   setBrandingSettings,
+  getEmbeddingSettings,
+  setEmbeddingSettings,
+  getRerankerSettings,
+  setRerankerSettings,
   getSettingMetadata,
   setSystemPrompt,
   MODEL_PRESETS,
@@ -67,6 +71,8 @@ export async function GET() {
     const uploadLimits = getUploadLimits();
     const retentionSettings = getRetentionSettings();
     const brandingSettings = getBrandingSettings();
+    const embeddingSettings = getEmbeddingSettings();
+    const rerankerSettings = getRerankerSettings();
 
     // Get metadata for last updated info
     const ragMeta = getSettingMetadata('rag-settings');
@@ -74,6 +80,8 @@ export async function GET() {
     const acronymsMeta = getSettingMetadata('acronym-mappings');
     const tavilyMeta = getSettingMetadata('tavily-settings');
     const brandingMeta = getSettingMetadata('branding-settings');
+    const embeddingMeta = getSettingMetadata('embedding-settings');
+    const rerankerMeta = getSettingMetadata('reranker-settings');
 
     return NextResponse.json({
       rag: {
@@ -102,6 +110,17 @@ export async function GET() {
         updatedAt: brandingMeta?.updatedAt || new Date().toISOString(),
         updatedBy: brandingMeta?.updatedBy || 'system',
       },
+      embedding: {
+        ...embeddingSettings,
+        updatedAt: embeddingMeta?.updatedAt || new Date().toISOString(),
+        updatedBy: embeddingMeta?.updatedBy || 'system',
+      },
+      reranker: {
+        ...rerankerSettings,
+        cohereApiKey: process.env.COHERE_API_KEY ? '••••••••' : '',
+        updatedAt: rerankerMeta?.updatedAt || new Date().toISOString(),
+        updatedBy: rerankerMeta?.updatedBy || 'system',
+      },
       uploadLimits,
       retentionSettings,
       availableModels: AVAILABLE_MODELS,
@@ -116,6 +135,8 @@ export async function GET() {
         acronyms: { mappings: {} },
         tavily: getTavilySettings(),
         branding: getBrandingSettings(),
+        embedding: { model: 'text-embedding-3-large', dimensions: 3072 },
+        reranker: { enabled: false, provider: 'cohere', topKForReranking: 50, minRerankerScore: 0.3, cacheTTLSeconds: 3600 },
       },
     });
   } catch (error) {
@@ -231,9 +252,9 @@ export async function PUT(request: NextRequest) {
           );
         }
 
-        if (typeof temperature !== 'number' || temperature < 0 || temperature > 2) {
+        if (typeof temperature !== 'number' || temperature < 0 || temperature > 1) {
           return NextResponse.json<ApiError>(
-            { error: 'Temperature must be between 0 and 2', code: 'VALIDATION_ERROR' },
+            { error: 'Temperature must be between 0 and 1', code: 'VALIDATION_ERROR' },
             { status: 400 }
           );
         }
@@ -495,6 +516,91 @@ export async function PUT(request: NextRequest) {
             updatedBy: brandingMeta?.updatedBy || user.email,
           },
         });
+      }
+
+      case 'embedding': {
+        const { model, dimensions } = settings;
+
+        // Validate model name
+        if (typeof model !== 'string' || model.trim().length === 0) {
+          return NextResponse.json<ApiError>(
+            { error: 'Embedding model is required', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Validate dimensions
+        if (typeof dimensions !== 'number' || dimensions < 256 || dimensions > 8192) {
+          return NextResponse.json<ApiError>(
+            { error: 'Dimensions must be between 256 and 8192', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        result = setEmbeddingSettings({
+          model: model.trim(),
+          dimensions,
+        }, user.email);
+        break;
+      }
+
+      case 'reranker': {
+        const {
+          enabled,
+          provider,
+          topKForReranking,
+          minRerankerScore,
+          cacheTTLSeconds,
+        } = settings;
+
+        // Validate enabled flag
+        if (typeof enabled !== 'boolean') {
+          return NextResponse.json<ApiError>(
+            { error: 'Enabled must be a boolean', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Validate provider
+        if (!['cohere', 'local'].includes(provider)) {
+          return NextResponse.json<ApiError>(
+            { error: 'Provider must be "cohere" or "local"', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Validate topKForReranking
+        if (typeof topKForReranking !== 'number' || topKForReranking < 5 || topKForReranking > 100) {
+          return NextResponse.json<ApiError>(
+            { error: 'topKForReranking must be between 5 and 100', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Validate minRerankerScore
+        if (typeof minRerankerScore !== 'number' || minRerankerScore < 0 || minRerankerScore > 1) {
+          return NextResponse.json<ApiError>(
+            { error: 'minRerankerScore must be between 0 and 1', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Validate cacheTTLSeconds
+        if (typeof cacheTTLSeconds !== 'number' || cacheTTLSeconds < 0 || cacheTTLSeconds > 86400) {
+          return NextResponse.json<ApiError>(
+            { error: 'cacheTTLSeconds must be between 0 and 86400', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        result = setRerankerSettings({
+          enabled,
+          provider,
+          topKForReranking,
+          minRerankerScore,
+          cacheTTLSeconds,
+        }, user.email);
+        break;
       }
 
       case 'restoreAllDefaults': {

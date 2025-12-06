@@ -58,6 +58,19 @@ export interface BrandingSettings {
   botIcon: string;
 }
 
+export interface EmbeddingSettings {
+  model: string;        // e.g., 'text-embedding-3-large'
+  dimensions: number;   // e.g., 3072
+}
+
+export interface RerankerSettings {
+  enabled: boolean;
+  provider: 'cohere' | 'local';   // Toggle between Cohere API and local @xenova/transformers
+  topKForReranking: number;       // How many chunks to rerank (default: 50)
+  minRerankerScore: number;       // Threshold 0-1 (default: 0.3)
+  cacheTTLSeconds: number;        // Cache duration (default: 3600)
+}
+
 // Available icon options for branding
 export const BRANDING_ICONS = [
   { key: 'government', label: 'Government', lucideIcon: 'Landmark' },
@@ -95,15 +108,15 @@ export const MODEL_PRESETS: ModelPreset[] = [
     model: 'gpt-4.1',
     llmSettings: {
       model: 'gpt-4.1',
-      temperature: 0.3,
+      temperature: 0.1,
       maxTokens: 4000,
     },
     ragSettings: {
       topKChunks: 25,
       maxContextChunks: 20,
       similarityThreshold: 0.5,
-      chunkSize: 800,
-      chunkOverlap: 150,
+      chunkSize: 1200,
+      chunkOverlap: 200,
       queryExpansionEnabled: true,
       cacheEnabled: true,
       cacheTTLSeconds: 3600,
@@ -116,15 +129,15 @@ export const MODEL_PRESETS: ModelPreset[] = [
     model: 'gpt-4.1-mini',
     llmSettings: {
       model: 'gpt-4.1-mini',
-      temperature: 0.5,
+      temperature: 0.2,
       maxTokens: 3000,
     },
     ragSettings: {
       topKChunks: 20,
       maxContextChunks: 15,
       similarityThreshold: 0.5,
-      chunkSize: 800,
-      chunkOverlap: 150,
+      chunkSize: 1200,
+      chunkOverlap: 200,
       queryExpansionEnabled: true,
       cacheEnabled: true,
       cacheTTLSeconds: 3600,
@@ -137,15 +150,15 @@ export const MODEL_PRESETS: ModelPreset[] = [
     model: 'gpt-4.1-nano',
     llmSettings: {
       model: 'gpt-4.1-nano',
-      temperature: 0.7,
+      temperature: 0.2,
       maxTokens: 2000,
     },
     ragSettings: {
       topKChunks: 15,
       maxContextChunks: 10,
       similarityThreshold: 0.5,
-      chunkSize: 800,
-      chunkOverlap: 150,
+      chunkSize: 1200,
+      chunkOverlap: 200,
       queryExpansionEnabled: true,
       cacheEnabled: true,
       cacheTTLSeconds: 3600,
@@ -162,15 +175,15 @@ export const MODEL_PRESETS: ModelPreset[] = [
     model: 'mistral-large-3',
     llmSettings: {
       model: 'mistral-large-3',
-      temperature: 0.5,
+      temperature: 0.2,
       maxTokens: 3000,
     },
     ragSettings: {
       topKChunks: 20,
       maxContextChunks: 15,
       similarityThreshold: 0.5,
-      chunkSize: 800,
-      chunkOverlap: 150,
+      chunkSize: 1200,
+      chunkOverlap: 200,
       queryExpansionEnabled: true,
       cacheEnabled: true,
       cacheTTLSeconds: 3600,
@@ -183,15 +196,15 @@ export const MODEL_PRESETS: ModelPreset[] = [
     model: 'mistral-small-3.2',
     llmSettings: {
       model: 'mistral-small-3.2',
-      temperature: 0.7,
+      temperature: 0.2,
       maxTokens: 2000,
     },
     ragSettings: {
       topKChunks: 15,
       maxContextChunks: 10,
       similarityThreshold: 0.5,
-      chunkSize: 800,
-      chunkOverlap: 150,
+      chunkSize: 1200,
+      chunkOverlap: 200,
       queryExpansionEnabled: true,
       cacheEnabled: true,
       cacheTTLSeconds: 3600,
@@ -204,15 +217,15 @@ export const MODEL_PRESETS: ModelPreset[] = [
     model: 'ministral-8b',
     llmSettings: {
       model: 'ministral-8b',
-      temperature: 0.7,
+      temperature: 0.2,
       maxTokens: 2000,
     },
     ragSettings: {
       topKChunks: 10,
       maxContextChunks: 8,
       similarityThreshold: 0.5,
-      chunkSize: 800,
-      chunkOverlap: 150,
+      chunkSize: 1200,
+      chunkOverlap: 200,
       queryExpansionEnabled: true,
       cacheEnabled: true,
       cacheTTLSeconds: 3600,
@@ -229,15 +242,15 @@ export const MODEL_PRESETS: ModelPreset[] = [
     model: 'ollama-llama3.2',
     llmSettings: {
       model: 'ollama-llama3.2',
-      temperature: 0.7,
+      temperature: 0.2,
       maxTokens: 2000,
     },
     ragSettings: {
       topKChunks: 15,
       maxContextChunks: 10,
       similarityThreshold: 0.5,
-      chunkSize: 800,
-      chunkOverlap: 150,
+      chunkSize: 1200,
+      chunkOverlap: 200,
       queryExpansionEnabled: true,
       cacheEnabled: true,
       cacheTTLSeconds: 3600,
@@ -250,15 +263,15 @@ export const MODEL_PRESETS: ModelPreset[] = [
     model: 'ollama-qwen2.5',
     llmSettings: {
       model: 'ollama-qwen2.5',
-      temperature: 0.7,
+      temperature: 0.2,
       maxTokens: 2000,
     },
     ragSettings: {
       topKChunks: 15,
       maxContextChunks: 10,
       similarityThreshold: 0.5,
-      chunkSize: 800,
-      chunkOverlap: 150,
+      chunkSize: 1200,
+      chunkOverlap: 200,
       queryExpansionEnabled: true,
       cacheEnabled: true,
       cacheTTLSeconds: 3600,
@@ -278,7 +291,9 @@ export type SettingKey =
   | 'system-prompt'
   | 'acronym-mappings'
   | 'retention-settings'
-  | 'branding-settings';
+  | 'branding-settings'
+  | 'embedding-settings'
+  | 'reranker-settings';
 
 // ============ Generic Operations ============
 
@@ -349,8 +364,8 @@ export function getRagSettings(): RagSettings {
     topKChunks: 15,           // Match gpt-4.1-mini preset
     maxContextChunks: 10,     // Match gpt-4.1-mini preset
     similarityThreshold: 0.5,
-    chunkSize: 800,
-    chunkOverlap: 150,
+    chunkSize: 1200,          // Larger chunks for better context coherence
+    chunkOverlap: 200,
     queryExpansionEnabled: true,
     cacheEnabled: true,
     cacheTTLSeconds: 3600,
@@ -363,7 +378,7 @@ export function getRagSettings(): RagSettings {
 export function getLlmSettings(): LlmSettings {
   return getSetting<LlmSettings>('llm-settings') || {
     model: 'gpt-4.1-mini',    // Default to gpt-4.1-mini preset
-    temperature: 0.7,          // Match gpt-4.1-mini preset
+    temperature: 0.2,          // Low temperature for factual RAG responses
     maxTokens: 2000,
   };
 }
@@ -426,6 +441,29 @@ export function getBrandingSettings(): BrandingSettings {
   return getSetting<BrandingSettings>('branding-settings') || {
     botName: 'Policy Bot',
     botIcon: 'policy',
+  };
+}
+
+/**
+ * Get embedding settings
+ */
+export function getEmbeddingSettings(): EmbeddingSettings {
+  return getSetting<EmbeddingSettings>('embedding-settings') || {
+    model: 'text-embedding-3-large',
+    dimensions: 3072,
+  };
+}
+
+/**
+ * Get reranker settings
+ */
+export function getRerankerSettings(): RerankerSettings {
+  return getSetting<RerankerSettings>('reranker-settings') || {
+    enabled: false,
+    provider: 'cohere',
+    topKForReranking: 50,
+    minRerankerScore: 0.3,
+    cacheTTLSeconds: 3600,
   };
 }
 
@@ -502,6 +540,26 @@ export function setBrandingSettings(settings: Partial<BrandingSettings>, updated
   const current = getBrandingSettings();
   const updated = { ...current, ...settings };
   setSetting('branding-settings', updated, updatedBy);
+  return updated;
+}
+
+/**
+ * Update embedding settings
+ */
+export function setEmbeddingSettings(settings: Partial<EmbeddingSettings>, updatedBy?: string): EmbeddingSettings {
+  const current = getEmbeddingSettings();
+  const updated = { ...current, ...settings };
+  setSetting('embedding-settings', updated, updatedBy);
+  return updated;
+}
+
+/**
+ * Update reranker settings
+ */
+export function setRerankerSettings(settings: Partial<RerankerSettings>, updatedBy?: string): RerankerSettings {
+  const current = getRerankerSettings();
+  const updated = { ...current, ...settings };
+  setSetting('reranker-settings', updated, updatedBy);
   return updated;
 }
 
@@ -704,6 +762,8 @@ export function getAllSettings(): {
   acronymMappings: AcronymMappings;
   retention: RetentionSettings;
   branding: BrandingSettings;
+  embedding: EmbeddingSettings;
+  reranker: RerankerSettings;
 } {
   return {
     rag: getRagSettings(),
@@ -714,5 +774,7 @@ export function getAllSettings(): {
     acronymMappings: getAcronymMappings(),
     retention: getRetentionSettings(),
     branding: getBrandingSettings(),
+    embedding: getEmbeddingSettings(),
+    reranker: getRerankerSettings(),
   };
 }

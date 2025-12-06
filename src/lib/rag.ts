@@ -7,11 +7,12 @@
 
 import { createEmbeddings, generateResponseWithTools } from './openai';
 import type { OpenAI } from 'openai';
-import { queryDocuments, queryCategories } from './chroma';
+import { queryCategories } from './chroma';
 import { getCachedQuery, cacheQuery, hashQuery } from './redis';
 import { extractTextFromDocument, chunkText } from './ingest';
 import { readFileBuffer } from './storage';
 import { getSystemPrompt, getRagSettings, getAcronymMappings } from './db/config';
+import { rerankChunks } from './reranker';
 import type { Message, Source, RetrievedChunk, RAGResponse } from '@/types';
 
 /**
@@ -101,15 +102,16 @@ export async function buildContext(
   for (const embedding of allEmbeddings) {
     let results;
 
-    // Use category-based search if categories specified, otherwise legacy
+    // Use category-based search if categories specified, otherwise query global + legacy
     if (categorySlugs && categorySlugs.length > 0) {
       // Query across all specified categories + global collection
       console.log('[RAG] Querying categories:', categorySlugs);
       results = await queryCategories(categorySlugs, embedding, topKChunks);
     } else {
-      // Legacy: query the default collection
-      console.log('[RAG] No categories - using legacy collection query');
-      results = await queryDocuments(embedding, topKChunks, { source: 'global' });
+      // No categories: query both global_documents and legacy collection
+      console.log('[RAG] No categories - querying global + legacy collections');
+      // queryCategories with empty array will query global_documents collection
+      results = await queryCategories([], embedding, topKChunks);
     }
 
     console.log('[RAG] Query returned:', {
@@ -295,8 +297,12 @@ export async function ragQuery(
     categorySlugs
   );
 
+  // Apply reranking if enabled (improves relevance ordering)
+  const rerankedGlobalChunks = await rerankChunks(userMessage, globalChunks);
+  const rerankedUserChunks = await rerankChunks(userMessage, userChunks);
+
   // Format context for LLM
-  const context = formatContext(globalChunks, userChunks);
+  const context = formatContext(rerankedGlobalChunks, rerankedUserChunks);
 
   // Get system prompt from SQLite config
   const systemPrompt = getSystemPrompt();
@@ -310,8 +316,8 @@ export async function ragQuery(
     true // Enable tools (web search)
   );
 
-  // Extract sources from RAG
-  const sources = extractSources(globalChunks, userChunks);
+  // Extract sources from RAG (use reranked chunks for accurate scores)
+  const sources = extractSources(rerankedGlobalChunks, rerankedUserChunks);
 
   // Extract web sources from tool call results
   const webSources = extractWebSourcesFromHistory(fullHistory);
