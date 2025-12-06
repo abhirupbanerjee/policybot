@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Upload, RefreshCw, Trash2, FileText, AlertCircle, Users, UserPlus, Shield, User, Settings, Save, FolderOpen, Plus, Edit2, BarChart3, Database, HardDrive, Globe, Tag, Landmark, DollarSign, Activity, Layers, Server, ScrollText, ChevronUp, ChevronDown, ChevronsUpDown, Search, X } from 'lucide-react';
+import { ArrowLeft, Upload, RefreshCw, Trash2, FileText, AlertCircle, Users, UserPlus, Shield, User, Settings, Save, FolderOpen, Plus, Edit2, BarChart3, Database, HardDrive, Globe, Tag, Landmark, DollarSign, Activity, Layers, Server, ScrollText, ChevronUp, ChevronDown, ChevronsUpDown, Search, X, LayoutDashboard } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import Spinner from '@/components/ui/Spinner';
@@ -132,7 +132,7 @@ interface ModelPreset {
   };
 }
 
-type TabType = 'documents' | 'categories' | 'users' | 'settings' | 'stats';
+type TabType = 'dashboard' | 'documents' | 'categories' | 'users' | 'settings' | 'stats';
 type SettingsSection = 'prompt' | 'rag' | 'llm' | 'acronyms' | 'tavily' | 'branding' | 'reranker';
 
 interface BrandingSettings {
@@ -192,7 +192,7 @@ interface SystemStats {
 
 export default function AdminPage() {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<TabType>('documents');
+  const [activeTab, setActiveTab] = useState<TabType>('dashboard');
 
   // Document state
   const [documents, setDocuments] = useState<GlobalDocument[]>([]);
@@ -1616,6 +1616,17 @@ export default function AdminPage() {
         <div className="max-w-6xl mx-auto px-4">
           <nav className="flex gap-4">
             <button
+              onClick={() => setActiveTab('dashboard')}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'dashboard'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <LayoutDashboard size={16} className="inline mr-2" />
+              Dashboard
+            </button>
+            <button
               onClick={() => setActiveTab('documents')}
               className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
                 activeTab === 'documents'
@@ -1685,6 +1696,192 @@ export default function AdminPage() {
             >
               &times;
             </button>
+          </div>
+        )}
+
+        {/* Dashboard Tab */}
+        {activeTab === 'dashboard' && (
+          <div className="space-y-6">
+            {/* System Status Card */}
+            <div className="bg-white rounded-lg border shadow-sm">
+              <div className="px-6 py-4 border-b">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="font-semibold text-gray-900">System Status</h2>
+                    <p className="text-sm text-gray-500">Monitor LLM providers, services, and rerankers</p>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      loadProviders();
+                      loadRerankerStatus();
+                    }}
+                    disabled={providersLoading || rerankerStatusLoading}
+                  >
+                    <RefreshCw size={16} className={`mr-2 ${(providersLoading || rerankerStatusLoading) ? 'animate-spin' : ''}`} />
+                    Refresh
+                  </Button>
+                </div>
+              </div>
+              <div className="p-6">
+                {/* Status Legend */}
+                <div className="flex gap-6 text-sm mb-4 pb-4 border-b">
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 bg-green-500 rounded-full" />
+                    Available
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 bg-yellow-500 rounded-full" />
+                    Configured (error)
+                  </span>
+                  <span className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 bg-gray-400 rounded-full" />
+                    Not Configured
+                  </span>
+                </div>
+
+                {/* Status Table */}
+                {(providersLoading || rerankerStatusLoading) ? (
+                  <div className="py-12 flex justify-center">
+                    <Spinner size="lg" />
+                  </div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b bg-gray-50">
+                          <th className="px-4 py-3 text-left font-medium text-gray-600">Category</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-600">Provider</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-600">Service / Model</th>
+                          <th className="px-4 py-3 text-left font-medium text-gray-600">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {/* LLM Providers */}
+                        {Object.entries(providerStatus).map(([key, status]) => (
+                          <tr key={`llm-${key}`} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 text-gray-500">LLM</td>
+                            <td className="px-4 py-3 font-medium text-gray-900 capitalize">{status.provider}</td>
+                            <td className="px-4 py-3 text-gray-600">
+                              {status.provider === 'openai' && 'gpt-4.1-mini'}
+                              {status.provider === 'mistral' && 'mistral-small-3.2'}
+                              {status.provider === 'ollama' && 'Local Models'}
+                              {status.provider === 'azure' && 'Azure OpenAI'}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+                                status.available
+                                  ? 'bg-green-100 text-green-800'
+                                  : status.configured
+                                  ? 'bg-yellow-100 text-yellow-800'
+                                  : 'bg-gray-100 text-gray-600'
+                              }`}>
+                                <span className={`w-2 h-2 rounded-full ${
+                                  status.available ? 'bg-green-500' : status.configured ? 'bg-yellow-500' : 'bg-gray-400'
+                                }`} />
+                                {status.available ? 'Online' : status.configured ? 'Error' : 'N/A'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+
+                        {/* Services */}
+                        {Object.entries(serviceStatus).map(([key, service]) => (
+                          <tr key={`service-${key}`} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 text-gray-500">Service</td>
+                            <td className="px-4 py-3 font-medium text-gray-900 capitalize">{service.provider}</td>
+                            <td className="px-4 py-3 text-gray-600">{service.name}</td>
+                            <td className="px-4 py-3">
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+                                service.available
+                                  ? 'bg-green-100 text-green-800'
+                                  : service.configured
+                                  ? 'bg-yellow-100 text-yellow-800'
+                                  : 'bg-gray-100 text-gray-600'
+                              }`}>
+                                <span className={`w-2 h-2 rounded-full ${
+                                  service.available ? 'bg-green-500' : service.configured ? 'bg-yellow-500' : 'bg-gray-400'
+                                }`} />
+                                {service.available ? 'Online' : service.configured ? 'Error' : 'N/A'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+
+                        {/* Rerankers */}
+                        {rerankerStatus.map((status) => (
+                          <tr key={`reranker-${status.provider}`} className="hover:bg-gray-50">
+                            <td className="px-4 py-3 text-gray-500">Reranker</td>
+                            <td className="px-4 py-3 font-medium text-gray-900 capitalize">{status.provider === 'cohere' ? 'Cohere' : 'Local'}</td>
+                            <td className="px-4 py-3 text-gray-600">
+                              {status.provider === 'cohere' ? 'rerank-english-v3.0' : 'Transformers.js'}
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
+                                status.available
+                                  ? 'bg-green-100 text-green-800'
+                                  : status.configured
+                                  ? 'bg-yellow-100 text-yellow-800'
+                                  : 'bg-gray-100 text-gray-600'
+                              }`}>
+                                <span className={`w-2 h-2 rounded-full ${
+                                  status.available ? 'bg-green-500' : status.configured ? 'bg-yellow-500' : 'bg-gray-400'
+                                }`} />
+                                {status.available
+                                  ? (status.latency ? `${status.latency}ms` : 'Ready')
+                                  : status.configured ? 'Error' : 'N/A'}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+
+                {/* Error Details */}
+                {(() => {
+                  const errors: { category: string; provider: string; error: string }[] = [];
+
+                  Object.values(providerStatus).forEach(status => {
+                    if (!status.available && status.error) {
+                      errors.push({ category: 'LLM', provider: status.provider, error: status.error });
+                    }
+                  });
+
+                  Object.values(serviceStatus).forEach(service => {
+                    if (!service.available && service.error) {
+                      errors.push({ category: 'Service', provider: service.name, error: service.error });
+                    }
+                  });
+
+                  rerankerStatus.forEach(status => {
+                    if (!status.available && status.error) {
+                      errors.push({ category: 'Reranker', provider: status.name, error: status.error });
+                    }
+                  });
+
+                  if (errors.length === 0) return null;
+
+                  return (
+                    <div className="mt-4 pt-4 border-t">
+                      <div className="flex items-center gap-2 text-sm font-medium text-yellow-700 mb-2">
+                        <AlertCircle size={16} />
+                        Errors ({errors.length})
+                      </div>
+                      <div className="space-y-1 text-sm">
+                        {errors.map((err, idx) => (
+                          <div key={idx} className="flex items-start gap-2 text-gray-600">
+                            <span className="text-gray-400">•</span>
+                            <span><span className="font-medium">{err.provider}:</span> {err.error}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            </div>
           </div>
         )}
 
@@ -2268,71 +2465,6 @@ export default function AdminPage() {
                       </div>
                     </div>
                     <div className="p-6">
-                      {/* Provider & Services Status */}
-                      {!providersLoading && (Object.keys(providerStatus).length > 0 || Object.keys(serviceStatus).length > 0) && (
-                        <div className="mb-4 space-y-3">
-                          {/* LLM Providers */}
-                          <div>
-                            <div className="text-xs font-medium text-gray-500 mb-1.5">LLM Providers</div>
-                            <div className="flex flex-wrap gap-2">
-                              {Object.entries(providerStatus).map(([provider, status]) => (
-                                <div
-                                  key={provider}
-                                  className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
-                                    status.available
-                                      ? 'bg-green-100 text-green-800'
-                                      : status.configured
-                                      ? 'bg-yellow-100 text-yellow-800'
-                                      : 'bg-gray-100 text-gray-600'
-                                  }`}
-                                  title={status.error || (status.available ? 'Connected' : 'Not available')}
-                                >
-                                  <span className={`w-2 h-2 rounded-full mr-1.5 ${
-                                    status.available
-                                      ? 'bg-green-500'
-                                      : status.configured
-                                      ? 'bg-yellow-500'
-                                      : 'bg-gray-400'
-                                  }`} />
-                                  {provider.charAt(0).toUpperCase() + provider.slice(1)}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-
-                          {/* Services (Embedding, OCR, Audio) */}
-                          {Object.keys(serviceStatus).length > 0 && (
-                            <div>
-                              <div className="text-xs font-medium text-gray-500 mb-1.5">Services</div>
-                              <div className="flex flex-wrap gap-2">
-                                {Object.entries(serviceStatus).map(([key, service]) => (
-                                  <div
-                                    key={key}
-                                    className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
-                                      service.available
-                                        ? 'bg-green-100 text-green-800'
-                                        : service.configured
-                                        ? 'bg-yellow-100 text-yellow-800'
-                                        : 'bg-gray-100 text-gray-600'
-                                    }`}
-                                    title={`${service.model} (${service.provider})${service.error ? ` - ${service.error}` : ''}`}
-                                  >
-                                    <span className={`w-2 h-2 rounded-full mr-1.5 ${
-                                      service.available
-                                        ? 'bg-green-500'
-                                        : service.configured
-                                        ? 'bg-yellow-500'
-                                        : 'bg-gray-400'
-                                    }`} />
-                                    {service.name}
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         {modelPresets.map((preset) => {
                           const provider = getModelProvider(preset.model);
@@ -2974,50 +3106,6 @@ export default function AdminPage() {
                     <div className="px-6 py-12 flex justify-center"><Spinner size="lg" /></div>
                   ) : editedReranker ? (
                     <div className="p-6 space-y-6">
-                      {/* Reranker Provider Status */}
-                      {!rerankerStatusLoading && rerankerStatus.length > 0 && (
-                        <div className="mb-2">
-                          <div className="text-xs font-medium text-gray-500 mb-1.5">Provider Status</div>
-                          <div className="flex flex-wrap gap-2">
-                            {rerankerStatus.map((status) => (
-                              <div
-                                key={status.provider}
-                                className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium ${
-                                  status.available
-                                    ? 'bg-green-100 text-green-800'
-                                    : status.configured
-                                    ? 'bg-yellow-100 text-yellow-800'
-                                    : 'bg-gray-100 text-gray-600'
-                                }`}
-                                title={status.error || (status.available ? `Connected${status.latency ? ` (${status.latency}ms)` : ''}` : 'Not available')}
-                              >
-                                <span className={`w-2 h-2 rounded-full mr-1.5 ${
-                                  status.available
-                                    ? 'bg-green-500'
-                                    : status.configured
-                                    ? 'bg-yellow-500'
-                                    : 'bg-gray-400'
-                                }`} />
-                                {status.name}
-                                {status.available && status.latency && (
-                                  <span className="ml-1 text-green-600">({status.latency}ms)</span>
-                                )}
-                              </div>
-                            ))}
-                          </div>
-                          {rerankerStatus.some(s => !s.available && s.error) && (
-                            <div className="mt-2 text-xs text-gray-500">
-                              {rerankerStatus.filter(s => !s.available && s.error).map(s => (
-                                <div key={s.provider} className="flex items-center gap-1">
-                                  <AlertCircle size={12} className="text-yellow-500" />
-                                  <span>{s.name}: {s.error}</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      )}
-
                       {/* Enable/Disable Toggle */}
                       <div className="flex items-center justify-between">
                         <div>
@@ -3046,8 +3134,22 @@ export default function AdminPage() {
                           }}
                           className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         >
-                          <option value="cohere">Cohere API (Fast, requires API key)</option>
-                          <option value="local">Local (Free, slower first load)</option>
+                          {(() => {
+                            const cohereStatus = rerankerStatus.find(s => s.provider === 'cohere');
+                            const localStatus = rerankerStatus.find(s => s.provider === 'local');
+                            const cohereAvailable = cohereStatus?.available ?? true;
+                            const localAvailable = localStatus?.available ?? true;
+                            return (
+                              <>
+                                <option value="cohere" disabled={!cohereAvailable}>
+                                  Cohere API (Fast, requires API key){!cohereAvailable ? ' (unavailable)' : ''}
+                                </option>
+                                <option value="local" disabled={!localAvailable}>
+                                  Local (Free, slower first load){!localAvailable ? ' (unavailable)' : ''}
+                                </option>
+                              </>
+                            );
+                          })()}
                         </select>
                         <p className="mt-1 text-xs text-gray-500">
                           {editedReranker.provider === 'cohere'
