@@ -85,13 +85,16 @@ export interface ModelPreset {
 }
 
 export const MODEL_PRESETS: ModelPreset[] = [
+  // ===========================================================================
+  // OPENAI MODELS - GPT-4.1 Family
+  // ===========================================================================
   {
-    id: 'gpt-5.1',
-    name: 'GPT-5.1 (High Performance)',
-    description: 'Most capable model with highest retrieval accuracy for complex policy analysis',
-    model: 'gpt-5.1',
+    id: 'gpt-4.1',
+    name: 'GPT-4.1 (High Performance)',
+    description: 'Most capable OpenAI model with 1M context for complex policy analysis',
+    model: 'gpt-4.1',
     llmSettings: {
-      model: 'gpt-5.1',
+      model: 'gpt-4.1',
       temperature: 0.3,
       maxTokens: 4000,
     },
@@ -107,12 +110,12 @@ export const MODEL_PRESETS: ModelPreset[] = [
     },
   },
   {
-    id: 'gpt-5.1-mini',
-    name: 'GPT-5.1 Mini (Balanced)',
+    id: 'gpt-4.1-mini',
+    name: 'GPT-4.1 Mini (Balanced)',
     description: 'Fast and affordable for most policy queries with good accuracy',
-    model: 'gpt-5.1-mini',
+    model: 'gpt-4.1-mini',
     llmSettings: {
-      model: 'gpt-5.1-mini',
+      model: 'gpt-4.1-mini',
       temperature: 0.5,
       maxTokens: 3000,
     },
@@ -128,12 +131,125 @@ export const MODEL_PRESETS: ModelPreset[] = [
     },
   },
   {
-    id: 'gpt-4.1-mini',
-    name: 'GPT-4.1 Mini (Cost-Effective)',
+    id: 'gpt-4.1-nano',
+    name: 'GPT-4.1 Nano (Cost-Effective)',
     description: 'Cost-effective option for simpler queries with faster response times',
-    model: 'gpt-4.1-mini',
+    model: 'gpt-4.1-nano',
     llmSettings: {
-      model: 'gpt-4.1-mini',
+      model: 'gpt-4.1-nano',
+      temperature: 0.7,
+      maxTokens: 2000,
+    },
+    ragSettings: {
+      topKChunks: 15,
+      maxContextChunks: 10,
+      similarityThreshold: 0.5,
+      chunkSize: 800,
+      chunkOverlap: 150,
+      queryExpansionEnabled: true,
+      cacheEnabled: true,
+      cacheTTLSeconds: 3600,
+    },
+  },
+
+  // ===========================================================================
+  // MISTRAL AI MODELS - Mistral 3 Family
+  // ===========================================================================
+  {
+    id: 'mistral-large-3',
+    name: 'Mistral Large 3',
+    description: 'Mistral flagship model with 256K context and strong reasoning',
+    model: 'mistral-large-3',
+    llmSettings: {
+      model: 'mistral-large-3',
+      temperature: 0.5,
+      maxTokens: 3000,
+    },
+    ragSettings: {
+      topKChunks: 20,
+      maxContextChunks: 15,
+      similarityThreshold: 0.5,
+      chunkSize: 800,
+      chunkOverlap: 150,
+      queryExpansionEnabled: true,
+      cacheEnabled: true,
+      cacheTTLSeconds: 3600,
+    },
+  },
+  {
+    id: 'mistral-small-3.2',
+    name: 'Mistral Small 3.2 (Cost-Effective)',
+    description: 'Fast and efficient Mistral model for routine queries',
+    model: 'mistral-small-3.2',
+    llmSettings: {
+      model: 'mistral-small-3.2',
+      temperature: 0.7,
+      maxTokens: 2000,
+    },
+    ragSettings: {
+      topKChunks: 15,
+      maxContextChunks: 10,
+      similarityThreshold: 0.5,
+      chunkSize: 800,
+      chunkOverlap: 150,
+      queryExpansionEnabled: true,
+      cacheEnabled: true,
+      cacheTTLSeconds: 3600,
+    },
+  },
+  {
+    id: 'ministral-8b',
+    name: 'Ministral 8B (Ultra Cost-Effective)',
+    description: 'Lightweight Mistral model for simple queries at lowest cost',
+    model: 'ministral-8b',
+    llmSettings: {
+      model: 'ministral-8b',
+      temperature: 0.7,
+      maxTokens: 2000,
+    },
+    ragSettings: {
+      topKChunks: 10,
+      maxContextChunks: 8,
+      similarityThreshold: 0.5,
+      chunkSize: 800,
+      chunkOverlap: 150,
+      queryExpansionEnabled: true,
+      cacheEnabled: true,
+      cacheTTLSeconds: 3600,
+    },
+  },
+
+  // ===========================================================================
+  // OLLAMA LOCAL MODELS
+  // ===========================================================================
+  {
+    id: 'ollama-llama3.2',
+    name: 'Ollama Llama 3.2 (Local)',
+    description: 'Local model with full tool support, no API cost',
+    model: 'ollama-llama3.2',
+    llmSettings: {
+      model: 'ollama-llama3.2',
+      temperature: 0.7,
+      maxTokens: 2000,
+    },
+    ragSettings: {
+      topKChunks: 15,
+      maxContextChunks: 10,
+      similarityThreshold: 0.5,
+      chunkSize: 800,
+      chunkOverlap: 150,
+      queryExpansionEnabled: true,
+      cacheEnabled: true,
+      cacheTTLSeconds: 3600,
+    },
+  },
+  {
+    id: 'ollama-qwen2.5',
+    name: 'Ollama Qwen 2.5 (Local)',
+    description: 'High-quality local model with excellent reasoning',
+    model: 'ollama-qwen2.5',
+    llmSettings: {
+      model: 'ollama-qwen2.5',
       temperature: 0.7,
       maxTokens: 2000,
     },

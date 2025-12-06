@@ -5,10 +5,21 @@ import { getToolDefinitions, executeTool } from './tools';
 
 let openaiClient: OpenAI | null = null;
 
+// Models with reliable function/tool calling support
+const TOOL_CAPABLE_MODELS = new Set([
+  // OpenAI - GPT-4.1 Family
+  'gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano', 'gpt-3.5-turbo',
+  // Mistral - Mistral 3 Family
+  'mistral-large-3', 'mistral-medium-3.1', 'mistral-small-3.2', 'ministral-8b', 'ministral-3b',
+  // Ollama (with native tool support)
+  'ollama-llama3.2', 'ollama-llama3.1', 'ollama-mistral', 'ollama-qwen2.5',
+]);
+
 function getOpenAI(): OpenAI {
   if (!openaiClient) {
     openaiClient = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,
+      baseURL: process.env.OPENAI_BASE_URL || undefined,
     });
   }
   return openaiClient;
@@ -17,12 +28,10 @@ function getOpenAI(): OpenAI {
 export async function createEmbedding(text: string): Promise<number[]> {
   const openai = getOpenAI();
   const model = process.env.EMBEDDING_MODEL || 'text-embedding-3-large';
-  const dimensions = parseInt(process.env.EMBEDDING_DIMENSIONS || '3072', 10);
 
   const response = await openai.embeddings.create({
     model,
     input: text,
-    dimensions,
   });
   return response.data[0].embedding;
 }
@@ -32,12 +41,10 @@ export async function createEmbeddings(texts: string[]): Promise<number[][]> {
 
   const openai = getOpenAI();
   const model = process.env.EMBEDDING_MODEL || 'text-embedding-3-large';
-  const dimensions = parseInt(process.env.EMBEDDING_DIMENSIONS || '3072', 10);
 
   const response = await openai.embeddings.create({
     model,
     input: texts,
-    dimensions,
   });
   return response.data.map(d => d.embedding);
 }
@@ -75,22 +82,12 @@ export async function generateResponse(
 
   const openai = getOpenAI();
 
-  // GPT-5 and GPT-5 Mini have different parameter requirements
-  const isGPT5Family = llmSettings.model.startsWith('gpt-5');
-
-  const response = isGPT5Family
-    ? await openai.chat.completions.create({
-        model: llmSettings.model,
-        messages,
-        max_completion_tokens: llmSettings.maxTokens,
-        // GPT-5 family only supports temperature=1 (default)
-      })
-    : await openai.chat.completions.create({
-        model: llmSettings.model,
-        messages,
-        max_tokens: llmSettings.maxTokens,
-        temperature: llmSettings.temperature,
-      });
+  const response = await openai.chat.completions.create({
+    model: llmSettings.model,
+    messages,
+    max_tokens: llmSettings.maxTokens,
+    temperature: llmSettings.temperature,
+  });
 
   return response.choices[0].message.content || '';
 }
@@ -109,8 +106,13 @@ export async function generateResponseWithTools(
   const llmSettings = await getLLMSettings();
   const openai = getOpenAI();
 
-  // GPT-5, GPT-5-mini, and GPT-4o-mini all support function calling
-  const isGPT5Family = llmSettings.model.startsWith('gpt-5');
+  // Check if model supports tools, disable gracefully if not
+  const modelSupportsTools = TOOL_CAPABLE_MODELS.has(llmSettings.model);
+  const effectiveEnableTools = enableTools && modelSupportsTools;
+
+  if (enableTools && !modelSupportsTools) {
+    console.warn(`Model ${llmSettings.model} does not support tools, disabling`);
+  }
 
   // Build messages array
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
@@ -146,17 +148,14 @@ export async function generateResponseWithTools(
   });
 
   // Prepare completion params
-  const tools = enableTools ? getToolDefinitions() : undefined;
-  const baseParams = {
+  const tools = effectiveEnableTools ? getToolDefinitions() : undefined;
+  const completionParams = {
     model: llmSettings.model,
     messages,
     tools,
+    max_tokens: llmSettings.maxTokens,
+    temperature: llmSettings.temperature,
   };
-
-  // Handle GPT-5 vs other models (GPT-4o-mini uses standard params)
-  const completionParams = isGPT5Family
-    ? { ...baseParams, max_completion_tokens: llmSettings.maxTokens }
-    : { ...baseParams, max_tokens: llmSettings.maxTokens, temperature: llmSettings.temperature };
 
   // First API call
   let response = await openai.chat.completions.create(completionParams);
@@ -194,11 +193,10 @@ export async function generateResponseWithTools(
     }
 
     // Get next response with tool results
-    const nextParams = isGPT5Family
-      ? { ...baseParams, messages, max_completion_tokens: llmSettings.maxTokens }
-      : { ...baseParams, messages, max_tokens: llmSettings.maxTokens, temperature: llmSettings.temperature };
-
-    response = await openai.chat.completions.create(nextParams);
+    response = await openai.chat.completions.create({
+      ...completionParams,
+      messages,
+    });
     responseMessage = response.choices[0].message;
   }
 
