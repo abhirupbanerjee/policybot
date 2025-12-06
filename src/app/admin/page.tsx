@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Upload, RefreshCw, Trash2, FileText, AlertCircle, Users, UserPlus, Shield, User, Settings, Save, FolderOpen, Plus, Edit2, BarChart3, Database, HardDrive, Globe, Tag, Landmark, DollarSign, Activity, Layers, Server, ScrollText } from 'lucide-react';
+import { ArrowLeft, Upload, RefreshCw, Trash2, FileText, AlertCircle, Users, UserPlus, Shield, User, Settings, Save, FolderOpen, Plus, Edit2, BarChart3, Database, HardDrive, Globe, Tag, Landmark, DollarSign, Activity, Layers, Server, ScrollText, ChevronUp, ChevronDown, ChevronsUpDown, Search, X } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import Spinner from '@/components/ui/Spinner';
+import { type SortDirection } from '@/components/ui/SortableTable';
 import type { GlobalDocument } from '@/types';
 
 interface AllowedUser {
@@ -166,6 +167,11 @@ export default function AdminPage() {
   const [deleteDoc, setDeleteDoc] = useState<GlobalDocument | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [reindexing, setReindexing] = useState<string | null>(null);
+
+  // Document search and sort state
+  const [docSearchTerm, setDocSearchTerm] = useState('');
+  const [docSortKey, setDocSortKey] = useState<keyof GlobalDocument | null>(null);
+  const [docSortDirection, setDocSortDirection] = useState<SortDirection>(null);
 
   // Upload modal state
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -1307,6 +1313,133 @@ export default function AdminPage() {
     });
   };
 
+  // Fuzzy search helper
+  const fuzzyMatch = (pattern: string, text: string): number => {
+    pattern = pattern.toLowerCase();
+    text = text.toLowerCase();
+    let patternIdx = 0;
+    let score = 0;
+    let lastMatchIdx = -1;
+    for (let i = 0; i < text.length && patternIdx < pattern.length; i++) {
+      if (text[i] === pattern[patternIdx]) {
+        if (lastMatchIdx === i - 1) score += 2;
+        else score += 1;
+        if (i === 0 || text[i - 1] === ' ' || text[i - 1] === '-' || text[i - 1] === '_') score += 3;
+        lastMatchIdx = i;
+        patternIdx++;
+      }
+    }
+    return patternIdx < pattern.length ? -1 : score;
+  };
+
+  // Document search and sort logic
+  const filteredAndSortedDocs = useMemo(() => {
+    let result = [...documents];
+
+    // Apply fuzzy search
+    if (docSearchTerm.trim()) {
+      result = result
+        .map(doc => ({
+          doc,
+          score: Math.max(
+            fuzzyMatch(docSearchTerm, doc.filename),
+            fuzzyMatch(docSearchTerm, doc.categories?.map(c => c.name).join(' ') || ''),
+            fuzzyMatch(docSearchTerm, doc.status)
+          ),
+        }))
+        .filter(r => r.score >= 0)
+        .sort((a, b) => b.score - a.score)
+        .map(r => r.doc);
+    }
+
+    // Apply sorting
+    if (docSortKey && docSortDirection) {
+      result.sort((a, b) => {
+        let aVal: string | number | Date | undefined;
+        let bVal: string | number | Date | undefined;
+
+        switch (docSortKey) {
+          case 'filename':
+            aVal = a.filename.toLowerCase();
+            bVal = b.filename.toLowerCase();
+            break;
+          case 'size':
+            aVal = a.size;
+            bVal = b.size;
+            break;
+          case 'chunkCount':
+            aVal = a.chunkCount;
+            bVal = b.chunkCount;
+            break;
+          case 'status':
+            aVal = a.status;
+            bVal = b.status;
+            break;
+          case 'uploadedAt':
+            aVal = new Date(a.uploadedAt).getTime();
+            bVal = new Date(b.uploadedAt).getTime();
+            break;
+          default:
+            return 0;
+        }
+
+        if (aVal == null && bVal == null) return 0;
+        if (aVal == null) return docSortDirection === 'asc' ? 1 : -1;
+        if (bVal == null) return docSortDirection === 'asc' ? -1 : 1;
+
+        let comparison = 0;
+        if (typeof aVal === 'string' && typeof bVal === 'string') {
+          comparison = aVal.localeCompare(bVal);
+        } else {
+          comparison = (aVal as number) - (bVal as number);
+        }
+
+        return docSortDirection === 'asc' ? comparison : -comparison;
+      });
+    }
+
+    return result;
+  }, [documents, docSearchTerm, docSortKey, docSortDirection]);
+
+  // Toggle sort for documents
+  const handleDocSort = (key: keyof GlobalDocument) => {
+    if (docSortKey === key) {
+      if (docSortDirection === 'asc') {
+        setDocSortDirection('desc');
+      } else if (docSortDirection === 'desc') {
+        setDocSortKey(null);
+        setDocSortDirection(null);
+      }
+    } else {
+      setDocSortKey(key);
+      setDocSortDirection('asc');
+    }
+  };
+
+  // Sortable header component
+  const SortableDocHeader = ({ columnKey, label, className = '' }: { columnKey: keyof GlobalDocument; label: string; className?: string }) => {
+    const isActive = docSortKey === columnKey;
+    return (
+      <th className={`px-6 py-3 font-medium ${className}`}>
+        <button
+          onClick={() => handleDocSort(columnKey)}
+          className="flex items-center gap-1 hover:text-blue-600 transition-colors group"
+        >
+          {label}
+          <span className={`transition-opacity ${isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-50'}`}>
+            {isActive && docSortDirection === 'asc' ? (
+              <ChevronUp size={14} className="text-blue-600" />
+            ) : isActive && docSortDirection === 'desc' ? (
+              <ChevronDown size={14} className="text-blue-600" />
+            ) : (
+              <ChevronsUpDown size={14} className="text-gray-400" />
+            )}
+          </span>
+        </button>
+      </th>
+    );
+  };
+
   if (docLoading && userLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -1423,7 +1556,7 @@ export default function AdminPage() {
                 <div>
                   <h2 className="font-semibold text-gray-900">Knowledge Base Documents</h2>
                   <p className="text-sm text-gray-500">
-                    {documents.length} documents, {totalChunks} chunks indexed
+                    {docSearchTerm ? `${filteredAndSortedDocs.length} of ${documents.length}` : documents.length} documents, {totalChunks} chunks indexed
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1455,6 +1588,29 @@ export default function AdminPage() {
                   </Button>
                 </div>
               </div>
+              {/* Search bar */}
+              {documents.length > 0 && (
+                <div className="mt-4">
+                  <div className="relative max-w-md">
+                    <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      value={docSearchTerm}
+                      onChange={(e) => setDocSearchTerm(e.target.value)}
+                      placeholder="Search documents by name, category, or status..."
+                      className="w-full pl-9 pr-8 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    />
+                    {docSearchTerm && (
+                      <button
+                        onClick={() => setDocSearchTerm('')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-gray-400 hover:text-gray-600 rounded"
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {documents.length === 0 ? (
@@ -1465,22 +1621,30 @@ export default function AdminPage() {
                   Upload PDF documents to build your policy knowledge base
                 </p>
               </div>
+            ) : filteredAndSortedDocs.length === 0 ? (
+              <div className="px-6 py-12 text-center">
+                <Search className="w-12 h-12 text-gray-300 mx-auto mb-4" />
+                <h3 className="text-lg font-medium text-gray-900 mb-2">No matching documents</h3>
+                <p className="text-gray-500 mb-4">
+                  Try adjusting your search term
+                </p>
+              </div>
             ) : (
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-gray-50 text-left text-sm text-gray-600">
                     <tr>
-                      <th className="px-6 py-3 font-medium">Document</th>
+                      <SortableDocHeader columnKey="filename" label="Document" />
                       <th className="px-6 py-3 font-medium">Categories</th>
-                      <th className="px-6 py-3 font-medium">Size</th>
-                      <th className="px-6 py-3 font-medium">Chunks</th>
-                      <th className="px-6 py-3 font-medium">Status</th>
-                      <th className="px-6 py-3 font-medium">Uploaded</th>
+                      <SortableDocHeader columnKey="size" label="Size" />
+                      <SortableDocHeader columnKey="chunkCount" label="Chunks" />
+                      <SortableDocHeader columnKey="status" label="Status" />
+                      <SortableDocHeader columnKey="uploadedAt" label="Uploaded" />
                       <th className="px-6 py-3 font-medium text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {documents.map((doc) => (
+                    {filteredAndSortedDocs.map((doc) => (
                       <tr key={doc.id} className="hover:bg-gray-50">
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
