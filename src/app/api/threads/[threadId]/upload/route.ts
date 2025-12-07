@@ -50,6 +50,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           if (t === 'application/pdf') return 'PDF';
           if (t === 'image/png') return 'PNG';
           if (t === 'image/jpeg') return 'JPG';
+          if (t === 'text/plain') return 'TXT';
           return t;
         })
         .join(', ');

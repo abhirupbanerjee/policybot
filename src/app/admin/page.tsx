@@ -437,58 +437,72 @@ export default function AdminPage() {
       }
 
       const data = await response.json();
-      setRagSettings(data.rag);
-      setEditedRag({
-        topKChunks: data.rag.topKChunks,
-        maxContextChunks: data.rag.maxContextChunks,
-        similarityThreshold: data.rag.similarityThreshold,
-        chunkSize: data.rag.chunkSize,
-        chunkOverlap: data.rag.chunkOverlap,
-        queryExpansionEnabled: data.rag.queryExpansionEnabled,
-        cacheEnabled: data.rag.cacheEnabled,
-        cacheTTLSeconds: data.rag.cacheTTLSeconds,
-      });
-      setLlmSettings(data.llm);
-      setEditedLlm({
-        model: data.llm.model,
-        temperature: data.llm.temperature,
-        maxTokens: data.llm.maxTokens,
-      });
-      setAcronymMappings(data.acronyms);
-      setEditedAcronyms(
-        Object.entries(data.acronyms.mappings)
-          .map(([k, v]) => `${k}=${v}`)
-          .join('\n')
-      );
-      setTavilySettings(data.tavily);
-      setEditedTavily({
-        apiKey: data.tavily.apiKey,
-        enabled: data.tavily.enabled,
-        defaultTopic: data.tavily.defaultTopic,
-        defaultSearchDepth: data.tavily.defaultSearchDepth,
-        maxResults: data.tavily.maxResults,
-        includeDomains: data.tavily.includeDomains,
-        excludeDomains: data.tavily.excludeDomains,
-        cacheTTLSeconds: data.tavily.cacheTTLSeconds,
-      });
-      setBrandingSettings(data.branding);
-      setEditedBranding({
-        botName: data.branding.botName,
-        botIcon: data.branding.botIcon,
-      });
-      setRerankerSettings(data.reranker);
-      setEditedReranker({
-        enabled: data.reranker.enabled,
-        provider: data.reranker.provider,
-        topKForReranking: data.reranker.topKForReranking,
-        minRerankerScore: data.reranker.minRerankerScore,
-        cacheTTLSeconds: data.reranker.cacheTTLSeconds,
-      });
-      setEmbeddingSettings(data.embedding);
+      if (data.rag) {
+        setRagSettings(data.rag);
+        setEditedRag({
+          topKChunks: data.rag.topKChunks,
+          maxContextChunks: data.rag.maxContextChunks,
+          similarityThreshold: data.rag.similarityThreshold,
+          chunkSize: data.rag.chunkSize,
+          chunkOverlap: data.rag.chunkOverlap,
+          queryExpansionEnabled: data.rag.queryExpansionEnabled,
+          cacheEnabled: data.rag.cacheEnabled,
+          cacheTTLSeconds: data.rag.cacheTTLSeconds,
+        });
+      }
+      if (data.llm) {
+        setLlmSettings(data.llm);
+        setEditedLlm({
+          model: data.llm.model,
+          temperature: data.llm.temperature,
+          maxTokens: data.llm.maxTokens,
+        });
+      }
+      if (data.acronyms) {
+        setAcronymMappings(data.acronyms);
+        setEditedAcronyms(
+          Object.entries(data.acronyms.mappings || {})
+            .map(([k, v]) => `${k}=${v}`)
+            .join('\n')
+        );
+      }
+      if (data.tavily) {
+        setTavilySettings(data.tavily);
+        setEditedTavily({
+          apiKey: data.tavily.apiKey,
+          enabled: data.tavily.enabled,
+          defaultTopic: data.tavily.defaultTopic,
+          defaultSearchDepth: data.tavily.defaultSearchDepth,
+          maxResults: data.tavily.maxResults,
+          includeDomains: data.tavily.includeDomains,
+          excludeDomains: data.tavily.excludeDomains,
+          cacheTTLSeconds: data.tavily.cacheTTLSeconds,
+        });
+      }
+      if (data.branding) {
+        setBrandingSettings(data.branding);
+        setEditedBranding({
+          botName: data.branding.botName,
+          botIcon: data.branding.botIcon,
+        });
+      }
+      if (data.reranker) {
+        setRerankerSettings(data.reranker);
+        setEditedReranker({
+          enabled: data.reranker.enabled,
+          provider: data.reranker.provider,
+          topKForReranking: data.reranker.topKForReranking,
+          minRerankerScore: data.reranker.minRerankerScore,
+          cacheTTLSeconds: data.reranker.cacheTTLSeconds,
+        });
+      }
+      if (data.embedding) {
+        setEmbeddingSettings(data.embedding);
+      }
       if (data.models?.transcription) {
         setTranscriptionModel(data.models.transcription);
       }
-      setAvailableModels(data.availableModels);
+      setAvailableModels(data.availableModels || []);
       setModelPresets(data.modelPresets || []);
       setRagModified(false);
       setLlmModified(false);
@@ -1067,6 +1081,37 @@ export default function AdminPage() {
     if (systemPrompt) {
       setEditedPrompt(systemPrompt.prompt);
       setPromptModified(false);
+    }
+  };
+
+  // Restore system prompt to JSON config default
+  const [restoringPrompt, setRestoringPrompt] = useState(false);
+  const handleRestoreDefaultPrompt = async () => {
+    setRestoringPrompt(true);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/admin/system-prompt', {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to restore default prompt');
+      }
+
+      const data = await response.json();
+      setSystemPrompt({
+        prompt: data.prompt,
+        updatedAt: data.updatedAt,
+        updatedBy: data.updatedBy,
+      });
+      setEditedPrompt(data.prompt);
+      setPromptModified(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to restore default prompt');
+    } finally {
+      setRestoringPrompt(false);
     }
   };
 
@@ -2601,11 +2646,23 @@ export default function AdminPage() {
                         className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
                         placeholder="Enter the system prompt..."
                       />
-                      {systemPrompt && (
-                        <p className="mt-2 text-xs text-gray-500">
-                          Last updated: {formatDate(systemPrompt.updatedAt)} by {systemPrompt.updatedBy}
-                        </p>
-                      )}
+                      <div className="mt-3 flex items-center justify-between">
+                        {systemPrompt && (
+                          <p className="text-xs text-gray-500">
+                            Last updated: {formatDate(systemPrompt.updatedAt)} by {systemPrompt.updatedBy}
+                          </p>
+                        )}
+                        <Button
+                          variant="secondary"
+                          onClick={handleRestoreDefaultPrompt}
+                          disabled={restoringPrompt || savingPrompt}
+                          loading={restoringPrompt}
+                          className="text-orange-600 border-orange-300 hover:bg-orange-50"
+                        >
+                          <RefreshCw size={16} className="mr-2" />
+                          Restore to Default
+                        </Button>
+                      </div>
                     </div>
                   )}
                 </div>

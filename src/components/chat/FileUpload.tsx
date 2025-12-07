@@ -9,9 +9,10 @@ const ALLOWED_TYPES = [
   'application/pdf',
   'image/png',
   'image/jpeg',
+  'text/plain',
 ];
 
-const ALLOWED_EXTENSIONS = '.pdf,.png,.jpg,.jpeg';
+const ALLOWED_EXTENSIONS = '.pdf,.png,.jpg,.jpeg,.txt';
 const MAX_FILE_SIZE_MB = 10;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
@@ -53,7 +54,7 @@ export default function FileUpload({
     }
 
     if (!ALLOWED_TYPES.includes(file.type)) {
-      setError('Invalid file type. Allowed: PDF, PNG, JPG');
+      setError('Invalid file type. Allowed: PDF, PNG, JPG, TXT');
       return;
     }
 
@@ -115,7 +116,7 @@ export default function FileUpload({
         onClick={() => setIsModalOpen(true)}
         disabled={disabled || !threadId}
         className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        title={`Attach file (PDF, PNG, JPG - max ${MAX_FILE_SIZE_MB}MB)`}
+        title={`Attach file (PDF, PNG, JPG, TXT - max ${MAX_FILE_SIZE_MB}MB)`}
       >
         <Paperclip size={20} />
       </button>
@@ -155,7 +156,7 @@ export default function FileUpload({
               <div className="flex items-center justify-center gap-4 text-sm text-gray-500">
                 <span className="flex items-center gap-1">
                   <FileText size={14} />
-                  PDF
+                  PDF, TXT
                 </span>
                 <span className="flex items-center gap-1">
                   <ImageIcon size={14} />

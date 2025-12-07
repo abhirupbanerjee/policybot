@@ -293,7 +293,7 @@ function getHardcodedDefaults(): AppConfig {
     upload: {
       maxFilesPerInput: 1,
       maxFileSizeMB: 10,
-      allowedTypes: ['application/pdf', 'image/png', 'image/jpeg'],
+      allowedTypes: ['application/pdf', 'image/png', 'image/jpeg', 'text/plain'],
     },
     retention: {
       threadRetentionDays: 90,

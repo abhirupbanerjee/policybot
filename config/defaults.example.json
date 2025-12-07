@@ -173,7 +173,8 @@
     "allowedTypes": [
       "application/pdf",
       "image/png",
-      "image/jpeg"
+      "image/jpeg",
+      "text/plain"
     ]
   },
 

@@ -34,6 +34,7 @@ export const SUPPORTED_MIME_TYPES = {
   DOCX: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
   XLSX: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   PPTX: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  TXT: 'text/plain',
   // Images
   PNG: 'image/png',
   JPEG: 'image/jpeg',
@@ -48,6 +49,7 @@ export const SUPPORTED_EXTENSIONS = [
   '.docx',
   '.xlsx',
   '.pptx',
+  '.txt',
   '.png',
   '.jpg',
   '.jpeg',
@@ -55,7 +57,7 @@ export const SUPPORTED_EXTENSIONS = [
   '.gif',
 ] as const;
 
-export const ALLOWED_EXTENSIONS_STRING = '.pdf,.docx,.xlsx,.pptx,.png,.jpg,.jpeg,.webp,.gif';
+export const ALLOWED_EXTENSIONS_STRING = '.pdf,.docx,.xlsx,.pptx,.txt,.png,.jpg,.jpeg,.webp,.gif';
 
 // ============================================
 // MIME Type Helpers
@@ -80,6 +82,10 @@ export function isOfficeDocument(mimeType: string): boolean {
 export function isMistralSupported(mimeType: string): boolean {
   // Mistral OCR supports PDF and images
   return isPDF(mimeType) || isImage(mimeType);
+}
+
+export function isPlainText(mimeType: string): boolean {
+  return mimeType === SUPPORTED_MIME_TYPES.TXT;
 }
 
 export function isSupportedMimeType(mimeType: string): boolean {
@@ -127,6 +133,18 @@ export async function extractText(
   filename: string
 ): Promise<ExtractionResult> {
   const errors: string[] = [];
+
+  // TIER 0: Plain text files (no OCR needed)
+  if (isPlainText(mimeType)) {
+    console.log(`[Tier 0] Reading plain text file ${filename}...`);
+    const text = buffer.toString('utf-8');
+    return {
+      text,
+      numPages: 1,
+      pages: [{ pageNumber: 1, text }],
+      provider: 'pdf-parse', // Use 'pdf-parse' as provider for consistency
+    };
+  }
 
   // TIER 1: Mistral OCR (PDF and Images only)
   if (isMistralSupported(mimeType) && process.env.MISTRAL_API_KEY) {
