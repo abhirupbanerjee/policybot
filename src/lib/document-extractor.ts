@@ -88,6 +88,17 @@ export function isPlainText(mimeType: string): boolean {
   return mimeType === SUPPORTED_MIME_TYPES.TXT;
 }
 
+export function isPlainTextFile(mimeType: string, filename: string): boolean {
+  // Check MIME type first
+  if (mimeType === SUPPORTED_MIME_TYPES.TXT) return true;
+  // Also check file extension for octet-stream (common for .txt files)
+  if (mimeType === 'application/octet-stream') {
+    const ext = filename.toLowerCase().split('.').pop();
+    return ext === 'txt';
+  }
+  return false;
+}
+
 export function isSupportedMimeType(mimeType: string): boolean {
   return ALL_SUPPORTED_MIME_TYPES.includes(mimeType as typeof SUPPORTED_MIME_TYPES.PDF);
 }
@@ -105,6 +116,7 @@ export function getMimeTypeFromFilename(filename: string): string {
     'docx': SUPPORTED_MIME_TYPES.DOCX,
     'xlsx': SUPPORTED_MIME_TYPES.XLSX,
     'pptx': SUPPORTED_MIME_TYPES.PPTX,
+    'txt': SUPPORTED_MIME_TYPES.TXT,
     'png': SUPPORTED_MIME_TYPES.PNG,
     'jpg': SUPPORTED_MIME_TYPES.JPEG,
     'jpeg': SUPPORTED_MIME_TYPES.JPEG,
@@ -135,7 +147,8 @@ export async function extractText(
   const errors: string[] = [];
 
   // TIER 0: Plain text files (no OCR needed)
-  if (isPlainText(mimeType)) {
+  // Check both MIME type and file extension for .txt files
+  if (isPlainTextFile(mimeType, filename)) {
     console.log(`[Tier 0] Reading plain text file ${filename}...`);
     const text = buffer.toString('utf-8');
     return {
