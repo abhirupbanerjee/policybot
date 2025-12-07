@@ -220,16 +220,19 @@ export async function ingestDocument(
       const embeddings = await createEmbeddings(texts);
       const metadatas = batch.map(c => c.metadata);
 
+      // Global documents go into global_documents collection
       if (isGlobal) {
-        // Global documents go into all category collections
         await addGlobalDocuments(
           batch.map(c => c.id),
           embeddings,
           texts,
           metadatas
         );
-      } else if (categorySlugs.length > 0) {
-        // Category-specific documents
+      }
+
+      // Documents with categories go into their category collections
+      // (This applies to BOTH global and non-global documents with categories)
+      if (categorySlugs.length > 0) {
         await addDocumentsToCategories(
           categorySlugs,
           batch.map(c => c.id),
@@ -238,8 +241,8 @@ export async function ingestDocument(
           metadatas,
           false
         );
-      } else {
-        // Legacy: add to default collection (for uncategorized documents)
+      } else if (!isGlobal) {
+        // Legacy: add to default collection (for uncategorized, non-global documents)
         await addDocuments(
           batch.map(c => c.id),
           embeddings,
@@ -347,16 +350,19 @@ export async function ingestTextContent(
       const embeddings = await createEmbeddings(texts);
       const metadatas = batch.map(c => c.metadata);
 
+      // Global documents go into global_documents collection
       if (isGlobal) {
-        // Global documents go into all category collections
         await addGlobalDocuments(
           batch.map(c => c.id),
           embeddings,
           texts,
           metadatas
         );
-      } else if (categorySlugs.length > 0) {
-        // Category-specific documents
+      }
+
+      // Documents with categories go into their category collections
+      // (This applies to BOTH global and non-global documents with categories)
+      if (categorySlugs.length > 0) {
         await addDocumentsToCategories(
           categorySlugs,
           batch.map(c => c.id),
@@ -365,8 +371,8 @@ export async function ingestTextContent(
           metadatas,
           false
         );
-      } else {
-        // Legacy: add to default collection (for uncategorized documents)
+      } else if (!isGlobal) {
+        // Legacy: add to default collection (for uncategorized, non-global documents)
         await addDocuments(
           batch.map(c => c.id),
           embeddings,
