@@ -1,8 +1,7 @@
 import OpenAI from 'openai';
 import type { Message, ToolCall } from '@/types';
-import { getLLMSettings } from './storage';
+import { getLlmSettings, getEmbeddingSettings } from './db/config';
 import { getToolDefinitions, executeTool } from './tools';
-import { getEmbeddingSettings } from './db/config';
 
 let openaiClient: OpenAI | null = null;
 
@@ -66,8 +65,8 @@ export async function generateResponse(
   context: string,
   userMessage: string
 ): Promise<string> {
-  // Get LLM settings from storage
-  const llmSettings = await getLLMSettings();
+  // Get LLM settings from database config
+  const llmSettings = getLlmSettings();
 
   const messages: OpenAI.Chat.ChatCompletionMessageParam[] = [
     { role: 'system', content: systemPrompt },
@@ -114,7 +113,7 @@ export async function generateResponseWithTools(
   toolCalls?: ToolCall[];
   fullHistory: OpenAI.Chat.ChatCompletionMessageParam[];
 }> {
-  const llmSettings = await getLLMSettings();
+  const llmSettings = getLlmSettings();
   const openai = getOpenAI();
 
   // Check if model supports tools, disable gracefully if not

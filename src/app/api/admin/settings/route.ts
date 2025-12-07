@@ -20,12 +20,13 @@ import {
   getRerankerSettings,
   setRerankerSettings,
   getSettingMetadata,
-  setSystemPrompt,
+  deleteSetting,
   MODEL_PRESETS,
   BRANDING_ICONS,
   DEFAULT_PRESET_ID,
   getDefaultSystemPrompt,
 } from '@/lib/db/config';
+import { getConfigValue } from '@/lib/config-loader';
 import { invalidateQueryCache, invalidateTavilyCache } from '@/lib/redis';
 import type { ApiError } from '@/types';
 
@@ -126,6 +127,9 @@ export async function GET() {
       availableModels: AVAILABLE_MODELS,
       modelPresets: MODEL_PRESETS,
       brandingIcons: BRANDING_ICONS,
+      models: {
+        transcription: getConfigValue('models.transcription', 'whisper-1'),
+      },
       defaults: {
         // Return true hardcoded defaults from the default preset
         rag: MODEL_PRESETS.find(p => p.id === DEFAULT_PRESET_ID)?.ragSettings,
@@ -395,11 +399,11 @@ export async function PUT(request: NextRequest) {
       }
 
       case 'uploadLimits': {
-        const { maxFilesPerThread, maxFileSizeMB, allowedTypes } = settings;
+        const { maxFilesPerInput, maxFileSizeMB, allowedTypes } = settings;
 
-        if (typeof maxFilesPerThread !== 'number' || maxFilesPerThread < 1 || maxFilesPerThread > 20) {
+        if (typeof maxFilesPerInput !== 'number' || maxFilesPerInput < 1 || maxFilesPerInput > 10) {
           return NextResponse.json<ApiError>(
-            { error: 'Max files per thread must be between 1 and 20', code: 'VALIDATION_ERROR' },
+            { error: 'Max files per input must be between 1 and 10', code: 'VALIDATION_ERROR' },
             { status: 400 }
           );
         }
@@ -419,7 +423,7 @@ export async function PUT(request: NextRequest) {
         }
 
         result = setUploadLimits({
-          maxFilesPerThread,
+          maxFilesPerInput,
           maxFileSizeMB,
           allowedTypes,
         }, user.email);
@@ -604,31 +608,38 @@ export async function PUT(request: NextRequest) {
       }
 
       case 'restoreAllDefaults': {
-        // Find the default preset (gpt-4.1-mini)
-        const defaultPreset = MODEL_PRESETS.find(p => p.id === DEFAULT_PRESET_ID);
-        if (!defaultPreset) {
-          return NextResponse.json<ApiError>(
-            { error: 'Default preset not found', code: 'SERVICE_ERROR' },
-            { status: 500 }
-          );
+        // Delete all settings from SQLite to fall back to JSON config defaults
+        const settingKeys = [
+          'rag-settings',
+          'llm-settings',
+          'tavily-settings',
+          'upload-limits',
+          'system-prompt',
+          'acronym-mappings',
+          'retention-settings',
+          'branding-settings',
+          'embedding-settings',
+          'reranker-settings',
+        ] as const;
+
+        for (const key of settingKeys) {
+          deleteSetting(key);
         }
 
-        // Apply LLM settings from preset
-        const updatedLlm = setLlmSettings(defaultPreset.llmSettings, user.email);
-
-        // Apply RAG settings from preset
-        const updatedRag = setRagSettings(defaultPreset.ragSettings, user.email);
-
-        // Restore default system prompt
-        const defaultPrompt = getDefaultSystemPrompt();
-        setSystemPrompt(defaultPrompt, user.email);
-
+        // Return the new values (which will be from JSON config)
         result = {
-          llm: updatedLlm,
-          rag: updatedRag,
-          systemPrompt: defaultPrompt,
-          preset: defaultPreset,
+          message: 'All settings have been reset to JSON config defaults',
+          rag: getRagSettings(),
+          llm: getLlmSettings(),
+          tavily: getTavilySettings(),
+          branding: getBrandingSettings(),
+          embedding: getEmbeddingSettings(),
+          reranker: getRerankerSettings(),
+          systemPrompt: getDefaultSystemPrompt(),
         };
+
+        // Also invalidate Tavily cache since settings changed
+        await invalidateTavilyCache();
         break;
       }
 

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Upload, RefreshCw, Trash2, FileText, AlertCircle, Users, UserPlus, Shield, User, Settings, Save, FolderOpen, Plus, Edit2, BarChart3, Database, HardDrive, Globe, Tag, Landmark, DollarSign, Activity, Layers, Server, ScrollText, ChevronUp, ChevronDown, ChevronsUpDown, Search, X, LayoutDashboard } from 'lucide-react';
+import { ArrowLeft, Upload, RefreshCw, Trash2, FileText, AlertCircle, Users, UserPlus, Shield, User, Settings, Save, FolderOpen, Plus, Edit2, BarChart3, Database, HardDrive, Globe, Tag, Landmark, DollarSign, Activity, Layers, Server, ScrollText, ChevronUp, ChevronDown, ChevronsUpDown, Search, X, LayoutDashboard, Cpu, Mic, Sparkles } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import Spinner from '@/components/ui/Spinner';
@@ -154,6 +154,13 @@ interface RerankerSettings {
   updatedBy?: string;
 }
 
+interface EmbeddingSettings {
+  model: string;
+  dimensions: number;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
 // Available icon options for branding with their Lucide components
 const BRANDING_ICONS = [
   { key: 'government', label: 'Government', Icon: Landmark },
@@ -284,6 +291,8 @@ export default function AdminPage() {
   const [editedBranding, setEditedBranding] = useState<Omit<BrandingSettings, 'updatedAt' | 'updatedBy'> | null>(null);
   const [rerankerSettings, setRerankerSettings] = useState<RerankerSettings | null>(null);
   const [editedReranker, setEditedReranker] = useState<Omit<RerankerSettings, 'updatedAt' | 'updatedBy'> | null>(null);
+  const [embeddingSettings, setEmbeddingSettings] = useState<EmbeddingSettings | null>(null);
+  const [transcriptionModel, setTranscriptionModel] = useState<string>('whisper-1');
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
   const [modelPresets, setModelPresets] = useState<ModelPreset[]>([]);
   const [providerStatus, setProviderStatus] = useState<Record<string, ProviderStatus>>({});
@@ -475,6 +484,10 @@ export default function AdminPage() {
         minRerankerScore: data.reranker.minRerankerScore,
         cacheTTLSeconds: data.reranker.cacheTTLSeconds,
       });
+      setEmbeddingSettings(data.embedding);
+      if (data.models?.transcription) {
+        setTranscriptionModel(data.models.transcription);
+      }
       setAvailableModels(data.availableModels);
       setModelPresets(data.modelPresets || []);
       setRagModified(false);
@@ -1769,6 +1782,93 @@ export default function AdminPage() {
         {/* Dashboard Tab */}
         {activeTab === 'dashboard' && (
           <div className="space-y-6">
+            {/* Active Configuration Card */}
+            <div className="bg-white rounded-lg border shadow-sm">
+              <div className="px-6 py-4 border-b">
+                <h2 className="font-semibold text-gray-900">Active Configuration</h2>
+                <p className="text-sm text-gray-500">Currently selected services and models</p>
+              </div>
+              <div className="p-6">
+                {settingsLoading ? (
+                  <div className="py-4 flex justify-center">
+                    <Spinner size="md" />
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {/* LLM */}
+                    <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg">
+                      <div className="p-2 bg-blue-100 rounded-lg">
+                        <Cpu size={20} className="text-blue-600" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">LLM</p>
+                        <p className="text-sm font-semibold text-gray-900 truncate" title={llmSettings?.model || 'Not configured'}>
+                          {llmSettings?.model || 'Not configured'}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          Temp: {llmSettings?.temperature ?? '-'} | Max tokens: {llmSettings?.maxTokens ?? '-'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Embedding */}
+                    <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg">
+                      <div className="p-2 bg-purple-100 rounded-lg">
+                        <Database size={20} className="text-purple-600" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Embedding</p>
+                        <p className="text-sm font-semibold text-gray-900 truncate" title={embeddingSettings?.model || 'Not configured'}>
+                          {embeddingSettings?.model || 'Not configured'}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          Dimensions: {embeddingSettings?.dimensions ?? '-'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Reranker */}
+                    <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg">
+                      <div className={`p-2 rounded-lg ${rerankerSettings?.enabled ? 'bg-green-100' : 'bg-gray-100'}`}>
+                        <Sparkles size={20} className={rerankerSettings?.enabled ? 'text-green-600' : 'text-gray-400'} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Reranker</p>
+                        <p className="text-sm font-semibold text-gray-900">
+                          {rerankerSettings?.enabled ? (
+                            <span className="capitalize">{rerankerSettings.provider}</span>
+                          ) : (
+                            <span className="text-gray-500">Disabled</span>
+                          )}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {rerankerSettings?.enabled
+                            ? `Top-K: ${rerankerSettings.topKForReranking} | Min score: ${rerankerSettings.minRerankerScore}`
+                            : 'Enable in Settings'}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Transcription */}
+                    <div className="flex items-start gap-3 p-4 bg-gray-50 rounded-lg">
+                      <div className="p-2 bg-orange-100 rounded-lg">
+                        <Mic size={20} className="text-orange-600" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Transcription</p>
+                        <p className="text-sm font-semibold text-gray-900 truncate" title={transcriptionModel}>
+                          {transcriptionModel}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          OpenAI Whisper
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* System Status Card */}
             <div className="bg-white rounded-lg border shadow-sm">
               <div className="px-6 py-4 border-b">
@@ -2529,7 +2629,7 @@ export default function AdminPage() {
                           className="text-orange-600 border-orange-300 hover:bg-orange-50"
                         >
                           <RefreshCw size={16} className="mr-2" />
-                          Restore All Defaults
+                          Reset to JSON Defaults
                         </Button>
                       </div>
                     </div>
@@ -4429,18 +4529,22 @@ export default function AdminPage() {
       <Modal
         isOpen={showRestoreConfirm}
         onClose={() => setShowRestoreConfirm(false)}
-        title="Restore All Defaults?"
+        title="Reset to JSON Config Defaults?"
       >
         <p className="text-gray-600 mb-4">
-          This will reset ALL settings to their default values:
+          This will reset ALL settings to the values defined in <code className="bg-gray-100 px-1.5 py-0.5 rounded text-sm">config/defaults.json</code>:
         </p>
         <ul className="text-sm text-gray-600 list-disc list-inside mb-4 space-y-1">
-          <li><strong>LLM:</strong> GPT-4.1 Mini (temp: 0.7, tokens: 2000)</li>
-          <li><strong>RAG:</strong> 15/10 chunks, 0.5 threshold</li>
-          <li><strong>System Prompt:</strong> Default GPSA prompt</li>
+          <li><strong>LLM Settings:</strong> Model, temperature, max tokens</li>
+          <li><strong>RAG Settings:</strong> Chunk size, overlap, thresholds</li>
+          <li><strong>Embedding Settings:</strong> Model and dimensions</li>
+          <li><strong>Reranker Settings:</strong> Provider and configuration</li>
+          <li><strong>System Prompt:</strong> From system-prompt.md</li>
+          <li><strong>Branding:</strong> Bot name and icon</li>
+          <li><strong>All other settings:</strong> Tavily, acronyms, retention, uploads</li>
         </ul>
         <p className="text-sm text-orange-600 font-medium">
-          This action cannot be undone. Your current settings will be overwritten.
+          This action cannot be undone. All customizations made via Admin UI will be cleared.
         </p>
         <div className="flex justify-end gap-3 mt-6">
           <Button
@@ -4455,7 +4559,7 @@ export default function AdminPage() {
             loading={restoringDefaults}
             className="bg-orange-600 hover:bg-orange-700"
           >
-            Restore Defaults
+            Reset to Defaults
           </Button>
         </div>
       </Modal>

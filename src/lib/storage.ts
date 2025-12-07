@@ -383,15 +383,16 @@ export interface LLMSettings {
 }
 
 export const DEFAULT_LLM_SETTINGS: Omit<LLMSettings, 'updatedAt' | 'updatedBy'> = {
-  model: 'gpt-5-mini',
-  temperature: 0.3,
+  model: 'gpt-4.1-mini',
+  temperature: 0.2,
   maxTokens: 2000,
 };
 
+// DEPRECATED: Use MODEL_PRESETS from db/config.ts instead
 export const AVAILABLE_MODELS = [
-  { id: 'gpt-5', name: 'GPT-5', description: 'Most capable, best for complex queries' },
-  { id: 'gpt-5-mini', name: 'GPT-5 Mini (Recommended)', description: 'Balanced performance and cost' },
-  { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini', description: 'Fast and cost-effective' },
+  { id: 'gpt-4.1', name: 'GPT-4.1', description: 'Most capable, best for complex queries' },
+  { id: 'gpt-4.1-mini', name: 'GPT-4.1 Mini (Recommended)', description: 'Balanced performance and cost' },
+  { id: 'gpt-4.1-nano', name: 'GPT-4.1 Nano', description: 'Fast and cost-effective' },
 ];
 
 export async function getLLMSettings(): Promise<LLMSettings> {

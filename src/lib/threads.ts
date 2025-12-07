@@ -335,12 +335,6 @@ export async function saveUpload(
   const limits = getUploadLimits();
   const maxFileSizeBytes = limits.maxFileSizeMB * 1024 * 1024;
 
-  // Check current upload count
-  const currentCount = dbGetThreadUploadCount(threadId);
-  if (currentCount >= limits.maxFilesPerThread) {
-    throw new Error(`Maximum ${limits.maxFilesPerThread} files per thread`);
-  }
-
   // Check file size
   if (buffer.length > maxFileSizeBytes) {
     throw new Error(`File too large (max ${limits.maxFileSizeMB}MB)`);

@@ -1,0 +1,1289 @@
+openapi: 3.0.0
+info:
+  title: Policy Bot API
+  version: 1.0.0
+  description: |
+    RAG-based policy assistant API for Caribbean government staff.
+
+    ## Authentication
+    All endpoints except `/branding` require authentication via NextAuth session cookies.
+
+    ## User Roles
+    - **admin**: Full system access
+    - **superuser**: Manage documents/users in assigned categories
+    - **user**: Query documents in subscribed categories
+  contact:
+    name: Policy Bot Support
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://policybot.abhirup.app/api
+    description: Production
+  - url: http://localhost:3000/api
+    description: Local Development
+
+tags:
+  - name: Chat
+    description: Send messages and receive RAG-powered responses
+  - name: Threads
+    description: Manage conversation threads
+  - name: User
+    description: User-specific endpoints
+  - name: Admin - Categories
+    description: Category management (admin only)
+  - name: Admin - Documents
+    description: Document management (admin only)
+  - name: Admin - Users
+    description: User management (admin only)
+  - name: Branding
+    description: Public branding endpoints
+
+components:
+  securitySchemes:
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: next-auth.session-token
+      description: NextAuth session cookie
+
+  schemas:
+    Thread:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        title:
+          type: string
+          example: "HR Policy Questions"
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        uploadCount:
+          type: integer
+          example: 1
+        categoryIds:
+          type: array
+          items:
+            type: integer
+          example: [1, 3]
+      required:
+        - id
+        - title
+        - createdAt
+        - updatedAt
+        - uploadCount
+        - categoryIds
+
+    Message:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "msg_abc123"
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+        sources:
+          type: array
+          items:
+            $ref: '#/components/schemas/Source'
+        attachments:
+          type: array
+          items:
+            type: string
+        timestamp:
+          type: string
+          format: date-time
+      required:
+        - id
+        - role
+        - content
+        - timestamp
+
+    Source:
+      type: object
+      properties:
+        documentName:
+          type: string
+          example: "HR_Handbook_2024.pdf"
+        pageNumber:
+          type: integer
+          example: 12
+        chunkText:
+          type: string
+          example: "Annual leave entitlement is 20 working days..."
+        score:
+          type: number
+          format: float
+          example: 0.89
+        isWeb:
+          type: boolean
+          description: True if source is from Tavily web search
+
+    Document:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        filename:
+          type: string
+          example: "HR_Handbook_2024.pdf"
+        size:
+          type: integer
+          description: File size in bytes
+          example: 1048576
+        chunkCount:
+          type: integer
+          example: 45
+        uploadedAt:
+          type: string
+          format: date-time
+        uploadedBy:
+          type: string
+          format: email
+        status:
+          type: string
+          enum: [processing, ready, error]
+        errorMessage:
+          type: string
+        isGlobal:
+          type: boolean
+        categories:
+          type: array
+          items:
+            $ref: '#/components/schemas/CategoryAssignment'
+      required:
+        - id
+        - filename
+        - size
+        - uploadedAt
+        - uploadedBy
+        - status
+        - isGlobal
+
+    CategoryAssignment:
+      type: object
+      properties:
+        categoryId:
+          type: integer
+        categoryName:
+          type: string
+
+    Category:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: "Human Resources"
+        slug:
+          type: string
+          example: "human-resources"
+        description:
+          type: string
+          nullable: true
+        createdBy:
+          type: string
+          format: email
+        createdAt:
+          type: string
+          format: date-time
+        documentCount:
+          type: integer
+        superUserCount:
+          type: integer
+        subscriberCount:
+          type: integer
+      required:
+        - id
+        - name
+        - slug
+        - createdAt
+
+    User:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        name:
+          type: string
+        role:
+          type: string
+          enum: [admin, superuser, user]
+        addedAt:
+          type: string
+          format: date-time
+        addedBy:
+          type: string
+          format: email
+        subscriptions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Subscription'
+        assignedCategories:
+          type: array
+          items:
+            $ref: '#/components/schemas/CategoryRef'
+      required:
+        - email
+        - role
+        - addedAt
+        - addedBy
+
+    Subscription:
+      type: object
+      properties:
+        categoryId:
+          type: integer
+        categoryName:
+          type: string
+        isActive:
+          type: boolean
+
+    CategoryRef:
+      type: object
+      properties:
+        categoryId:
+          type: integer
+        categoryName:
+          type: string
+
+    ApiError:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+        code:
+          type: string
+          enum:
+            - AUTH_REQUIRED
+            - ADMIN_REQUIRED
+            - SUPERUSER_REQUIRED
+            - NOT_FOUND
+            - VALIDATION_ERROR
+            - FILE_TOO_LARGE
+            - UPLOAD_LIMIT
+            - INVALID_FILE_TYPE
+            - DUPLICATE
+            - SERVICE_ERROR
+        details:
+          type: string
+          description: Additional context
+      required:
+        - error
+
+  responses:
+    Unauthorized:
+      description: Authentication required
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            error: "Unauthorized"
+            code: "AUTH_REQUIRED"
+
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            error: "Admin access required"
+            code: "ADMIN_REQUIRED"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            error: "Resource not found"
+            code: "NOT_FOUND"
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example:
+            error: "Internal server error"
+            code: "SERVICE_ERROR"
+
+security:
+  - sessionAuth: []
+
+paths:
+  /chat:
+    post:
+      tags:
+        - Chat
+      summary: Send chat message
+      description: Send a message and receive a RAG-powered response with document sources
+      operationId: sendMessage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                message:
+                  type: string
+                  description: User's question
+                  example: "What is the annual leave policy?"
+                threadId:
+                  type: string
+                  format: uuid
+                  description: Thread ID
+                  example: "550e8400-e29b-41d4-a716-446655440000"
+              required:
+                - message
+                - threadId
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    $ref: '#/components/schemas/Message'
+                  threadId:
+                    type: string
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /threads:
+    get:
+      tags:
+        - Threads
+      summary: List threads
+      description: List all threads for the current user
+      operationId: listThreads
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 100
+          description: Max threads to return
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+          description: Pagination offset
+      responses:
+        '200':
+          description: List of threads
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  threads:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Thread'
+                  total:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags:
+        - Threads
+      summary: Create thread
+      description: Create a new conversation thread
+      operationId: createThread
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                  example: "HR Policy Questions"
+                categoryIds:
+                  type: array
+                  items:
+                    type: integer
+                  example: [1, 2]
+      responses:
+        '201':
+          description: Thread created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Thread'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /threads/{threadId}:
+    parameters:
+      - name: threadId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    get:
+      tags:
+        - Threads
+      summary: Get thread
+      description: Get a specific thread with all messages
+      operationId: getThread
+      responses:
+        '200':
+          description: Thread details
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Thread'
+                  - type: object
+                    properties:
+                      messages:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Message'
+                      uploads:
+                        type: array
+                        items:
+                          type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags:
+        - Threads
+      summary: Update thread
+      description: Update thread title or categories
+      operationId: updateThread
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                  maxLength: 100
+                categoryIds:
+                  type: array
+                  items:
+                    type: integer
+      responses:
+        '200':
+          description: Thread updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  title:
+                    type: string
+                  categoryIds:
+                    type: array
+                    items:
+                      type: integer
+                  updatedAt:
+                    type: string
+                    format: date-time
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - Threads
+      summary: Delete thread
+      description: Delete a thread and all associated data
+      operationId: deleteThread
+      responses:
+        '200':
+          description: Thread deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  deleted:
+                    type: object
+                    properties:
+                      threadId:
+                        type: string
+                      messageCount:
+                        type: integer
+                      uploadCount:
+                        type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /threads/{threadId}/upload:
+    parameters:
+      - name: threadId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+
+    post:
+      tags:
+        - Threads
+      summary: Upload file to thread
+      description: Upload a PDF to a thread for compliance checking
+      operationId: uploadToThread
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: PDF file (max 5MB)
+              required:
+                - file
+      responses:
+        '200':
+          description: File uploaded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  filename:
+                    type: string
+                  size:
+                    type: integer
+                  uploadCount:
+                    type: integer
+        '400':
+          description: Validation error or upload limit reached
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '413':
+          description: File too large
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /user/categories:
+    get:
+      tags:
+        - User
+      summary: Get accessible categories
+      description: Get categories available to the current user based on their role
+      operationId: getUserCategories
+      responses:
+        '200':
+          description: List of categories
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  categories:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        name:
+                          type: string
+                        slug:
+                          type: string
+                        description:
+                          type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /user/subscriptions:
+    get:
+      tags:
+        - User
+      summary: Get subscriptions
+      description: Get the current user's category subscriptions
+      operationId: getUserSubscriptions
+      responses:
+        '200':
+          description: List of subscriptions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  subscriptions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        categoryId:
+                          type: integer
+                        categoryName:
+                          type: string
+                        categorySlug:
+                          type: string
+                        isActive:
+                          type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /branding:
+    get:
+      tags:
+        - Branding
+      summary: Get branding settings
+      description: Get branding settings (public endpoint, no authentication required)
+      operationId: getBranding
+      security: []
+      responses:
+        '200':
+          description: Branding settings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  botName:
+                    type: string
+                    example: "Policy Bot"
+                  botIcon:
+                    type: string
+                    example: "policy"
+                  availableIcons:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key:
+                          type: string
+                        label:
+                          type: string
+                        lucideIcon:
+                          type: string
+
+  /admin/categories:
+    get:
+      tags:
+        - Admin - Categories
+      summary: List all categories
+      description: List all categories with statistics (admin only)
+      operationId: listCategories
+      responses:
+        '200':
+          description: List of categories
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  categories:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Category'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      tags:
+        - Admin - Categories
+      summary: Create category
+      description: Create a new category (admin only)
+      operationId: createCategory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: "Human Resources"
+                description:
+                  type: string
+                  example: "HR policies and procedures"
+              required:
+                - name
+      responses:
+        '201':
+          description: Category created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  category:
+                    $ref: '#/components/schemas/Category'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Category already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /admin/categories/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+
+    get:
+      tags:
+        - Admin - Categories
+      summary: Get category details
+      description: Get category details with users and documents (admin only)
+      operationId: getCategory
+      responses:
+        '200':
+          description: Category details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  category:
+                    $ref: '#/components/schemas/Category'
+                  superUsers:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        userId:
+                          type: integer
+                        email:
+                          type: string
+                        name:
+                          type: string
+                  subscribers:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        userId:
+                          type: integer
+                        email:
+                          type: string
+                        name:
+                          type: string
+                        isActive:
+                          type: boolean
+                  documentCount:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags:
+        - Admin - Categories
+      summary: Update category
+      description: Update a category (admin only)
+      operationId: updateCategory
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+      responses:
+        '200':
+          description: Category updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  category:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                      slug:
+                        type: string
+                      description:
+                        type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - Admin - Categories
+      summary: Delete category
+      description: Delete a category (admin only). Documents become unassigned.
+      operationId: deleteCategory
+      responses:
+        '200':
+          description: Category deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  deleted:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                      documentsUnassigned:
+                        type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/documents:
+    get:
+      tags:
+        - Admin - Documents
+      summary: List all documents
+      description: List all global policy documents (admin only)
+      operationId: listDocuments
+      responses:
+        '200':
+          description: List of documents
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  documents:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Document'
+                  totalChunks:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      tags:
+        - Admin - Documents
+      summary: Upload document
+      description: Upload a new policy document with category assignment (admin only)
+      operationId: uploadDocument
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: PDF file (max 50MB)
+                categoryIds:
+                  type: string
+                  description: JSON array of category IDs
+                  example: "[1, 2]"
+                isGlobal:
+                  type: string
+                  description: '"true" to index in all categories'
+                  example: "false"
+              required:
+                - file
+      responses:
+        '202':
+          description: Document accepted for processing
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  filename:
+                    type: string
+                  size:
+                    type: integer
+                  status:
+                    type: string
+                    enum: [processing]
+                  isGlobal:
+                    type: boolean
+                  categoryIds:
+                    type: array
+                    items:
+                      type: integer
+                  message:
+                    type: string
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Document already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '413':
+          description: File too large
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /admin/documents/{docId}:
+    parameters:
+      - name: docId
+        in: path
+        required: true
+        schema:
+          type: integer
+
+    get:
+      tags:
+        - Admin - Documents
+      summary: Get document details
+      description: Get details of a specific document (admin only)
+      operationId: getDocument
+      responses:
+        '200':
+          description: Document details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags:
+        - Admin - Documents
+      summary: Update document
+      description: Update document category assignments (admin only)
+      operationId: updateDocument
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                categoryIds:
+                  type: array
+                  items:
+                    type: integer
+                isGlobal:
+                  type: boolean
+      responses:
+        '200':
+          description: Document updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  filename:
+                    type: string
+                  isGlobal:
+                    type: boolean
+                  categories:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CategoryAssignment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - Admin - Documents
+      summary: Delete document
+      description: Delete a policy document from the global store (admin only)
+      operationId: deleteDocument
+      responses:
+        '200':
+          description: Document deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  deleted:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      filename:
+                        type: string
+                      chunksRemoved:
+                        type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/users:
+    get:
+      tags:
+        - Admin - Users
+      summary: List all users
+      description: List all users with their subscriptions/assignments (admin only)
+      operationId: listUsers
+      responses:
+        '200':
+          description: List of users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  users:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/User'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      tags:
+        - Admin - Users
+      summary: Add user
+      description: Add a new user with optional subscriptions/assignments (admin only)
+      operationId: addUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                role:
+                  type: string
+                  enum: [admin, superuser, user]
+                name:
+                  type: string
+                subscriptions:
+                  type: array
+                  items:
+                    type: integer
+                  description: Category IDs for role="user"
+                assignedCategories:
+                  type: array
+                  items:
+                    type: integer
+                  description: Category IDs for role="superuser"
+              required:
+                - email
+                - role
+      responses:
+        '200':
+          description: User added
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    type: object
+                    properties:
+                      email:
+                        type: string
+                      name:
+                        type: string
+                      role:
+                        type: string
+                      addedAt:
+                        type: string
+                      addedBy:
+                        type: string
+                  message:
+                    type: string
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    patch:
+      tags:
+        - Admin - Users
+      summary: Update user role
+      description: Update a user's role (admin only)
+      operationId: updateUserRole
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                  format: email
+                role:
+                  type: string
+                  enum: [admin, superuser, user]
+              required:
+                - email
+                - role
+      responses:
+        '200':
+          description: Role updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - Admin - Users
+      summary: Remove user
+      description: Remove a user from the allowlist (admin only)
+      operationId: removeUser
+      parameters:
+        - name: email
+          in: query
+          required: true
+          schema:
+            type: string
+            format: email
+      responses:
+        '200':
+          description: User removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '400':
+          description: Cannot remove yourself
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'

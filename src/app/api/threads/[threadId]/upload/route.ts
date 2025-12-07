@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { saveUpload, deleteUpload, getThread } from '@/lib/threads';
-import { isSupportedMimeType } from '@/lib/document-extractor';
+import { getUploadLimits } from '@/lib/db/config';
 import type { UploadResponse, ApiError } from '@/types';
-
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
-const MAX_UPLOADS = 3;
 
 interface RouteParams {
   params: Promise<{ threadId: string }>;
@@ -32,13 +29,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // Check upload limit
-    if (thread.uploadCount >= MAX_UPLOADS) {
-      return NextResponse.json<ApiError>(
-        { error: `Maximum ${MAX_UPLOADS} files per thread`, code: 'UPLOAD_LIMIT' },
-        { status: 400 }
-      );
-    }
+    // Get upload limits from config
+    const uploadLimits = getUploadLimits();
+    const maxFileSizeBytes = uploadLimits.maxFileSizeMB * 1024 * 1024;
 
     const formData = await request.formData();
     const file = formData.get('file') as File | null;
@@ -50,18 +43,26 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // Validate file type
-    if (!isSupportedMimeType(file.type)) {
+    // Validate file type against config allowedTypes
+    if (!uploadLimits.allowedTypes.includes(file.type)) {
+      const allowedExtensions = uploadLimits.allowedTypes
+        .map(t => {
+          if (t === 'application/pdf') return 'PDF';
+          if (t === 'image/png') return 'PNG';
+          if (t === 'image/jpeg') return 'JPG';
+          return t;
+        })
+        .join(', ');
       return NextResponse.json<ApiError>(
-        { error: 'Invalid file type. Allowed: PDF, DOCX, XLSX, PPTX, PNG, JPG, WEBP, GIF', code: 'INVALID_FILE_TYPE' },
+        { error: `Invalid file type. Allowed: ${allowedExtensions}`, code: 'INVALID_FILE_TYPE' },
         { status: 400 }
       );
     }
 
     // Validate file size
-    if (file.size > MAX_FILE_SIZE) {
+    if (file.size > maxFileSizeBytes) {
       return NextResponse.json<ApiError>(
-        { error: `File too large (max ${MAX_FILE_SIZE / 1024 / 1024}MB)`, code: 'FILE_TOO_LARGE' },
+        { error: `File too large (max ${uploadLimits.maxFileSizeMB}MB)`, code: 'FILE_TOO_LARGE' },
         { status: 413 }
       );
     }

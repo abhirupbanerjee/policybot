@@ -1,13 +1,23 @@
 'use client';
 
 import { useState, useRef, useCallback } from 'react';
-import { Paperclip, FileText, Upload, Loader2 } from 'lucide-react';
+import { Paperclip, FileText, Upload, Loader2, ImageIcon } from 'lucide-react';
 import Modal from '@/components/ui/Modal';
+
+// Allowed file types (must match config/defaults.json)
+const ALLOWED_TYPES = [
+  'application/pdf',
+  'image/png',
+  'image/jpeg',
+];
+
+const ALLOWED_EXTENSIONS = '.pdf,.png,.jpg,.jpeg';
+const MAX_FILE_SIZE_MB = 10;
+const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
 interface FileUploadProps {
   threadId: string | null;
   currentUploads: string[];
-  maxUploads?: number;
   onUploadComplete: (filename: string) => void;
   disabled?: boolean;
 }
@@ -15,7 +25,6 @@ interface FileUploadProps {
 export default function FileUpload({
   threadId,
   currentUploads,
-  maxUploads = 3,
   onUploadComplete,
   disabled,
 }: FileUploadProps) {
@@ -43,28 +52,13 @@ export default function FileUpload({
       return;
     }
 
-    if (currentUploads.length >= maxUploads) {
-      setError(`Maximum ${maxUploads} files per thread`);
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      setError('Invalid file type. Allowed: PDF, PNG, JPG');
       return;
     }
 
-    const supportedTypes = [
-      'application/pdf',
-      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-      'image/png',
-      'image/jpeg',
-      'image/webp',
-      'image/gif',
-    ];
-    if (!supportedTypes.includes(file.type)) {
-      setError('Invalid file type. Allowed: PDF, DOCX, XLSX, PPTX, PNG, JPG, WEBP, GIF');
-      return;
-    }
-
-    if (file.size > 5 * 1024 * 1024) {
-      setError('File too large (max 5MB)');
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      setError(`File too large (max ${MAX_FILE_SIZE_MB}MB)`);
       return;
     }
 
@@ -92,7 +86,7 @@ export default function FileUpload({
     } finally {
       setUploading(false);
     }
-  }, [threadId, currentUploads.length, maxUploads, onUploadComplete]);
+  }, [threadId, onUploadComplete]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -115,15 +109,13 @@ export default function FileUpload({
     }
   };
 
-  const remainingUploads = maxUploads - currentUploads.length;
-
   return (
     <>
       <button
         onClick={() => setIsModalOpen(true)}
         disabled={disabled || !threadId}
         className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        title="Attach document"
+        title={`Attach file (PDF, PNG, JPG - max ${MAX_FILE_SIZE_MB}MB)`}
       >
         <Paperclip size={20} />
       </button>
@@ -131,7 +123,7 @@ export default function FileUpload({
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title="Upload Document"
+        title="Upload File"
       >
         <div
           onDragOver={handleDragOver}
@@ -160,9 +152,17 @@ export default function FileUpload({
                   browse
                 </button>
               </p>
-              <p className="text-sm text-gray-500">
-                Max 5MB. PDF, DOCX, XLSX, PPTX, or images
-              </p>
+              <div className="flex items-center justify-center gap-4 text-sm text-gray-500">
+                <span className="flex items-center gap-1">
+                  <FileText size={14} />
+                  PDF
+                </span>
+                <span className="flex items-center gap-1">
+                  <ImageIcon size={14} />
+                  PNG, JPG
+                </span>
+                <span>Max {MAX_FILE_SIZE_MB}MB</span>
+              </div>
             </>
           )}
         </div>
@@ -170,7 +170,7 @@ export default function FileUpload({
         <input
           ref={fileInputRef}
           type="file"
-          accept=".pdf,.docx,.xlsx,.pptx,.png,.jpg,.jpeg,.webp,.gif"
+          accept={ALLOWED_EXTENSIONS}
           onChange={handleFileSelect}
           className="hidden"
         />
@@ -184,7 +184,7 @@ export default function FileUpload({
         {currentUploads.length > 0 && (
           <div className="mt-4">
             <p className="text-sm text-gray-600 mb-2">
-              Uploaded files ({currentUploads.length}/{maxUploads}):
+              Uploaded files in this thread:
             </p>
             <div className="space-y-2">
               {currentUploads.map((filename) => (
@@ -200,12 +200,6 @@ export default function FileUpload({
               ))}
             </div>
           </div>
-        )}
-
-        {remainingUploads > 0 && (
-          <p className="mt-4 text-sm text-gray-500">
-            You can upload {remainingUploads} more file{remainingUploads !== 1 ? 's' : ''}
-          </p>
         )}
       </Modal>
     </>

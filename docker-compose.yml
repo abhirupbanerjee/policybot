@@ -34,6 +34,7 @@ services:
       - CHROMA_PORT=8000
       - REDIS_URL=redis://redis:6379
       - DATA_DIR=/app/data
+      - CONFIG_DIR=/app/config
       # Point to LiteLLM proxy for multi-provider LLM support
       - OPENAI_BASE_URL=http://litellm:4000/v1
     env_file:
@@ -46,6 +47,7 @@ services:
       - "traefik.http.services.app.loadbalancer.server.port=3000"
     volumes:
       - ./data/app:/app/data
+      - ./config:/app/config:ro
     depends_on:
       chroma:
         condition: service_started

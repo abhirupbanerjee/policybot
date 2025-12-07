@@ -1,46 +1,275 @@
-# Policy Bot - API Specification
+# Policy Bot API Reference
 
 ## Overview
 
-All API endpoints are RESTful and use JSON for request/response bodies unless otherwise specified. Authentication is handled via NextAuth sessions.
+Policy Bot provides a RESTful API for RAG-based document querying and management. All endpoints use JSON for request/response bodies unless otherwise specified (file uploads use `multipart/form-data`).
 
-**Base URL**: `/api`
+**Base URL**: `https://policybot.abhirup.app/api`
+**Local Development**: `http://localhost:3000/api`
+**Current Version**: v1 (implicit in all endpoints)
+
+---
+
+## HTTP Status Codes
+
+| Code | Meaning | When Used |
+|------|---------|-----------|
+| 200 | OK | Successful read/update operations |
+| 201 | Created | Resource successfully created |
+| 202 | Accepted | Async operation started (document processing) |
+| 400 | Bad Request | Validation failed or malformed request |
+| 401 | Unauthorized | Authentication required or session expired |
+| 403 | Forbidden | Insufficient permissions for requested action |
+| 404 | Not Found | Resource doesn't exist |
+| 409 | Conflict | Duplicate resource or state conflict |
+| 413 | Payload Too Large | File/content size exceeded |
+| 500 | Internal Server Error | Server-side processing error |
 
 ---
 
 ## Authentication
 
-All endpoints except `/api/auth/*` require authentication.
+All endpoints except `/api/auth/*` and `/api/branding` require authentication via NextAuth session cookies.
 
 ### Authentication Flow
 
-1. User navigates to protected route
-2. Redirected to Azure AD or Google login if no session
-3. After successful login, session cookie is set
-4. All subsequent requests include session cookie
+```
+    User
+     |
+     v
++---------------+     +-------------------+
+|  Login Page   |---->| OAuth Provider    |
+| /auth/signin  |     | (Azure AD/Google) |
++---------------+     +-------------------+
+                              |
+                              v
+                      +---------------+
+                      | Callback URL  |
+                      | /api/auth/    |
+                      | callback/*    |
+                      +---------------+
+                              |
+                              v
+                      +---------------+
+                      | Session Cookie|
+                      | Set in Browser|
+                      +---------------+
+                              |
+                              v
++---------------+     +---------------+
+| API Request   |---->| Middleware    |
+| with Cookie   |     | Validates     |
++---------------+     +---------------+
+                              |
+                              v
+                      +---------------+
+                      | Protected     |
+                      | Resource      |
+                      +---------------+
+```
 
 ### Access Control Modes
 
-Policy Bot supports two access control modes via `ACCESS_MODE` environment variable:
-
-| Mode | Description |
-|------|-------------|
-| `allowlist` (default) | Only users in the allowlist can sign in |
-| `domain` | Any user from allowed email domains can sign in |
+| Mode | Environment Variable | Description |
+|------|---------------------|-------------|
+| `allowlist` | `ACCESS_MODE=allowlist` | Only pre-approved users can sign in (default) |
+| `domain` | `ACCESS_MODE=domain` | Any user from allowed email domains can sign in |
 
 ### User Roles
 
 | Role | Access Level |
 |------|--------------|
-| `admin` | Full system access, manage categories/users/documents |
-| `superuser` | Manage user subscriptions for assigned categories |
-| `user` | Query documents in subscribed categories |
+| `admin` | Full system access: manage categories, users, documents, settings |
+| `superuser` | Manage documents and user subscriptions for assigned categories |
+| `user` | Query documents in subscribed categories, manage own threads |
 
-### Auth Bypass (Development Only)
+### Development Auth Bypass
 
 When `AUTH_DISABLED=true` in environment:
 - All routes are accessible without authentication
-- A mock user is used: `dev@localhost`
+- A mock user `dev@localhost` is used for all requests
+
+---
+
+## Quick Reference
+
+| Method | Endpoint | Auth | Role | Description |
+|--------|----------|------|------|-------------|
+| POST | `/api/chat` | Yes | Any | Send message and get RAG response |
+| POST | `/api/transcribe` | Yes | Any | Convert audio to text |
+| GET | `/api/threads` | Yes | Any | List user's threads |
+| POST | `/api/threads` | Yes | Any | Create new thread |
+| GET | `/api/threads/{id}` | Yes | Owner | Get thread with messages |
+| PATCH | `/api/threads/{id}` | Yes | Owner | Update thread |
+| DELETE | `/api/threads/{id}` | Yes | Owner | Delete thread |
+| POST | `/api/threads/{id}/upload` | Yes | Owner | Upload file to thread |
+| DELETE | `/api/threads/{id}/upload` | Yes | Owner | Delete uploaded file |
+| GET | `/api/user/categories` | Yes | Any | Get accessible categories |
+| GET | `/api/user/subscriptions` | Yes | Any | Get user's subscriptions |
+| GET | `/api/branding` | No | - | Get branding settings |
+| GET | `/api/admin/categories` | Yes | Admin | List all categories |
+| POST | `/api/admin/categories` | Yes | Admin | Create category |
+| GET | `/api/admin/categories/{id}` | Yes | Admin | Get category details |
+| PUT | `/api/admin/categories/{id}` | Yes | Admin | Update category |
+| DELETE | `/api/admin/categories/{id}` | Yes | Admin | Delete category |
+| GET | `/api/admin/documents` | Yes | Admin | List all documents |
+| POST | `/api/admin/documents` | Yes | Admin | Upload document |
+| POST | `/api/admin/documents/text` | Yes | Admin | Upload text content |
+| GET | `/api/admin/documents/{id}` | Yes | Admin | Get document details |
+| PATCH | `/api/admin/documents/{id}` | Yes | Admin | Update document |
+| DELETE | `/api/admin/documents/{id}` | Yes | Admin | Delete document |
+| POST | `/api/admin/documents/{id}/reindex` | Yes | Admin | Reindex document |
+| GET | `/api/admin/users` | Yes | Admin | List all users |
+| POST | `/api/admin/users` | Yes | Admin | Add user |
+| PATCH | `/api/admin/users` | Yes | Admin | Update user role |
+| DELETE | `/api/admin/users` | Yes | Admin | Remove user |
+| GET | `/api/admin/settings` | Yes | Admin | Get all settings |
+| PATCH | `/api/admin/settings` | Yes | Admin | Update settings |
+| GET | `/api/admin/stats` | Yes | Admin | Get system statistics |
+| GET | `/api/admin/providers` | Yes | Admin | Check provider status |
+| POST | `/api/admin/refresh` | Yes | Admin | Reindex all documents |
+| GET | `/api/admin/system-prompt` | Yes | Admin | Get system prompt |
+| PUT | `/api/admin/system-prompt` | Yes | Admin | Update system prompt |
+| GET | `/api/admin/reranker-status` | Yes | Admin | Check reranker status |
+| GET | `/api/superuser/documents` | Yes | Superuser | List assigned documents |
+| POST | `/api/superuser/documents` | Yes | Superuser | Upload to category |
+| POST | `/api/superuser/documents/text` | Yes | Superuser | Upload text to category |
+| DELETE | `/api/superuser/documents/{id}` | Yes | Superuser | Delete own document |
+| GET | `/api/superuser/users` | Yes | Superuser | List category users |
+| POST | `/api/superuser/users` | Yes | Superuser | Add subscription |
+| DELETE | `/api/superuser/users` | Yes | Superuser | Remove subscription |
+
+---
+
+## Common Schemas
+
+### Thread
+
+```typescript
+interface Thread {
+  id: string;
+  title: string;
+  createdAt: string;      // ISO 8601
+  updatedAt: string;      // ISO 8601
+  uploadCount: number;
+  categoryIds: number[];
+}
+
+interface ThreadWithMessages extends Thread {
+  messages: Message[];
+  uploads: string[];      // Uploaded filenames
+}
+```
+
+### Message
+
+```typescript
+interface Message {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  sources?: Source[];
+  attachments?: string[];
+  timestamp: string;      // ISO 8601
+}
+```
+
+### Source
+
+```typescript
+interface Source {
+  documentName: string;
+  pageNumber: number;
+  chunkText: string;
+  score: number;
+  isWeb?: boolean;        // True if from Tavily web search
+}
+```
+
+### Document
+
+```typescript
+interface Document {
+  id: number;
+  filename: string;
+  size: number;           // Bytes
+  chunkCount: number;
+  uploadedAt: string;     // ISO 8601
+  uploadedBy: string;     // Email
+  status: "processing" | "ready" | "error";
+  errorMessage?: string;
+  isGlobal: boolean;
+  categories: CategoryAssignment[];
+}
+
+interface CategoryAssignment {
+  categoryId: number;
+  categoryName: string;
+}
+```
+
+### Category
+
+```typescript
+interface Category {
+  id: number;
+  name: string;
+  slug: string;
+  description: string | null;
+  createdBy: string;
+  createdAt: string;      // ISO 8601
+  documentCount: number;
+  superUserCount: number;
+  subscriberCount: number;
+}
+```
+
+### User
+
+```typescript
+interface User {
+  email: string;
+  name?: string;
+  role: "admin" | "superuser" | "user";
+  addedAt: string;        // ISO 8601
+  addedBy: string;        // Email of admin who added
+  subscriptions?: Subscription[];       // For regular users
+  assignedCategories?: CategoryRef[];   // For superusers
+}
+
+interface Subscription {
+  categoryId: number;
+  categoryName: string;
+  isActive: boolean;
+}
+
+interface CategoryRef {
+  categoryId: number;
+  categoryName: string;
+}
+```
+
+### ApiError
+
+```typescript
+interface ApiError {
+  error: string;          // Human-readable message
+  code?: ErrorCode;       // Machine-readable code
+  details?: string;       // Additional context
+}
+
+type ErrorCode =
+  | "AUTH_REQUIRED"
+  | "ADMIN_REQUIRED"
+  | "SUPERUSER_REQUIRED"
+  | "NOT_FOUND"
+  | "VALIDATION_ERROR"
+  | "FILE_TOO_LARGE"
+  | "UPLOAD_LIMIT"
+  | "INVALID_FILE_TYPE"
+  | "DUPLICATE"
+  | "SERVICE_ERROR";
+```
 
 ---
 
@@ -66,11 +295,20 @@ NextAuth.js handles all authentication routes.
 
 #### `POST /api/chat`
 
-Send a message and receive a RAG-powered response.
+Send a message and receive a RAG-powered response with document sources.
 
 **Authentication**: Required
+**Role**: Any authenticated user
+
+**Headers**:
+
+| Header | Value | Required |
+|--------|-------|----------|
+| Content-Type | application/json | Yes |
+| Cookie | next-auth.session-token=... | Yes |
 
 **Request Body**:
+
 ```typescript
 {
   message: string;    // User's question (required)
@@ -78,48 +316,69 @@ Send a message and receive a RAG-powered response.
 }
 ```
 
+**Example Request**:
+
+```bash
+curl -X POST https://policybot.abhirup.app/api/chat \
+  -H "Content-Type: application/json" \
+  -H "Cookie: next-auth.session-token=abc123..." \
+  -d '{
+    "message": "What is the annual leave policy?",
+    "threadId": "550e8400-e29b-41d4-a716-446655440000"
+  }'
+```
+
 **Response** `200 OK`:
+
 ```typescript
 {
   message: {
     id: string;
     role: "assistant";
     content: string;
-    sources: [
-      {
-        documentName: string;
-        pageNumber: number;
-        chunkText: string;
-        score: number;
-        isWeb?: boolean;  // True if from Tavily web search
-      }
-    ];
+    sources: Source[];
     timestamp: string;  // ISO 8601
   };
   threadId: string;
 }
 ```
 
+**Example Response**:
+
+```json
+{
+  "message": {
+    "id": "msg_abc123",
+    "role": "assistant",
+    "content": "According to the HR Handbook, employees are entitled to 20 days of annual leave per year...",
+    "sources": [
+      {
+        "documentName": "HR_Handbook_2024.pdf",
+        "pageNumber": 12,
+        "chunkText": "Annual leave entitlement is 20 working days...",
+        "score": 0.89
+      }
+    ],
+    "timestamp": "2025-12-06T10:30:00Z"
+  },
+  "threadId": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
 **Error Responses**:
 
-| Status | Error | Description |
-|--------|-------|-------------|
-| 400 | `"Message is required"` | Missing message in request |
-| 400 | `"Thread ID is required"` | Missing threadId in request |
-| 401 | `"Unauthorized"` | No valid session |
-| 404 | `"Thread not found"` | Thread doesn't exist or belongs to another user |
-| 500 | `"Failed to process message"` | Internal error |
+| Status | Error | Code | Solution |
+|--------|-------|------|----------|
+| 400 | "Message is required" | VALIDATION_ERROR | Include message in request body |
+| 400 | "Thread ID is required" | VALIDATION_ERROR | Include threadId in request body |
+| 401 | "Unauthorized" | AUTH_REQUIRED | Sign in again |
+| 404 | "Thread not found" | NOT_FOUND | Verify thread exists and belongs to you |
+| 500 | "Failed to process message" | SERVICE_ERROR | Contact administrator |
 
-**Example**:
-```bash
-curl -X POST /api/chat \
-  -H "Content-Type: application/json" \
-  -H "Cookie: next-auth.session-token=..." \
-  -d '{
-    "message": "What is the annual leave policy?",
-    "threadId": "550e8400-e29b-41d4-a716-446655440000"
-  }'
-```
+**Notes**:
+- Web search via Tavily auto-triggers if RAG returns insufficient context
+- Sources are limited to top relevant chunks based on system settings
+- Thread categories determine which document collections are searched
 
 ---
 
@@ -130,6 +389,7 @@ curl -X POST /api/chat \
 Convert audio to text using OpenAI Whisper.
 
 **Authentication**: Required
+**Role**: Any authenticated user
 
 **Request**: `multipart/form-data`
 
@@ -137,7 +397,19 @@ Convert audio to text using OpenAI Whisper.
 |-------|------|----------|-------------|
 | `audio` | File | Yes | Audio file (webm, mp3, wav, m4a) |
 
+**Constraints**:
+- Max file size: 25MB
+
+**Example Request**:
+
+```bash
+curl -X POST https://policybot.abhirup.app/api/transcribe \
+  -H "Cookie: next-auth.session-token=abc123..." \
+  -F "audio=@recording.webm"
+```
+
 **Response** `200 OK`:
+
 ```typescript
 {
   text: string;      // Transcribed text
@@ -145,15 +417,24 @@ Convert audio to text using OpenAI Whisper.
 }
 ```
 
+**Example Response**:
+
+```json
+{
+  "text": "What is the policy for remote work?",
+  "duration": 3.5
+}
+```
+
 **Error Responses**:
 
-| Status | Error | Description |
-|--------|-------|-------------|
-| 400 | `"No audio file provided"` | Missing audio in request |
-| 400 | `"Invalid audio format"` | Unsupported file type |
-| 401 | `"Unauthorized"` | No valid session |
-| 413 | `"File too large"` | Audio exceeds 25MB limit |
-| 500 | `"Transcription failed"` | OpenAI API error |
+| Status | Error | Code | Solution |
+|--------|-------|------|----------|
+| 400 | "No audio file provided" | VALIDATION_ERROR | Include audio file in form data |
+| 400 | "Invalid audio format" | INVALID_FILE_TYPE | Use webm, mp3, wav, or m4a |
+| 401 | "Unauthorized" | AUTH_REQUIRED | Sign in again |
+| 413 | "File too large" | FILE_TOO_LARGE | Keep audio under 25MB |
+| 500 | "Transcription failed" | SERVICE_ERROR | Check OpenAI API status |
 
 ---
 
@@ -164,28 +445,46 @@ Convert audio to text using OpenAI Whisper.
 List all threads for the current user.
 
 **Authentication**: Required
+**Role**: Any authenticated user
 
 **Query Parameters**:
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `limit` | number | 50 | Max threads to return |
+| `limit` | number | 50 | Max threads to return (1-100) |
 | `offset` | number | 0 | Pagination offset |
 
+**Example Request**:
+
+```bash
+curl -X GET "https://policybot.abhirup.app/api/threads?limit=20&offset=0" \
+  -H "Cookie: next-auth.session-token=abc123..."
+```
+
 **Response** `200 OK`:
+
 ```typescript
 {
-  threads: [
-    {
-      id: string;
-      title: string;
-      createdAt: string;   // ISO 8601
-      updatedAt: string;   // ISO 8601
-      uploadCount: number;
-      categoryIds: number[];  // Selected category IDs
-    }
-  ];
+  threads: Thread[];
   total: number;
+}
+```
+
+**Example Response**:
+
+```json
+{
+  "threads": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "title": "Leave Policy Questions",
+      "createdAt": "2025-12-01T09:00:00Z",
+      "updatedAt": "2025-12-06T10:30:00Z",
+      "uploadCount": 1,
+      "categoryIds": [1, 3]
+    }
+  ],
+  "total": 15
 }
 ```
 
@@ -196,16 +495,31 @@ List all threads for the current user.
 Create a new thread.
 
 **Authentication**: Required
+**Role**: Any authenticated user
 
 **Request Body**:
+
 ```typescript
 {
-  title?: string;       // Optional, defaults to "New Thread"
-  categoryIds?: number[]; // Optional, category IDs to assign
+  title?: string;         // Optional, defaults to "New Thread"
+  categoryIds?: number[]; // Optional, categories to assign
 }
 ```
 
+**Example Request**:
+
+```bash
+curl -X POST https://policybot.abhirup.app/api/threads \
+  -H "Content-Type: application/json" \
+  -H "Cookie: next-auth.session-token=abc123..." \
+  -d '{
+    "title": "HR Policy Questions",
+    "categoryIds": [1]
+  }'
+```
+
 **Response** `201 Created`:
+
 ```typescript
 {
   id: string;
@@ -219,13 +533,22 @@ Create a new thread.
 
 ---
 
-#### `GET /api/threads/[threadId]`
+#### `GET /api/threads/{threadId}`
 
-Get a specific thread with messages.
+Get a specific thread with all messages.
 
 **Authentication**: Required (must own thread)
+**Role**: Thread owner
+
+**Example Request**:
+
+```bash
+curl -X GET https://policybot.abhirup.app/api/threads/550e8400-e29b-41d4-a716-446655440000 \
+  -H "Cookie: next-auth.session-token=abc123..."
+```
 
 **Response** `200 OK`:
+
 ```typescript
 {
   id: string;
@@ -234,29 +557,77 @@ Get a specific thread with messages.
   updatedAt: string;
   uploadCount: number;
   categoryIds: number[];
-  messages: [
-    {
-      id: string;
-      role: "user" | "assistant";
-      content: string;
-      sources?: Source[];
-      attachments?: string[];
-      timestamp: string;
-    }
-  ];
+  messages: Message[];
   uploads: string[];  // List of uploaded filenames
 }
 ```
 
+**Error Responses**:
+
+| Status | Error | Code | Solution |
+|--------|-------|------|----------|
+| 401 | "Unauthorized" | AUTH_REQUIRED | Sign in again |
+| 404 | "Thread not found" | NOT_FOUND | Verify thread ID is correct |
+
 ---
 
-#### `DELETE /api/threads/[threadId]`
+#### `PATCH /api/threads/{threadId}`
 
-Delete a thread and all associated data.
+Update thread metadata (title or categories).
 
 **Authentication**: Required (must own thread)
+**Role**: Thread owner
+
+**Request Body**:
+
+```typescript
+{
+  title?: string;         // New title (max 100 characters)
+  categoryIds?: number[]; // New category selection
+}
+```
+
+**Example Request**:
+
+```bash
+curl -X PATCH https://policybot.abhirup.app/api/threads/550e8400-e29b-41d4-a716-446655440000 \
+  -H "Content-Type: application/json" \
+  -H "Cookie: next-auth.session-token=abc123..." \
+  -d '{
+    "title": "Updated Title",
+    "categoryIds": [1, 2]
+  }'
+```
 
 **Response** `200 OK`:
+
+```typescript
+{
+  id: string;
+  title: string;
+  categoryIds: number[];
+  updatedAt: string;
+}
+```
+
+---
+
+#### `DELETE /api/threads/{threadId}`
+
+Delete a thread and all associated data (messages, uploads).
+
+**Authentication**: Required (must own thread)
+**Role**: Thread owner
+
+**Example Request**:
+
+```bash
+curl -X DELETE https://policybot.abhirup.app/api/threads/550e8400-e29b-41d4-a716-446655440000 \
+  -H "Cookie: next-auth.session-token=abc123..."
+```
+
+**Response** `200 OK`:
+
 ```typescript
 {
   success: true;
@@ -270,52 +641,36 @@ Delete a thread and all associated data.
 
 ---
 
-#### `PATCH /api/threads/[threadId]`
-
-Update thread metadata (title or categories).
-
-**Authentication**: Required (must own thread)
-
-**Request Body**:
-```typescript
-{
-  title?: string;       // New title (max 100 characters)
-  categoryIds?: number[]; // New category selection
-}
-```
-
-**Response** `200 OK`:
-```typescript
-{
-  id: string;
-  title: string;
-  categoryIds: number[];
-  updatedAt: string;
-}
-```
-
----
-
 ### 5. Thread Uploads
 
-#### `POST /api/threads/[threadId]/upload`
+#### `POST /api/threads/{threadId}/upload`
 
 Upload a PDF to a thread for compliance checking.
 
 **Authentication**: Required (must own thread)
+**Role**: Thread owner
 
 **Request**: `multipart/form-data`
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `file` | File | Yes | PDF file (max 5MB) |
+| `file` | File | Yes | PDF file |
 
 **Constraints**:
 - Max 3 files per thread
 - Max 5MB per file
-- PDF only
+- PDF format only
+
+**Example Request**:
+
+```bash
+curl -X POST https://policybot.abhirup.app/api/threads/550e8400-e29b-41d4-a716-446655440000/upload \
+  -H "Cookie: next-auth.session-token=abc123..." \
+  -F "file=@document.pdf"
+```
 
 **Response** `200 OK`:
+
 ```typescript
 {
   filename: string;
@@ -324,15 +679,33 @@ Upload a PDF to a thread for compliance checking.
 }
 ```
 
+**Error Responses**:
+
+| Status | Error | Code | Solution |
+|--------|-------|------|----------|
+| 400 | "No file provided" | VALIDATION_ERROR | Include file in form data |
+| 400 | "Only PDF files allowed" | INVALID_FILE_TYPE | Upload PDF format only |
+| 413 | "File too large (max 5MB)" | FILE_TOO_LARGE | Reduce file size |
+| 400 | "Maximum 3 files per thread" | UPLOAD_LIMIT | Delete existing files first |
+
 ---
 
-#### `DELETE /api/threads/[threadId]/upload/[filename]`
+#### `DELETE /api/threads/{threadId}/upload/{filename}`
 
 Delete an uploaded file from a thread.
 
 **Authentication**: Required (must own thread)
+**Role**: Thread owner
+
+**Example Request**:
+
+```bash
+curl -X DELETE https://policybot.abhirup.app/api/threads/550e8400-e29b-41d4-a716-446655440000/upload/document.pdf \
+  -H "Cookie: next-auth.session-token=abc123..."
+```
 
 **Response** `200 OK`:
+
 ```typescript
 {
   success: true;
@@ -343,1087 +716,99 @@ Delete an uploaded file from a thread.
 
 ---
 
-### 6. Admin - Categories
+### 6. User Categories
 
-#### `GET /api/admin/categories`
+#### `GET /api/user/categories`
 
-List all categories with statistics.
+Get categories available to the current user based on their role.
 
-**Authentication**: Required (admin only)
+**Authentication**: Required
+**Role**: Any authenticated user
+
+**Example Request**:
+
+```bash
+curl -X GET https://policybot.abhirup.app/api/user/categories \
+  -H "Cookie: next-auth.session-token=abc123..."
+```
 
 **Response** `200 OK`:
+
 ```typescript
 {
-  categories: [
-    {
-      id: number;
-      name: string;
-      slug: string;
-      description: string | null;
-      createdBy: string;
-      createdAt: string;
-      documentCount: number;
-      superUserCount: number;
-      subscriberCount: number;
-    }
-  ];
-}
-```
-
-**Error Responses**:
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 401 | `"Unauthorized"` | No valid session |
-| 403 | `"Admin access required"` | User is not an admin |
-
----
-
-#### `POST /api/admin/categories`
-
-Create a new category.
-
-**Authentication**: Required (admin only)
-
-**Request Body**:
-```typescript
-{
-  name: string;         // Required: unique category name
-  description?: string; // Optional: category description
-}
-```
-
-**Response** `201 Created`:
-```typescript
-{
-  category: {
+  categories: Array<{
     id: number;
     name: string;
     slug: string;
-    description: string | null;
-    createdBy: string;
-    createdAt: string;
-  };
+    description?: string;
+  }>;
 }
 ```
 
-**Error Responses**:
+**Role-Based Behavior**:
 
-| Status | Error | Description |
-|--------|-------|-------------|
-| 400 | `"Category name is required"` | Missing name |
-| 409 | `"Category \"X\" already exists"` | Duplicate name |
+| Role | Categories Returned |
+|------|---------------------|
+| `admin` | All categories |
+| `superuser` | Assigned categories only |
+| `user` | Subscribed categories only |
 
-**Example**:
+---
+
+#### `GET /api/user/subscriptions`
+
+Get the current user's category subscriptions.
+
+**Authentication**: Required
+**Role**: Any authenticated user
+
+**Example Request**:
+
 ```bash
-curl -X POST /api/admin/categories \
-  -H "Content-Type: application/json" \
-  -H "Cookie: next-auth.session-token=..." \
-  -d '{"name": "HR", "description": "Human Resources policies"}'
-```
-
----
-
-#### `GET /api/admin/categories/[id]`
-
-Get category details with users and documents.
-
-**Authentication**: Required (admin only)
-
-**Response** `200 OK`:
-```typescript
-{
-  category: {
-    id: number;
-    name: string;
-    slug: string;
-    description: string | null;
-    createdBy: string;
-    createdAt: string;
-  };
-  superUsers: [
-    {
-      userId: number;
-      email: string;
-      name: string | null;
-    }
-  ];
-  subscribers: [
-    {
-      userId: number;
-      email: string;
-      name: string | null;
-      isActive: boolean;
-    }
-  ];
-  documentCount: number;
-}
-```
-
----
-
-#### `PUT /api/admin/categories/[id]`
-
-Update a category.
-
-**Authentication**: Required (admin only)
-
-**Request Body**:
-```typescript
-{
-  name?: string;        // New name (must be unique)
-  description?: string; // New description
-}
+curl -X GET https://policybot.abhirup.app/api/user/subscriptions \
+  -H "Cookie: next-auth.session-token=abc123..."
 ```
 
 **Response** `200 OK`:
+
 ```typescript
 {
-  category: {
-    id: number;
-    name: string;
-    slug: string;
-    description: string | null;
-  };
-}
-```
-
----
-
-#### `DELETE /api/admin/categories/[id]`
-
-Delete a category. Documents in this category become unassigned.
-
-**Authentication**: Required (admin only)
-
-**Response** `200 OK`:
-```typescript
-{
-  success: true;
-  deleted: {
-    id: number;
-    name: string;
-    documentsUnassigned: number;
-  };
-}
-```
-
----
-
-### 7. Admin - Documents
-
-#### `GET /api/admin/documents`
-
-List all global policy documents.
-
-**Authentication**: Required (admin only)
-
-**Response** `200 OK`:
-```typescript
-{
-  documents: [
-    {
-      id: number;
-      filename: string;
-      size: number;
-      chunkCount: number;
-      uploadedAt: string;
-      uploadedBy: string;
-      status: "processing" | "ready" | "error";
-      errorMessage?: string;
-      isGlobal: boolean;
-      categories: [
-        {
-          categoryId: number;
-          categoryName: string;
-        }
-      ];
-    }
-  ];
-  totalChunks: number;
-}
-```
-
----
-
-#### `POST /api/admin/documents`
-
-Upload a new policy document with category assignment.
-
-**Authentication**: Required (admin only)
-
-**Request**: `multipart/form-data`
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `file` | File | Yes | PDF file (max 50MB) |
-| `categoryIds` | string | No | JSON array of category IDs |
-| `isGlobal` | string | No | `"true"` to index in all categories |
-
-**Response** `202 Accepted`:
-```typescript
-{
-  id: number;
-  filename: string;
-  size: number;
-  status: "processing";
-  isGlobal: boolean;
-  categoryIds: number[];
-  message: "Document is being processed";
-}
-```
-
-**Error Responses**:
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 400 | `"No file provided"` | Missing file in request |
-| 400 | `"Only PDF files allowed"` | Invalid file type |
-| 413 | `"File too large (max 50MB)"` | File exceeds size limit |
-| 409 | `"Document already exists"` | Filename already in use |
-
-**Example**:
-```bash
-curl -X POST /api/admin/documents \
-  -H "Cookie: next-auth.session-token=..." \
-  -F "file=@HR_Handbook.pdf" \
-  -F "categoryIds=[1,2]" \
-  -F "isGlobal=false"
-```
-
----
-
-#### `GET /api/admin/documents/[docId]`
-
-Get details of a specific document.
-
-**Authentication**: Required (admin only)
-
-**Response** `200 OK`:
-```typescript
-{
-  id: number;
-  filename: string;
-  size: number;
-  chunkCount: number;
-  uploadedAt: string;
-  uploadedBy: string;
-  status: "processing" | "ready" | "error";
-  errorMessage?: string;
-  isGlobal: boolean;
-  categories: [
-    {
-      categoryId: number;
-      categoryName: string;
-    }
-  ];
-  chunks?: [  // Only if status is "ready"
-    {
-      id: string;
-      pageNumber: number;
-      preview: string;  // First 100 chars
-    }
-  ];
-}
-```
-
----
-
-#### `PATCH /api/admin/documents/[docId]`
-
-Update document category assignments.
-
-**Authentication**: Required (admin only)
-
-**Request Body**:
-```typescript
-{
-  categoryIds?: number[];  // New category assignments
-  isGlobal?: boolean;      // Set global flag
-}
-```
-
-**Response** `200 OK`:
-```typescript
-{
-  id: number;
-  filename: string;
-  isGlobal: boolean;
-  categories: [
-    {
-      categoryId: number;
-      categoryName: string;
-    }
-  ];
-}
-```
-
----
-
-#### `DELETE /api/admin/documents/[docId]`
-
-Delete a policy document from the global store.
-
-**Authentication**: Required (admin only)
-
-**Response** `200 OK`:
-```typescript
-{
-  success: true;
-  deleted: {
-    id: number;
-    filename: string;
-    chunksRemoved: number;
-  };
-}
-```
-
----
-
-#### `POST /api/admin/documents/[docId]/reindex`
-
-Reindex an existing document (re-extract and re-embed).
-
-**Authentication**: Required (admin only)
-
-**Response** `202 Accepted`:
-```typescript
-{
-  id: number;
-  filename: string;
-  status: "processing";
-  message: "Document is being reindexed";
-}
-```
-
----
-
-#### `POST /api/admin/documents/text`
-
-Upload text content directly as a document (bypasses file upload and OCR extraction).
-
-**Authentication**: Required (admin only)
-
-**Request Body**:
-```typescript
-{
-  name: string;           // Required: document name (max 255 chars)
-  content: string;        // Required: text content (min 10 chars, max 10MB)
-  categoryIds?: number[]; // Optional: category IDs to assign
-  isGlobal?: boolean;     // Optional: index in all categories
-}
-```
-
-**Response** `202 Accepted`:
-```typescript
-{
-  id: string;
-  filename: string;      // Name with .txt extension
-  size: number;          // Content size in bytes
-  status: "processing";
-  message: "Document is being processed";
-}
-```
-
-**Error Responses**:
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 400 | `"Document name is required"` | Missing name |
-| 400 | `"Content is required"` | Missing content |
-| 400 | `"Content must be at least 10 characters"` | Content too short |
-| 409 | `"Document with this name already exists"` | Duplicate filename |
-| 413 | `"Content too large (max 10MB)"` | Content exceeds size limit |
-
-**Example**:
-```bash
-curl -X POST /api/admin/documents/text \
-  -H "Content-Type: application/json" \
-  -H "Cookie: next-auth.session-token=..." \
-  -d '{
-    "name": "Company Policy Overview",
-    "content": "This is the policy content...",
-    "categoryIds": [1, 2],
-    "isGlobal": false
-  }'
-```
-
-**Notes**:
-- Content is saved as a `.txt` file in the knowledge base
-- Bypasses OCR/document extraction (text is used directly)
-- Ideal for pasting text content without creating a file first
-
----
-
-### 8. Admin - User Management
-
-#### `GET /api/admin/users`
-
-List all users with their subscriptions/assignments.
-
-**Authentication**: Required (admin only)
-
-**Response** `200 OK`:
-```typescript
-{
-  users: [
-    {
-      email: string;
-      name?: string;
-      role: "admin" | "superuser" | "user";
-      addedAt: string;    // ISO 8601
-      addedBy: string;    // Email of admin who added
-      subscriptions: [    // For regular users
-        {
-          categoryId: number;
-          categoryName: string;
-          isActive: boolean;
-        }
-      ];
-      assignedCategories: [  // For super users
-        {
-          categoryId: number;
-          categoryName: string;
-        }
-      ];
-    }
-  ];
-}
-```
-
----
-
-#### `POST /api/admin/users`
-
-Add a new user with optional subscriptions/assignments.
-
-**Authentication**: Required (admin only)
-
-**Request Body**:
-```typescript
-{
-  email: string;                      // Required: user's email
-  role: "admin" | "superuser" | "user";  // Required: user role
-  name?: string;                      // Optional: display name
-  subscriptions?: number[];           // For role="user": category IDs
-  assignedCategories?: number[];      // For role="superuser": category IDs
-}
-```
-
-**Response** `200 OK`:
-```typescript
-{
-  user: {
-    email: string;
-    name?: string;
-    role: string;
-    addedAt: string;
-    addedBy: string;
-  };
-  message: "User added successfully";
-}
-```
-
-**Error Responses**:
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 400 | `"Email is required"` | Missing email in request |
-| 400 | `"Role must be..."` | Invalid role value |
-| 400 | `"Category with ID X not found"` | Invalid category ID |
-
-**Example**:
-```bash
-curl -X POST /api/admin/users \
-  -H "Content-Type: application/json" \
-  -H "Cookie: next-auth.session-token=..." \
-  -d '{
-    "email": "user@example.com",
-    "role": "user",
-    "name": "John Doe",
-    "subscriptions": [1, 2]
-  }'
-```
-
----
-
-#### `DELETE /api/admin/users`
-
-Remove a user from the allowlist.
-
-**Authentication**: Required (admin only)
-
-**Query Parameters**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `email` | string | Yes | Email of user to remove |
-
-**Response** `200 OK`:
-```typescript
-{
-  message: "User removed successfully";
-}
-```
-
-**Error Responses**:
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 400 | `"Cannot remove yourself"` | Admin tried to remove own account |
-| 404 | `"User not found"` | User not in allowlist |
-
----
-
-#### `PATCH /api/admin/users`
-
-Update a user's role.
-
-**Authentication**: Required (admin only)
-
-**Request Body**:
-```typescript
-{
-  email: string;                      // Required: user's email
-  role: "admin" | "superuser" | "user";  // Required: new role
-}
-```
-
-**Response** `200 OK`:
-```typescript
-{
-  message: "User role updated successfully";
-}
-```
-
----
-
-### 9. Admin - User Subscriptions
-
-#### `GET /api/admin/users/[userId]/subscriptions`
-
-Get a user's category subscriptions.
-
-**Authentication**: Required (admin only)
-
-**Response** `200 OK`:
-```typescript
-{
-  user: {
-    id: number;
-    email: string;
-    name: string | null;
-    role: string;
-  };
-  subscriptions: [
-    {
-      categoryId: number;
-      categoryName: string;
-      categorySlug: string;
-      isActive: boolean;
-    }
-  ];
-}
-```
-
----
-
-#### `POST /api/admin/users/[userId]/subscriptions`
-
-Add a subscription for a user.
-
-**Authentication**: Required (admin only)
-
-**Request Body**:
-```typescript
-{
-  categoryId: number;  // Category ID to subscribe
-}
-```
-
-**Response** `201 Created`:
-```typescript
-{
-  success: true;
-  subscription: {
-    userId: number;
+  subscriptions: Array<{
     categoryId: number;
     categoryName: string;
+    categorySlug: string;
     isActive: boolean;
-  };
-}
-```
-
-**Error Responses**:
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 404 | `"User not found"` | Invalid user ID |
-| 404 | `"Category not found"` | Invalid category ID |
-| 409 | `"User is already subscribed"` | Duplicate subscription |
-
----
-
-#### `PUT /api/admin/users/[userId]/subscriptions`
-
-Toggle subscription active status.
-
-**Authentication**: Required (admin only)
-
-**Request Body**:
-```typescript
-{
-  categoryId: number;
-  isActive: boolean;
-}
-```
-
-**Response** `200 OK`:
-```typescript
-{
-  success: true;
-  subscription: {
-    userId: number;
-    categoryId: number;
-    isActive: boolean;
-  };
+  }>;
 }
 ```
 
 ---
 
-#### `DELETE /api/admin/users/[userId]/subscriptions`
-
-Remove a subscription from a user.
-
-**Authentication**: Required (admin only)
-
-**Query Parameters**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `categoryId` | number | Yes | Category ID to unsubscribe |
-
-**Response** `200 OK`:
-```typescript
-{
-  success: true;
-  removed: {
-    userId: number;
-    categoryId: number;
-  };
-}
-```
-
----
-
-### 10. Super User - Document Management
-
-Super users can upload and manage documents within their assigned categories.
-
-#### `GET /api/superuser/documents`
-
-Get documents in super user's assigned categories.
-
-**Authentication**: Required (superuser only)
-
-**Response** `200 OK`:
-```typescript
-{
-  assignedCategories: [
-    {
-      categoryId: number;
-      categoryName: string;
-      categorySlug: string;
-    }
-  ];
-  documents: [
-    {
-      id: number;
-      filename: string;
-      size: number;
-      status: "processing" | "ready" | "error";
-      uploadedBy: string;
-      uploadedAt: string;
-      categories: [
-        {
-          categoryId: number;
-          categoryName: string;
-        }
-      ];
-    }
-  ];
-}
-```
-
-**Error Responses**:
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 401 | `"Unauthorized"` | No valid session |
-| 403 | `"Super user access required"` | User is not a super user |
-
----
-
-#### `POST /api/superuser/documents`
-
-Upload a document to one of super user's assigned categories.
-
-**Authentication**: Required (superuser only)
-
-**Request**: `multipart/form-data`
-
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `file` | File | Yes | PDF file (max 50MB) |
-| `categoryId` | string | Yes | Category ID (must be assigned to super user) |
-
-**Constraints**:
-- Max 50MB per file
-- PDF only
-- Cannot set `isGlobal` flag (always false for super users)
-- Category must be assigned to the super user
-
-**Response** `202 Accepted`:
-```typescript
-{
-  id: number;
-  filename: string;
-  size: number;
-  status: "processing";
-  message: "Document is being processed";
-  category: {
-    categoryId: number;
-    categoryName: string;
-  };
-}
-```
-
-**Error Responses**:
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 400 | `"No file provided"` | Missing file in request |
-| 400 | `"Category ID is required"` | Missing categoryId |
-| 400 | `"Only PDF files allowed"` | Invalid file type |
-| 403 | `"You do not have access to upload to this category"` | Category not assigned |
-| 404 | `"Category not found"` | Invalid category ID |
-| 413 | `"File too large (max 50MB)"` | File exceeds size limit |
-
-**Example**:
-```bash
-curl -X POST /api/superuser/documents \
-  -H "Cookie: next-auth.session-token=..." \
-  -F "file=@HR_Policy.pdf" \
-  -F "categoryId=1"
-```
-
----
-
-#### `POST /api/superuser/documents/text`
-
-Upload text content directly to one of super user's assigned categories.
-
-**Authentication**: Required (superuser only)
-
-**Request Body**:
-```typescript
-{
-  name: string;       // Required: document name (max 255 chars)
-  content: string;    // Required: text content (min 10 chars, max 10MB)
-  categoryId: number; // Required: category ID (must be assigned to super user)
-}
-```
-
-**Constraints**:
-- Category must be assigned to the super user
-- Cannot set `isGlobal` flag (always false for super users)
-
-**Response** `202 Accepted`:
-```typescript
-{
-  id: string;
-  filename: string;      // Name with .txt extension
-  size: number;          // Content size in bytes
-  status: "processing";
-  message: "Document is being processed";
-  category: {
-    categoryId: number;
-    categoryName: string;
-  };
-}
-```
-
-**Error Responses**:
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 400 | `"Document name is required"` | Missing name |
-| 400 | `"Content is required"` | Missing content |
-| 400 | `"Category ID is required"` | Missing categoryId |
-| 400 | `"Content must be at least 10 characters"` | Content too short |
-| 403 | `"You do not have access to upload to this category"` | Category not assigned |
-| 404 | `"Category not found"` | Invalid category ID |
-| 409 | `"Document with this name already exists in this category"` | Duplicate filename |
-| 413 | `"Content too large (max 10MB)"` | Content exceeds size limit |
-
-**Example**:
-```bash
-curl -X POST /api/superuser/documents/text \
-  -H "Content-Type: application/json" \
-  -H "Cookie: next-auth.session-token=..." \
-  -d '{
-    "name": "HR Policy Update",
-    "content": "This is the policy content...",
-    "categoryId": 1
-  }'
-```
-
----
-
-#### `DELETE /api/superuser/documents/[docId]`
-
-Delete a document (only if uploaded by this super user).
-
-**Authentication**: Required (superuser only)
-
-**Constraints**:
-- Document must be in one of super user's assigned categories
-- Document must have been uploaded by this super user
-
-**Response** `200 OK`:
-```typescript
-{
-  success: true;
-  deleted: {
-    id: number;
-    filename: string;
-    chunksRemoved: number;
-  };
-}
-```
-
-**Error Responses**:
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 400 | `"Invalid document ID"` | Non-numeric document ID |
-| 403 | `"You do not have access to delete this document"` | Document not in assigned categories |
-| 403 | `"You can only delete documents you uploaded"` | Not the uploader |
-| 404 | `"Document not found"` | Invalid document ID |
-
-**Example**:
-```bash
-curl -X DELETE /api/superuser/documents/5 \
-  -H "Cookie: next-auth.session-token=..."
-```
-
----
-
-### 11. Super User - User Management
-
-Super users can manage subscriptions for regular users within their assigned categories.
-
-#### `GET /api/superuser/users`
-
-Get users subscribed to super user's assigned categories.
-
-**Authentication**: Required (superuser only)
-
-**Response** `200 OK`:
-```typescript
-{
-  assignedCategories: [
-    {
-      categoryId: number;
-      categoryName: string;
-      categorySlug: string;
-    }
-  ];
-  users: [
-    {
-      id: number;
-      email: string;
-      name: string | null;
-      subscriptions: [
-        {
-          categoryId: number;
-          categoryName: string;
-          isActive: boolean;
-        }
-      ];
-    }
-  ];
-}
-```
-
-**Error Responses**:
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 401 | `"Unauthorized"` | No valid session |
-| 403 | `"Super user access required"` | User is not a super user |
-
----
-
-#### `POST /api/superuser/users`
-
-Add subscription for a user to one of super user's categories.
-
-**Authentication**: Required (superuser only)
-
-**Request Body**:
-```typescript
-{
-  userEmail: string;   // Target user's email
-  categoryId: number;  // Category ID (must be assigned to super user)
-}
-```
-
-**Response** `201 Created`:
-```typescript
-{
-  success: true;
-  subscription: {
-    userId: number;
-    categoryId: number;
-    categoryName: string;
-    isActive: boolean;
-  };
-}
-```
-
-**Error Responses**:
-
-| Status | Error | Description |
-|--------|-------|-------------|
-| 400 | `"userEmail and categoryId are required"` | Missing parameters |
-| 400 | `"Can only manage subscriptions for regular users"` | Target is admin/superuser |
-| 403 | `"You do not have access to manage this category"` | Category not assigned |
-| 404 | `"User not found"` | Target user doesn't exist |
-| 409 | `"User is already subscribed"` | Duplicate subscription |
-
-**Example**:
-```bash
-curl -X POST /api/superuser/users \
-  -H "Content-Type: application/json" \
-  -H "Cookie: next-auth.session-token=..." \
-  -d '{
-    "userEmail": "user@example.com",
-    "categoryId": 1
-  }'
-```
-
----
-
-#### `DELETE /api/superuser/users`
-
-Remove subscription from one of super user's categories.
-
-**Authentication**: Required (superuser only)
-
-**Query Parameters**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `userEmail` | string | Yes | Target user's email |
-| `categoryId` | number | Yes | Category ID to unsubscribe |
-
-**Response** `200 OK`:
-```typescript
-{
-  success: true;
-  removed: {
-    userId: number;
-    categoryId: number;
-  };
-}
-```
-
-**Example**:
-```bash
-curl -X DELETE "/api/superuser/users?userEmail=user@example.com&categoryId=1" \
-  -H "Cookie: next-auth.session-token=..."
-```
-
----
-
-### 12. Admin - Settings
-
-#### `GET /api/admin/settings`
-
-Get all configurable settings.
-
-**Authentication**: Required (admin only)
-
-**Response** `200 OK`:
-```typescript
-{
-  settings: {
-    llmModel: string;
-    chunkSize: number;
-    chunkOverlap: number;
-    topK: number;
-    ragCacheTtl: number;      // Seconds
-    tavilyCacheTtl: number;   // Seconds
-    tavilyEnabled: boolean;
-    systemPrompt: string;
-  };
-}
-```
-
----
-
-#### `PATCH /api/admin/settings`
-
-Update settings.
-
-**Authentication**: Required (admin only)
-
-**Request Body**:
-```typescript
-{
-  llmModel?: string;
-  chunkSize?: number;
-  chunkOverlap?: number;
-  topK?: number;
-  ragCacheTtl?: number;
-  tavilyCacheTtl?: number;
-  tavilyEnabled?: boolean;
-  systemPrompt?: string;
-  branding?: {
-    botName?: string;
-    botIcon?: string;
-  };
-}
-```
-
-**Response** `200 OK`:
-```typescript
-{
-  settings: { /* updated settings */ };
-  message: "Settings updated successfully";
-}
-```
-
----
-
-### 13. Branding
+### 7. Branding
 
 #### `GET /api/branding`
 
-Get branding settings (public endpoint, no authentication required).
+Get branding settings. This is the only public endpoint (no authentication required).
 
 **Authentication**: Not required
 
+**Example Request**:
+
+```bash
+curl -X GET https://policybot.abhirup.app/api/branding
+```
+
 **Response** `200 OK`:
+
 ```typescript
 {
   botName: string;   // e.g., "Policy Bot"
-  botIcon: string;   // e.g., "policy"
-  availableIcons: [
-    { key: string; label: string; lucideIcon: string }
-  ];
+  botIcon: string;   // Icon key
+  availableIcons: Array<{
+    key: string;
+    label: string;
+    lucideIcon: string;
+  }>;
 }
 ```
 
@@ -1442,71 +827,1060 @@ Get branding settings (public endpoint, no authentication required).
 
 ---
 
-### 14. User Subscriptions
+### 8. Admin - Categories
 
-#### `GET /api/user/subscriptions`
+#### `GET /api/admin/categories`
 
-Get the current user's category subscriptions.
+List all categories with statistics.
 
 **Authentication**: Required
+**Role**: Admin only
+
+**Example Request**:
+
+```bash
+curl -X GET https://policybot.abhirup.app/api/admin/categories \
+  -H "Cookie: next-auth.session-token=abc123..."
+```
 
 **Response** `200 OK`:
+
 ```typescript
 {
-  subscriptions: [
-    {
-      categoryId: number;
-      categoryName: string;
-      categorySlug: string;
-      isActive: boolean;
-    }
-  ];
+  categories: Category[];
+}
+```
+
+**Error Responses**:
+
+| Status | Error | Code | Solution |
+|--------|-------|------|----------|
+| 401 | "Unauthorized" | AUTH_REQUIRED | Sign in again |
+| 403 | "Admin access required" | ADMIN_REQUIRED | Contact administrator |
+
+---
+
+#### `POST /api/admin/categories`
+
+Create a new category.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Request Body**:
+
+```typescript
+{
+  name: string;         // Required: unique category name
+  description?: string; // Optional: category description
+}
+```
+
+**Example Request**:
+
+```bash
+curl -X POST https://policybot.abhirup.app/api/admin/categories \
+  -H "Content-Type: application/json" \
+  -H "Cookie: next-auth.session-token=abc123..." \
+  -d '{"name": "Human Resources", "description": "HR policies and procedures"}'
+```
+
+**Response** `201 Created`:
+
+```typescript
+{
+  category: {
+    id: number;
+    name: string;
+    slug: string;
+    description: string | null;
+    createdBy: string;
+    createdAt: string;
+  };
+}
+```
+
+**Error Responses**:
+
+| Status | Error | Code | Solution |
+|--------|-------|------|----------|
+| 400 | "Category name is required" | VALIDATION_ERROR | Include name in request |
+| 409 | "Category \"X\" already exists" | DUPLICATE | Use a different name |
+
+---
+
+#### `GET /api/admin/categories/{id}`
+
+Get category details with users and documents.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Example Request**:
+
+```bash
+curl -X GET https://policybot.abhirup.app/api/admin/categories/1 \
+  -H "Cookie: next-auth.session-token=abc123..."
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  category: {
+    id: number;
+    name: string;
+    slug: string;
+    description: string | null;
+    createdBy: string;
+    createdAt: string;
+  };
+  superUsers: Array<{
+    userId: number;
+    email: string;
+    name: string | null;
+  }>;
+  subscribers: Array<{
+    userId: number;
+    email: string;
+    name: string | null;
+    isActive: boolean;
+  }>;
+  documentCount: number;
 }
 ```
 
 ---
 
-### 15. User Categories
+#### `PUT /api/admin/categories/{id}`
 
-#### `GET /api/user/categories`
-
-Get categories available to the current user based on their role.
+Update a category.
 
 **Authentication**: Required
+**Role**: Admin only
 
-**Response** `200 OK`:
+**Request Body**:
+
 ```typescript
 {
-  categories: [
-    {
-      id: number;
-      name: string;
-      slug: string;
-      description?: string;
-    }
-  ];
+  name?: string;        // New name (must be unique)
+  description?: string; // New description
 }
 ```
 
-**Role-Based Behavior**:
+**Example Request**:
 
-| Role | Categories Returned |
-|------|---------------------|
-| `admin` | All categories |
-| `superuser` | Assigned categories |
-| `user` | Subscribed categories |
+```bash
+curl -X PUT https://policybot.abhirup.app/api/admin/categories/1 \
+  -H "Content-Type: application/json" \
+  -H "Cookie: next-auth.session-token=abc123..." \
+  -d '{"name": "HR & Compliance", "description": "Updated description"}'
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  category: {
+    id: number;
+    name: string;
+    slug: string;
+    description: string | null;
+  };
+}
+```
 
 ---
 
-### 16. Admin - System Stats
+#### `DELETE /api/admin/categories/{id}`
+
+Delete a category. Documents in this category become unassigned.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Example Request**:
+
+```bash
+curl -X DELETE https://policybot.abhirup.app/api/admin/categories/1 \
+  -H "Cookie: next-auth.session-token=abc123..."
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  success: true;
+  deleted: {
+    id: number;
+    name: string;
+    documentsUnassigned: number;
+  };
+}
+```
+
+---
+
+### 9. Admin - Documents
+
+#### `GET /api/admin/documents`
+
+List all global policy documents.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Example Request**:
+
+```bash
+curl -X GET https://policybot.abhirup.app/api/admin/documents \
+  -H "Cookie: next-auth.session-token=abc123..."
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  documents: Document[];
+  totalChunks: number;
+}
+```
+
+---
+
+#### `POST /api/admin/documents`
+
+Upload a new policy document with category assignment.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Request**: `multipart/form-data`
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `file` | File | Yes | PDF file (max 50MB) |
+| `categoryIds` | string | No | JSON array of category IDs |
+| `isGlobal` | string | No | `"true"` to index in all categories |
+
+**Example Request**:
+
+```bash
+curl -X POST https://policybot.abhirup.app/api/admin/documents \
+  -H "Cookie: next-auth.session-token=abc123..." \
+  -F "file=@HR_Handbook.pdf" \
+  -F "categoryIds=[1,2]" \
+  -F "isGlobal=false"
+```
+
+**Response** `202 Accepted`:
+
+```typescript
+{
+  id: number;
+  filename: string;
+  size: number;
+  status: "processing";
+  isGlobal: boolean;
+  categoryIds: number[];
+  message: "Document is being processed";
+}
+```
+
+**Error Responses**:
+
+| Status | Error | Code | Solution |
+|--------|-------|------|----------|
+| 400 | "No file provided" | VALIDATION_ERROR | Include file in form data |
+| 400 | "Only PDF files allowed" | INVALID_FILE_TYPE | Upload PDF format only |
+| 413 | "File too large (max 50MB)" | FILE_TOO_LARGE | Reduce file size |
+| 409 | "Document already exists" | DUPLICATE | Use different filename |
+
+**Notes**:
+- Documents are processed asynchronously (chunking, embedding, indexing)
+- Check document status via `GET /api/admin/documents/{id}`
+- Processing time depends on document size
+
+---
+
+#### `POST /api/admin/documents/text`
+
+Upload text content directly as a document (bypasses file upload and OCR extraction).
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Request Body**:
+
+```typescript
+{
+  name: string;           // Required: document name (max 255 chars)
+  content: string;        // Required: text content (min 10 chars, max 10MB)
+  categoryIds?: number[]; // Optional: category IDs to assign
+  isGlobal?: boolean;     // Optional: index in all categories
+}
+```
+
+**Example Request**:
+
+```bash
+curl -X POST https://policybot.abhirup.app/api/admin/documents/text \
+  -H "Content-Type: application/json" \
+  -H "Cookie: next-auth.session-token=abc123..." \
+  -d '{
+    "name": "Company Policy Overview",
+    "content": "This document outlines the company policies...",
+    "categoryIds": [1, 2],
+    "isGlobal": false
+  }'
+```
+
+**Response** `202 Accepted`:
+
+```typescript
+{
+  id: string;
+  filename: string;      // Name with .txt extension
+  size: number;          // Content size in bytes
+  status: "processing";
+  message: "Document is being processed";
+}
+```
+
+**Error Responses**:
+
+| Status | Error | Code | Solution |
+|--------|-------|------|----------|
+| 400 | "Document name is required" | VALIDATION_ERROR | Include name |
+| 400 | "Content is required" | VALIDATION_ERROR | Include content |
+| 400 | "Content must be at least 10 characters" | VALIDATION_ERROR | Add more content |
+| 409 | "Document with this name already exists" | DUPLICATE | Use different name |
+| 413 | "Content too large (max 10MB)" | FILE_TOO_LARGE | Reduce content size |
+
+**Notes**:
+- Content is saved as a `.txt` file in the knowledge base
+- Bypasses OCR/document extraction (text is used directly)
+- Ideal for pasting text content without creating a file first
+
+---
+
+#### `GET /api/admin/documents/{docId}`
+
+Get details of a specific document.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Example Request**:
+
+```bash
+curl -X GET https://policybot.abhirup.app/api/admin/documents/1 \
+  -H "Cookie: next-auth.session-token=abc123..."
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  id: number;
+  filename: string;
+  size: number;
+  chunkCount: number;
+  uploadedAt: string;
+  uploadedBy: string;
+  status: "processing" | "ready" | "error";
+  errorMessage?: string;
+  isGlobal: boolean;
+  categories: CategoryAssignment[];
+  chunks?: Array<{        // Only if status is "ready"
+    id: string;
+    pageNumber: number;
+    preview: string;      // First 100 chars
+  }>;
+}
+```
+
+---
+
+#### `PATCH /api/admin/documents/{docId}`
+
+Update document category assignments.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Request Body**:
+
+```typescript
+{
+  categoryIds?: number[];  // New category assignments
+  isGlobal?: boolean;      // Set global flag
+}
+```
+
+**Example Request**:
+
+```bash
+curl -X PATCH https://policybot.abhirup.app/api/admin/documents/1 \
+  -H "Content-Type: application/json" \
+  -H "Cookie: next-auth.session-token=abc123..." \
+  -d '{"categoryIds": [1, 2, 3], "isGlobal": false}'
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  id: number;
+  filename: string;
+  isGlobal: boolean;
+  categories: CategoryAssignment[];
+}
+```
+
+---
+
+#### `DELETE /api/admin/documents/{docId}`
+
+Delete a policy document from the global store.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Example Request**:
+
+```bash
+curl -X DELETE https://policybot.abhirup.app/api/admin/documents/1 \
+  -H "Cookie: next-auth.session-token=abc123..."
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  success: true;
+  deleted: {
+    id: number;
+    filename: string;
+    chunksRemoved: number;
+  };
+}
+```
+
+---
+
+#### `POST /api/admin/documents/{docId}/reindex`
+
+Reindex an existing document (re-extract and re-embed).
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Example Request**:
+
+```bash
+curl -X POST https://policybot.abhirup.app/api/admin/documents/1/reindex \
+  -H "Cookie: next-auth.session-token=abc123..."
+```
+
+**Response** `202 Accepted`:
+
+```typescript
+{
+  id: number;
+  filename: string;
+  status: "processing";
+  message: "Document is being reindexed";
+}
+```
+
+---
+
+### 10. Admin - User Management
+
+#### `GET /api/admin/users`
+
+List all users with their subscriptions/assignments.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Example Request**:
+
+```bash
+curl -X GET https://policybot.abhirup.app/api/admin/users \
+  -H "Cookie: next-auth.session-token=abc123..."
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  users: User[];
+}
+```
+
+---
+
+#### `POST /api/admin/users`
+
+Add a new user with optional subscriptions/assignments.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Request Body**:
+
+```typescript
+{
+  email: string;                          // Required: user's email
+  role: "admin" | "superuser" | "user";   // Required: user role
+  name?: string;                          // Optional: display name
+  subscriptions?: number[];               // For role="user": category IDs
+  assignedCategories?: number[];          // For role="superuser": category IDs
+}
+```
+
+**Example Request**:
+
+```bash
+curl -X POST https://policybot.abhirup.app/api/admin/users \
+  -H "Content-Type: application/json" \
+  -H "Cookie: next-auth.session-token=abc123..." \
+  -d '{
+    "email": "user@example.com",
+    "role": "user",
+    "name": "John Doe",
+    "subscriptions": [1, 2]
+  }'
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  user: {
+    email: string;
+    name?: string;
+    role: string;
+    addedAt: string;
+    addedBy: string;
+  };
+  message: "User added successfully";
+}
+```
+
+**Error Responses**:
+
+| Status | Error | Code | Solution |
+|--------|-------|------|----------|
+| 400 | "Email is required" | VALIDATION_ERROR | Include email |
+| 400 | "Role must be..." | VALIDATION_ERROR | Use valid role |
+| 400 | "Category with ID X not found" | NOT_FOUND | Verify category IDs |
+
+---
+
+#### `PATCH /api/admin/users`
+
+Update a user's role.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Request Body**:
+
+```typescript
+{
+  email: string;                          // Required: user's email
+  role: "admin" | "superuser" | "user";   // Required: new role
+}
+```
+
+**Example Request**:
+
+```bash
+curl -X PATCH https://policybot.abhirup.app/api/admin/users \
+  -H "Content-Type: application/json" \
+  -H "Cookie: next-auth.session-token=abc123..." \
+  -d '{"email": "user@example.com", "role": "superuser"}'
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  message: "User role updated successfully";
+}
+```
+
+---
+
+#### `DELETE /api/admin/users`
+
+Remove a user from the allowlist.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Query Parameters**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `email` | string | Yes | Email of user to remove |
+
+**Example Request**:
+
+```bash
+curl -X DELETE "https://policybot.abhirup.app/api/admin/users?email=user@example.com" \
+  -H "Cookie: next-auth.session-token=abc123..."
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  message: "User removed successfully";
+}
+```
+
+**Error Responses**:
+
+| Status | Error | Code | Solution |
+|--------|-------|------|----------|
+| 400 | "Cannot remove yourself" | VALIDATION_ERROR | Ask another admin |
+| 404 | "User not found" | NOT_FOUND | Verify email address |
+
+---
+
+### 11. Admin - User Subscriptions
+
+#### `GET /api/admin/users/{userId}/subscriptions`
+
+Get a user's category subscriptions.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Example Request**:
+
+```bash
+curl -X GET https://policybot.abhirup.app/api/admin/users/1/subscriptions \
+  -H "Cookie: next-auth.session-token=abc123..."
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  user: {
+    id: number;
+    email: string;
+    name: string | null;
+    role: string;
+  };
+  subscriptions: Array<{
+    categoryId: number;
+    categoryName: string;
+    categorySlug: string;
+    isActive: boolean;
+  }>;
+}
+```
+
+---
+
+#### `POST /api/admin/users/{userId}/subscriptions`
+
+Add a subscription for a user.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Request Body**:
+
+```typescript
+{
+  categoryId: number;  // Category ID to subscribe
+}
+```
+
+**Example Request**:
+
+```bash
+curl -X POST https://policybot.abhirup.app/api/admin/users/1/subscriptions \
+  -H "Content-Type: application/json" \
+  -H "Cookie: next-auth.session-token=abc123..." \
+  -d '{"categoryId": 1}'
+```
+
+**Response** `201 Created`:
+
+```typescript
+{
+  success: true;
+  subscription: {
+    userId: number;
+    categoryId: number;
+    categoryName: string;
+    isActive: boolean;
+  };
+}
+```
+
+**Error Responses**:
+
+| Status | Error | Code | Solution |
+|--------|-------|------|----------|
+| 404 | "User not found" | NOT_FOUND | Verify user ID |
+| 404 | "Category not found" | NOT_FOUND | Verify category ID |
+| 409 | "User is already subscribed" | DUPLICATE | User already has access |
+
+---
+
+#### `PUT /api/admin/users/{userId}/subscriptions`
+
+Toggle subscription active status.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Request Body**:
+
+```typescript
+{
+  categoryId: number;
+  isActive: boolean;
+}
+```
+
+**Example Request**:
+
+```bash
+curl -X PUT https://policybot.abhirup.app/api/admin/users/1/subscriptions \
+  -H "Content-Type: application/json" \
+  -H "Cookie: next-auth.session-token=abc123..." \
+  -d '{"categoryId": 1, "isActive": false}'
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  success: true;
+  subscription: {
+    userId: number;
+    categoryId: number;
+    isActive: boolean;
+  };
+}
+```
+
+---
+
+#### `DELETE /api/admin/users/{userId}/subscriptions`
+
+Remove a subscription from a user.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Query Parameters**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `categoryId` | number | Yes | Category ID to unsubscribe |
+
+**Example Request**:
+
+```bash
+curl -X DELETE "https://policybot.abhirup.app/api/admin/users/1/subscriptions?categoryId=1" \
+  -H "Cookie: next-auth.session-token=abc123..."
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  success: true;
+  removed: {
+    userId: number;
+    categoryId: number;
+  };
+}
+```
+
+---
+
+### 12. Admin - Settings
+
+#### `GET /api/admin/settings`
+
+Get all configurable settings.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Example Request**:
+
+```bash
+curl -X GET https://policybot.abhirup.app/api/admin/settings \
+  -H "Cookie: next-auth.session-token=abc123..."
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  rag: {
+    chunkSize: number;
+    chunkOverlap: number;
+    topK: number;
+    cacheTTLSeconds: number;
+    updatedAt?: string;
+    updatedBy?: string;
+  };
+  llm: {
+    model: string;
+    temperature: number;
+    maxTokens: number;
+    updatedAt?: string;
+    updatedBy?: string;
+  };
+  acronyms: {
+    mappings: Record<string, string>;
+  };
+  tavily: {
+    enabled: boolean;
+    cacheTTLSeconds: number;
+  };
+  branding: {
+    botName: string;
+    botIcon: string;
+  };
+  embedding: {
+    model: string;
+    dimensions: number;
+  };
+  reranker: {
+    enabled: boolean;
+    provider: string;
+    topKForReranking: number;
+    minRerankerScore: number;
+    cacheTTLSeconds: number;
+  };
+  uploadLimits: {
+    maxFilesPerThread: number;
+    maxFileSizeMB: number;
+    allowedTypes: string[];
+  };
+  retentionSettings: {
+    threadRetentionDays: number;
+    storageAlertThreshold: number;
+  };
+  availableModels: string[];
+  modelPresets: Array<{
+    name: string;
+    model: string;
+    temperature: number;
+    maxTokens: number;
+  }>;
+  brandingIcons: Array<{
+    key: string;
+    label: string;
+  }>;
+  defaults: Record<string, unknown>;
+}
+```
+
+---
+
+#### `PATCH /api/admin/settings`
+
+Update settings by type.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Request Body**:
+
+```typescript
+{
+  type: "rag" | "llm" | "acronyms" | "tavily" | "uploadLimits" |
+        "retention" | "preset" | "branding" | "embedding" |
+        "reranker" | "restoreAllDefaults";
+  settings: {
+    // Settings object varies by type
+  };
+}
+```
+
+**Example Request (Update LLM)**:
+
+```bash
+curl -X PATCH https://policybot.abhirup.app/api/admin/settings \
+  -H "Content-Type: application/json" \
+  -H "Cookie: next-auth.session-token=abc123..." \
+  -d '{
+    "type": "llm",
+    "settings": {
+      "model": "gpt-4o",
+      "temperature": 0.7,
+      "maxTokens": 4000
+    }
+  }'
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  success: true;
+  settings: {
+    // Updated settings
+  };
+}
+```
+
+**Supported Setting Types**:
+
+| Type | Description | Key Settings |
+|------|-------------|--------------|
+| `rag` | RAG configuration | chunkSize, chunkOverlap, topK, cacheTTLSeconds |
+| `llm` | LLM configuration | model, temperature, maxTokens |
+| `acronyms` | Acronym mappings | mappings (key-value pairs) |
+| `tavily` | Web search config | enabled, cacheTTLSeconds |
+| `uploadLimits` | Upload constraints | maxFilesPerThread, maxFileSizeMB |
+| `retention` | Data retention | threadRetentionDays, storageAlertThreshold |
+| `preset` | Apply model preset | presetName |
+| `branding` | Branding settings | botName, botIcon |
+| `embedding` | Embedding config | model, dimensions |
+| `reranker` | Reranker config | enabled, provider, topKForReranking |
+| `restoreAllDefaults` | Reset all settings | (no settings required) |
+
+---
+
+### 13. Admin - System Prompt
+
+#### `GET /api/admin/system-prompt`
+
+Get the current system prompt with metadata.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Example Request**:
+
+```bash
+curl -X GET https://policybot.abhirup.app/api/admin/system-prompt \
+  -H "Cookie: next-auth.session-token=abc123..."
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  systemPrompt: string;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+```
+
+---
+
+#### `PUT /api/admin/system-prompt`
+
+Update the system prompt.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Request Body**:
+
+```typescript
+{
+  systemPrompt: string;  // Min 10 characters
+}
+```
+
+**Example Request**:
+
+```bash
+curl -X PUT https://policybot.abhirup.app/api/admin/system-prompt \
+  -H "Content-Type: application/json" \
+  -H "Cookie: next-auth.session-token=abc123..." \
+  -d '{
+    "systemPrompt": "You are a helpful policy assistant for government staff..."
+  }'
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  success: true;
+  systemPrompt: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+```
+
+**Error Responses**:
+
+| Status | Error | Code | Solution |
+|--------|-------|------|----------|
+| 400 | "System prompt must be at least 10 characters" | VALIDATION_ERROR | Add more content |
+
+---
+
+### 14. Admin - System Operations
+
+#### `POST /api/admin/refresh`
+
+Reindex all documents and clear cache.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Example Request**:
+
+```bash
+curl -X POST https://policybot.abhirup.app/api/admin/refresh \
+  -H "Cookie: next-auth.session-token=abc123..."
+```
+
+**Response** `202 Accepted`:
+
+```typescript
+{
+  success: true;
+  message: "Reindex started";
+  documentsQueued: number;
+}
+```
+
+**Notes**:
+- This operation can take significant time for large document collections
+- Existing searches continue to work during reindexing
+- Cache is cleared immediately
+
+---
 
 #### `GET /api/admin/stats`
 
 Get system statistics for the admin dashboard.
 
-**Authentication**: Required (admin only)
+**Authentication**: Required
+**Role**: Admin only
+
+**Example Request**:
+
+```bash
+curl -X GET https://policybot.abhirup.app/api/admin/stats \
+  -H "Cookie: next-auth.session-token=abc123..."
+```
 
 **Response** `200 OK`:
+
 ```typescript
 {
   database: {
@@ -1526,50 +1900,55 @@ Get system statistics for the admin dashboard.
     threadsBytes: number;
     percentUsed: number;
   };
-  recentActivity: [
-    {
-      type: 'user_added' | 'document_uploaded' | 'thread_created';
-      description: string;
-      timestamp: string;
-    }
-  ];
+  recentActivity: Array<{
+    type: "user_added" | "document_uploaded" | "thread_created";
+    description: string;
+    timestamp: string;
+  }>;
 }
 ```
 
 ---
 
-### 17. Admin - Provider Status
-
 #### `GET /api/admin/providers`
 
 Check the status and availability of configured LLM providers.
 
-**Authentication**: Required (admin only)
+**Authentication**: Required
+**Role**: Admin only
+
+**Example Request**:
+
+```bash
+curl -X GET https://policybot.abhirup.app/api/admin/providers \
+  -H "Cookie: next-auth.session-token=abc123..."
+```
 
 **Response** `200 OK`:
+
 ```typescript
 {
   providers: {
     openai: {
-      provider: 'openai';
+      provider: "openai";
       available: boolean;
       configured: boolean;
       error?: string;
     };
     mistral: {
-      provider: 'mistral';
+      provider: "mistral";
       available: boolean;
       configured: boolean;
       error?: string;
     };
     ollama: {
-      provider: 'ollama';
+      provider: "ollama";
       available: boolean;
       configured: boolean;
       error?: string;
     };
     azure: {
-      provider: 'azure';
+      provider: "azure";
       available: boolean;
       configured: boolean;
       error?: string;
@@ -1615,70 +1994,482 @@ Check the status and availability of configured LLM providers.
 | `ollama` | `OLLAMA_API_BASE` |
 | `azure` | `AZURE_API_KEY`, `AZURE_API_BASE` |
 
-**Service Definitions**:
-
-| Service | Description | Default Provider |
-|---------|-------------|------------------|
-| `embedding` | Vector embeddings for RAG | OpenAI (text-embedding-3-large) |
-| `ocr` | Document text extraction | Azure Document Intelligence |
-| `audio` | Voice transcription | OpenAI (whisper-1) |
-
 ---
 
-## Error Response Format
+#### `GET /api/admin/reranker-status`
 
-All error responses follow a consistent format:
+Check reranker availability (Cohere API and local transformers.js).
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Example Request**:
+
+```bash
+curl -X GET https://policybot.abhirup.app/api/admin/reranker-status \
+  -H "Cookie: next-auth.session-token=abc123..."
+```
+
+**Response** `200 OK`:
 
 ```typescript
 {
-  error: string;      // Human-readable error message
-  details?: string;   // Additional context (development only)
-  code?: string;      // Error code for client handling
+  cohere: {
+    available: boolean;
+    configured: boolean;
+    error?: string;
+  };
+  local: {
+    available: boolean;
+    model: string;
+    error?: string;
+  };
 }
 ```
 
-### Common Error Codes
+---
 
-| Code | Description |
-|------|-------------|
-| `AUTH_REQUIRED` | Authentication required |
-| `ADMIN_REQUIRED` | Admin privileges required |
-| `SUPERUSER_REQUIRED` | Super user privileges required |
-| `NOT_FOUND` | Resource not found |
-| `VALIDATION_ERROR` | Invalid request data |
-| `FILE_TOO_LARGE` | Upload exceeds size limit |
-| `UPLOAD_LIMIT` | Max uploads reached |
-| `DUPLICATE` | Resource already exists |
-| `SERVICE_ERROR` | Internal service failure |
+### 15. Super User - Document Management
+
+Super users can upload and manage documents within their assigned categories.
+
+#### `GET /api/superuser/documents`
+
+Get documents in super user's assigned categories.
+
+**Authentication**: Required
+**Role**: Superuser only
+
+**Example Request**:
+
+```bash
+curl -X GET https://policybot.abhirup.app/api/superuser/documents \
+  -H "Cookie: next-auth.session-token=abc123..."
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  assignedCategories: Array<{
+    categoryId: number;
+    categoryName: string;
+    categorySlug: string;
+  }>;
+  documents: Array<{
+    id: number;
+    filename: string;
+    size: number;
+    status: "processing" | "ready" | "error";
+    uploadedBy: string;
+    uploadedAt: string;
+    categories: CategoryAssignment[];
+  }>;
+}
+```
+
+**Error Responses**:
+
+| Status | Error | Code | Solution |
+|--------|-------|------|----------|
+| 401 | "Unauthorized" | AUTH_REQUIRED | Sign in again |
+| 403 | "Super user access required" | SUPERUSER_REQUIRED | Contact administrator |
+
+---
+
+#### `POST /api/superuser/documents`
+
+Upload a document to one of super user's assigned categories.
+
+**Authentication**: Required
+**Role**: Superuser only
+
+**Request**: `multipart/form-data`
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `file` | File | Yes | PDF file (max 50MB) |
+| `categoryId` | string | Yes | Category ID (must be assigned) |
+
+**Constraints**:
+- Max 50MB per file
+- PDF only
+- Cannot set `isGlobal` flag (always false)
+- Category must be assigned to the super user
+
+**Example Request**:
+
+```bash
+curl -X POST https://policybot.abhirup.app/api/superuser/documents \
+  -H "Cookie: next-auth.session-token=abc123..." \
+  -F "file=@HR_Policy.pdf" \
+  -F "categoryId=1"
+```
+
+**Response** `202 Accepted`:
+
+```typescript
+{
+  id: number;
+  filename: string;
+  size: number;
+  status: "processing";
+  message: "Document is being processed";
+  category: {
+    categoryId: number;
+    categoryName: string;
+  };
+}
+```
+
+**Error Responses**:
+
+| Status | Error | Code | Solution |
+|--------|-------|------|----------|
+| 400 | "No file provided" | VALIDATION_ERROR | Include file |
+| 400 | "Category ID is required" | VALIDATION_ERROR | Include categoryId |
+| 400 | "Only PDF files allowed" | INVALID_FILE_TYPE | Use PDF format |
+| 403 | "You do not have access to upload to this category" | FORBIDDEN | Use assigned category |
+| 404 | "Category not found" | NOT_FOUND | Verify category ID |
+| 413 | "File too large (max 50MB)" | FILE_TOO_LARGE | Reduce file size |
+
+---
+
+#### `POST /api/superuser/documents/text`
+
+Upload text content directly to one of super user's assigned categories.
+
+**Authentication**: Required
+**Role**: Superuser only
+
+**Request Body**:
+
+```typescript
+{
+  name: string;       // Required: document name (max 255 chars)
+  content: string;    // Required: text content (min 10 chars, max 10MB)
+  categoryId: number; // Required: category ID (must be assigned)
+}
+```
+
+**Example Request**:
+
+```bash
+curl -X POST https://policybot.abhirup.app/api/superuser/documents/text \
+  -H "Content-Type: application/json" \
+  -H "Cookie: next-auth.session-token=abc123..." \
+  -d '{
+    "name": "HR Policy Update",
+    "content": "This document contains the latest HR policy updates...",
+    "categoryId": 1
+  }'
+```
+
+**Response** `202 Accepted`:
+
+```typescript
+{
+  id: string;
+  filename: string;
+  size: number;
+  status: "processing";
+  message: "Document is being processed";
+  category: {
+    categoryId: number;
+    categoryName: string;
+  };
+}
+```
+
+---
+
+#### `DELETE /api/superuser/documents/{docId}`
+
+Delete a document (only if uploaded by this super user).
+
+**Authentication**: Required
+**Role**: Superuser only
+
+**Constraints**:
+- Document must be in one of super user's assigned categories
+- Document must have been uploaded by this super user
+
+**Example Request**:
+
+```bash
+curl -X DELETE https://policybot.abhirup.app/api/superuser/documents/5 \
+  -H "Cookie: next-auth.session-token=abc123..."
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  success: true;
+  deleted: {
+    id: number;
+    filename: string;
+    chunksRemoved: number;
+  };
+}
+```
+
+**Error Responses**:
+
+| Status | Error | Code | Solution |
+|--------|-------|------|----------|
+| 400 | "Invalid document ID" | VALIDATION_ERROR | Use numeric ID |
+| 403 | "You do not have access to delete this document" | FORBIDDEN | Document not in your categories |
+| 403 | "You can only delete documents you uploaded" | FORBIDDEN | Not the uploader |
+| 404 | "Document not found" | NOT_FOUND | Verify document ID |
+
+---
+
+### 16. Super User - User Management
+
+Super users can manage subscriptions for regular users within their assigned categories.
+
+#### `GET /api/superuser/users`
+
+Get users subscribed to super user's assigned categories.
+
+**Authentication**: Required
+**Role**: Superuser only
+
+**Example Request**:
+
+```bash
+curl -X GET https://policybot.abhirup.app/api/superuser/users \
+  -H "Cookie: next-auth.session-token=abc123..."
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  assignedCategories: Array<{
+    categoryId: number;
+    categoryName: string;
+    categorySlug: string;
+  }>;
+  users: Array<{
+    id: number;
+    email: string;
+    name: string | null;
+    subscriptions: Array<{
+      categoryId: number;
+      categoryName: string;
+      isActive: boolean;
+    }>;
+  }>;
+}
+```
+
+---
+
+#### `POST /api/superuser/users`
+
+Add subscription for a user to one of super user's categories.
+
+**Authentication**: Required
+**Role**: Superuser only
+
+**Request Body**:
+
+```typescript
+{
+  userEmail: string;   // Target user's email
+  categoryId: number;  // Category ID (must be assigned to super user)
+}
+```
+
+**Example Request**:
+
+```bash
+curl -X POST https://policybot.abhirup.app/api/superuser/users \
+  -H "Content-Type: application/json" \
+  -H "Cookie: next-auth.session-token=abc123..." \
+  -d '{
+    "userEmail": "user@example.com",
+    "categoryId": 1
+  }'
+```
+
+**Response** `201 Created`:
+
+```typescript
+{
+  success: true;
+  subscription: {
+    userId: number;
+    categoryId: number;
+    categoryName: string;
+    isActive: boolean;
+  };
+}
+```
+
+**Error Responses**:
+
+| Status | Error | Code | Solution |
+|--------|-------|------|----------|
+| 400 | "userEmail and categoryId are required" | VALIDATION_ERROR | Include both fields |
+| 400 | "Can only manage subscriptions for regular users" | VALIDATION_ERROR | Target must be role=user |
+| 403 | "You do not have access to manage this category" | FORBIDDEN | Use assigned category |
+| 404 | "User not found" | NOT_FOUND | Verify email address |
+| 409 | "User is already subscribed" | DUPLICATE | User already has access |
+
+---
+
+#### `DELETE /api/superuser/users`
+
+Remove subscription from one of super user's categories.
+
+**Authentication**: Required
+**Role**: Superuser only
+
+**Query Parameters**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `userEmail` | string | Yes | Target user's email |
+| `categoryId` | number | Yes | Category ID to unsubscribe |
+
+**Example Request**:
+
+```bash
+curl -X DELETE "https://policybot.abhirup.app/api/superuser/users?userEmail=user@example.com&categoryId=1" \
+  -H "Cookie: next-auth.session-token=abc123..."
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  success: true;
+  removed: {
+    userId: number;
+    categoryId: number;
+  };
+}
+```
+
+---
+
+## Error Handling Best Practices
+
+### Handling 401 Unauthorized
+
+When receiving a 401 response, the user's session has expired or is invalid:
+
+```typescript
+if (response.status === 401) {
+  // Redirect to login
+  window.location.href = '/auth/signin';
+}
+```
+
+### Handling 202 Accepted (Async Operations)
+
+Document uploads return 202 immediately. Poll for completion:
+
+```typescript
+async function waitForProcessing(docId: number): Promise<void> {
+  let status = 'processing';
+  while (status === 'processing') {
+    await new Promise(resolve => setTimeout(resolve, 2000)); // Wait 2s
+    const response = await fetch(`/api/admin/documents/${docId}`);
+    const data = await response.json();
+    status = data.status;
+  }
+}
+```
 
 ---
 
 ## Rate Limiting
 
-Rate limits are applied per user session:
-
-| Endpoint | Limit | Window |
-|----------|-------|--------|
-| `POST /api/chat` | 30 requests | 1 minute |
-| `POST /api/transcribe` | 10 requests | 1 minute |
-| `POST /api/threads/*/upload` | 10 requests | 1 minute |
-| `POST /api/admin/documents` | 5 requests | 1 minute |
-
-**Rate Limit Response** `429 Too Many Requests`:
-```typescript
-{
-  error: "Rate limit exceeded";
-  retryAfter: number;  // Seconds until reset
-}
-```
+> **Note**: Rate limiting is planned for a future release. Currently, there are no request frequency limits enforced.
 
 ---
 
 ## API Versioning
 
-Current version: **v1** (implicit)
+**Current Version**: v1 (implicit in all endpoints)
 
-Future versions will use path prefix: `/api/v2/...`
+Future versions will use explicit path prefix:
+- v1: `/api/chat` (current, no prefix required)
+- v2: `/api/v2/chat` (future)
+
+**Breaking Change Policy**:
+- Breaking changes announced 30 days in advance
+- Old versions supported for 90 days post-deprecation
+- Deprecation notices included in response headers
+
+---
+
+## OpenAPI Specification
+
+An OpenAPI 3.0 specification is available at `docs/openapi.yaml` for tooling integration.
+
+### Import into API Tools
+
+The spec can be imported into popular API clients:
+
+| Tool | How to Import |
+|------|---------------|
+| **Postman** | File → Import → Select `openapi.yaml` |
+| **Insomnia** | Application → Preferences → Data → Import Data |
+| **Bruno** | Collection → Import Collection → OpenAPI |
+| **Swagger UI** | Point to the YAML file URL |
+
+### Generate Client SDKs
+
+Use `openapi-generator-cli` to generate typed clients:
+
+```bash
+# Install generator
+npm install @openapitools/openapi-generator-cli -g
+
+# Generate TypeScript client
+openapi-generator-cli generate \
+  -i docs/openapi.yaml \
+  -g typescript-fetch \
+  -o ./generated-client
+
+# Generate Python client
+openapi-generator-cli generate \
+  -i docs/openapi.yaml \
+  -g python \
+  -o ./generated-client-python
+```
+
+**Available generators**: typescript-fetch, typescript-axios, python, java, go, rust, csharp, and [50+ more](https://openapi-generator.tech/docs/generators).
+
+### Validate API Responses
+
+Use the spec to validate responses in tests:
+
+```typescript
+import SwaggerParser from '@apidevtools/swagger-parser';
+
+const api = await SwaggerParser.validate('docs/openapi.yaml');
+// Use api.paths to validate response shapes
+```
+
+### Host Interactive Documentation
+
+To serve interactive API docs (optional):
+
+```bash
+# Using Swagger UI Docker
+docker run -p 8080:8080 \
+  -e SWAGGER_JSON=/docs/openapi.yaml \
+  -v $(pwd)/docs:/docs \
+  swaggerapi/swagger-ui
+```
+
+Then visit `http://localhost:8080` for interactive API exploration.
 
 ---
 
@@ -1689,7 +2480,7 @@ Future versions will use path prefix: `/api/v2/...`
 ```typescript
 // Send chat message
 async function sendMessage(message: string, threadId: string) {
-  const response = await fetch('/api/chat', {
+  const response = await fetch('https://policybot.abhirup.app/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message, threadId }),
@@ -1711,7 +2502,7 @@ async function uploadDocument(file: File, categoryIds: number[], isGlobal: boole
   formData.append('categoryIds', JSON.stringify(categoryIds));
   formData.append('isGlobal', String(isGlobal));
 
-  const response = await fetch('/api/admin/documents', {
+  const response = await fetch('https://policybot.abhirup.app/api/admin/documents', {
     method: 'POST',
     body: formData,
     credentials: 'include',
@@ -1722,7 +2513,7 @@ async function uploadDocument(file: File, categoryIds: number[], isGlobal: boole
 
 // Create user with subscriptions
 async function createUser(email: string, role: string, subscriptions: number[]) {
-  const response = await fetch('/api/admin/users', {
+  const response = await fetch('https://policybot.abhirup.app/api/admin/users', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ email, role, subscriptions }),
@@ -1737,36 +2528,36 @@ async function createUser(email: string, role: string, subscriptions: number[]) 
 
 ```bash
 # Create category
-curl -X POST http://localhost:3000/api/admin/categories \
+curl -X POST https://policybot.abhirup.app/api/admin/categories \
   -H "Content-Type: application/json" \
   -H "Cookie: next-auth.session-token=TOKEN" \
   -d '{"name": "HR", "description": "Human Resources"}'
 
 # Create user with subscriptions
-curl -X POST http://localhost:3000/api/admin/users \
+curl -X POST https://policybot.abhirup.app/api/admin/users \
   -H "Content-Type: application/json" \
   -H "Cookie: next-auth.session-token=TOKEN" \
   -d '{"email": "user@example.com", "role": "user", "subscriptions": [1,2]}'
 
 # Upload document to categories
-curl -X POST http://localhost:3000/api/admin/documents \
+curl -X POST https://policybot.abhirup.app/api/admin/documents \
   -H "Cookie: next-auth.session-token=TOKEN" \
   -F "file=@policy.pdf" \
   -F "categoryIds=[1,2]"
 
 # Super user: add subscription
-curl -X POST http://localhost:3000/api/superuser/users \
+curl -X POST https://policybot.abhirup.app/api/superuser/users \
   -H "Content-Type: application/json" \
   -H "Cookie: next-auth.session-token=TOKEN" \
   -d '{"userEmail": "user@example.com", "categoryId": 1}'
 
 # Super user: upload document to assigned category
-curl -X POST http://localhost:3000/api/superuser/documents \
+curl -X POST https://policybot.abhirup.app/api/superuser/documents \
   -H "Cookie: next-auth.session-token=TOKEN" \
   -F "file=@HR_Policy.pdf" \
   -F "categoryId=1"
 
 # Super user: delete own document
-curl -X DELETE http://localhost:3000/api/superuser/documents/5 \
+curl -X DELETE https://policybot.abhirup.app/api/superuser/documents/5 \
   -H "Cookie: next-auth.session-token=TOKEN"
 ```

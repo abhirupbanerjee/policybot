@@ -1,0 +1,609 @@
+/**
+ * Configuration Loader
+ *
+ * Loads settings from config/defaults.json and config/system-prompt.md
+ * Provides typed getters with fallbacks to hardcoded defaults
+ * Caches config in memory (reload on app restart)
+ */
+
+import fs from 'fs';
+import path from 'path';
+
+// ============ Types ============
+
+export interface ModelPresetConfig {
+  name: string;
+  description: string;
+  provider: string;
+  temperature: number;
+  maxTokens: number;
+  topKChunks: number;
+  maxContextChunks: number;
+  similarityThreshold: number;
+  chunkSize: number;
+  chunkOverlap: number;
+  queryExpansionEnabled: boolean;
+  cacheEnabled: boolean;
+  cacheTTLSeconds: number;
+}
+
+export interface LlmConfig {
+  model: string;
+  temperature: number;
+  maxTokens: number;
+}
+
+export interface RagConfig {
+  topKChunks: number;
+  maxContextChunks: number;
+  similarityThreshold: number;
+  chunkSize: number;
+  chunkOverlap: number;
+  queryExpansionEnabled: boolean;
+  cacheEnabled: boolean;
+  cacheTTLSeconds: number;
+}
+
+export interface EmbeddingConfig {
+  model: string;
+  dimensions: number;
+}
+
+export interface RerankerConfig {
+  enabled: boolean;
+  provider: 'cohere' | 'local';
+  topKForReranking: number;
+  minRerankerScore: number;
+  cacheTTLSeconds: number;
+}
+
+export interface TavilyConfig {
+  enabled: boolean;
+  defaultTopic: 'general' | 'news' | 'finance';
+  defaultSearchDepth: 'basic' | 'advanced';
+  maxResults: number;
+  includeDomains: string[];
+  excludeDomains: string[];
+  cacheTTLSeconds: number;
+}
+
+export interface UploadConfig {
+  maxFilesPerInput: number;
+  maxFileSizeMB: number;
+  allowedTypes: string[];
+}
+
+export interface RetentionConfig {
+  threadRetentionDays: number;
+  storageAlertThreshold: number;
+}
+
+export interface BrandingConfig {
+  botName: string;
+  botIcon: string;
+}
+
+export interface LimitsConfig {
+  conversationHistoryMessages: number;
+  maxQueryExpansions: number;
+  userDocumentChunks: number;
+  embeddingBatchSize: number;
+  maxFilenameLength: number;
+  toolCallMaxIterations: number;
+}
+
+export interface ModelsConfig {
+  toolCapable: string[];
+  transcription: string;
+  rerankerCohere: string;
+  rerankerLocal: string;
+}
+
+export interface AppConfig {
+  version: string;
+  modelPresets: Record<string, ModelPresetConfig>;
+  defaultPreset: string;
+  llm: LlmConfig;
+  rag: RagConfig;
+  embedding: EmbeddingConfig;
+  reranker: RerankerConfig;
+  tavily: TavilyConfig;
+  upload: UploadConfig;
+  retention: RetentionConfig;
+  branding: BrandingConfig;
+  limits: LimitsConfig;
+  models: ModelsConfig;
+  acronyms: Record<string, string>;
+}
+
+// ============ Cache ============
+
+let cachedConfig: AppConfig | null = null;
+let cachedSystemPrompt: string | null = null;
+
+// ============ Paths ============
+
+const CONFIG_DIR = process.env.CONFIG_DIR || path.join(process.cwd(), 'config');
+const CONFIG_FILE = path.join(CONFIG_DIR, 'defaults.json');
+const PROMPT_FILE = path.join(CONFIG_DIR, 'system-prompt.md');
+
+// ============ Hardcoded Defaults ============
+
+function getHardcodedDefaults(): AppConfig {
+  return {
+    version: '1.0',
+    modelPresets: {
+      'gpt-4.1': {
+        name: 'GPT-4.1 (High Performance)',
+        description: 'Most capable OpenAI model with 1M context for complex policy analysis',
+        provider: 'openai',
+        temperature: 0.1,
+        maxTokens: 4000,
+        topKChunks: 25,
+        maxContextChunks: 20,
+        similarityThreshold: 0.5,
+        chunkSize: 1200,
+        chunkOverlap: 200,
+        queryExpansionEnabled: true,
+        cacheEnabled: true,
+        cacheTTLSeconds: 3600,
+      },
+      'gpt-4.1-mini': {
+        name: 'GPT-4.1 Mini (Balanced)',
+        description: 'Fast and affordable for most policy queries with good accuracy',
+        provider: 'openai',
+        temperature: 0.2,
+        maxTokens: 3000,
+        topKChunks: 20,
+        maxContextChunks: 15,
+        similarityThreshold: 0.5,
+        chunkSize: 1200,
+        chunkOverlap: 200,
+        queryExpansionEnabled: true,
+        cacheEnabled: true,
+        cacheTTLSeconds: 3600,
+      },
+      'gpt-4.1-nano': {
+        name: 'GPT-4.1 Nano (Cost-Effective)',
+        description: 'Cost-effective option for simpler queries with faster response times',
+        provider: 'openai',
+        temperature: 0.2,
+        maxTokens: 2000,
+        topKChunks: 15,
+        maxContextChunks: 10,
+        similarityThreshold: 0.5,
+        chunkSize: 1200,
+        chunkOverlap: 200,
+        queryExpansionEnabled: true,
+        cacheEnabled: true,
+        cacheTTLSeconds: 3600,
+      },
+      'mistral-large-3': {
+        name: 'Mistral Large 3',
+        description: 'Mistral flagship model with 256K context and strong reasoning',
+        provider: 'mistral',
+        temperature: 0.2,
+        maxTokens: 3000,
+        topKChunks: 20,
+        maxContextChunks: 15,
+        similarityThreshold: 0.5,
+        chunkSize: 1200,
+        chunkOverlap: 200,
+        queryExpansionEnabled: true,
+        cacheEnabled: true,
+        cacheTTLSeconds: 3600,
+      },
+      'mistral-small-3.2': {
+        name: 'Mistral Small 3.2 (Cost-Effective)',
+        description: 'Fast and efficient Mistral model for routine queries',
+        provider: 'mistral',
+        temperature: 0.2,
+        maxTokens: 2000,
+        topKChunks: 15,
+        maxContextChunks: 10,
+        similarityThreshold: 0.5,
+        chunkSize: 1200,
+        chunkOverlap: 200,
+        queryExpansionEnabled: true,
+        cacheEnabled: true,
+        cacheTTLSeconds: 3600,
+      },
+      'ministral-8b': {
+        name: 'Ministral 8B (Ultra Cost-Effective)',
+        description: 'Lightweight Mistral model for simple queries at lowest cost',
+        provider: 'mistral',
+        temperature: 0.2,
+        maxTokens: 2000,
+        topKChunks: 10,
+        maxContextChunks: 8,
+        similarityThreshold: 0.5,
+        chunkSize: 1200,
+        chunkOverlap: 200,
+        queryExpansionEnabled: true,
+        cacheEnabled: true,
+        cacheTTLSeconds: 3600,
+      },
+      'ollama-llama3.2': {
+        name: 'Ollama Llama 3.2 (Local)',
+        description: 'Local model with full tool support, no API cost',
+        provider: 'ollama',
+        temperature: 0.2,
+        maxTokens: 2000,
+        topKChunks: 15,
+        maxContextChunks: 10,
+        similarityThreshold: 0.5,
+        chunkSize: 1200,
+        chunkOverlap: 200,
+        queryExpansionEnabled: true,
+        cacheEnabled: true,
+        cacheTTLSeconds: 3600,
+      },
+      'ollama-qwen2.5': {
+        name: 'Ollama Qwen 2.5 (Local)',
+        description: 'High-quality local model with excellent reasoning',
+        provider: 'ollama',
+        temperature: 0.2,
+        maxTokens: 2000,
+        topKChunks: 15,
+        maxContextChunks: 10,
+        similarityThreshold: 0.5,
+        chunkSize: 1200,
+        chunkOverlap: 200,
+        queryExpansionEnabled: true,
+        cacheEnabled: true,
+        cacheTTLSeconds: 3600,
+      },
+    },
+    defaultPreset: 'gpt-4.1-mini',
+    llm: {
+      model: 'gpt-4.1-mini',
+      temperature: 0.2,
+      maxTokens: 2000,
+    },
+    rag: {
+      topKChunks: 15,
+      maxContextChunks: 10,
+      similarityThreshold: 0.5,
+      chunkSize: 1200,
+      chunkOverlap: 200,
+      queryExpansionEnabled: true,
+      cacheEnabled: true,
+      cacheTTLSeconds: 3600,
+    },
+    embedding: {
+      model: 'text-embedding-3-large',
+      dimensions: 3072,
+    },
+    reranker: {
+      enabled: false,
+      provider: 'cohere',
+      topKForReranking: 50,
+      minRerankerScore: 0.3,
+      cacheTTLSeconds: 3600,
+    },
+    tavily: {
+      enabled: false,
+      defaultTopic: 'general',
+      defaultSearchDepth: 'basic',
+      maxResults: 5,
+      includeDomains: [],
+      excludeDomains: [],
+      cacheTTLSeconds: 3600,
+    },
+    upload: {
+      maxFilesPerInput: 1,
+      maxFileSizeMB: 10,
+      allowedTypes: ['application/pdf', 'image/png', 'image/jpeg'],
+    },
+    retention: {
+      threadRetentionDays: 90,
+      storageAlertThreshold: 70,
+    },
+    branding: {
+      botName: 'Policy Bot',
+      botIcon: 'policy',
+    },
+    limits: {
+      conversationHistoryMessages: 5,
+      maxQueryExpansions: 3,
+      userDocumentChunks: 5,
+      embeddingBatchSize: 100,
+      maxFilenameLength: 200,
+      toolCallMaxIterations: 3,
+    },
+    models: {
+      toolCapable: [
+        'gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano', 'gpt-3.5-turbo',
+        'mistral-large-3', 'mistral-medium-3.1', 'mistral-small-3.2',
+        'ministral-8b', 'ministral-3b',
+        'ollama-llama3.2', 'ollama-llama3.1', 'ollama-mistral', 'ollama-qwen2.5',
+      ],
+      transcription: 'whisper-1',
+      rerankerCohere: 'rerank-english-v3.0',
+      rerankerLocal: 'Xenova/all-MiniLM-L6-v2',
+    },
+    acronyms: {
+      ea: 'enterprise architecture',
+      dta: 'digital transformation agency',
+      it: 'information technology',
+      ict: 'information and communication technology',
+      hr: 'human resources',
+      kpi: 'key performance indicator',
+      sla: 'service level agreement',
+    },
+  };
+}
+
+// ============ Loaders ============
+
+/**
+ * Load configuration from JSON file
+ * Falls back to hardcoded defaults if file not found or invalid
+ */
+export function loadConfig(): AppConfig {
+  if (cachedConfig) return cachedConfig;
+
+  try {
+    if (fs.existsSync(CONFIG_FILE)) {
+      const content = fs.readFileSync(CONFIG_FILE, 'utf-8');
+      cachedConfig = JSON.parse(content) as AppConfig;
+      console.log(`[Config] Loaded from ${CONFIG_FILE}`);
+      return cachedConfig;
+    }
+  } catch (error) {
+    console.warn(`[Config] Failed to load ${CONFIG_FILE}:`, error instanceof Error ? error.message : error);
+  }
+
+  console.log('[Config] Using hardcoded defaults');
+  cachedConfig = getHardcodedDefaults();
+  return cachedConfig;
+}
+
+/**
+ * Load system prompt from markdown file
+ * Falls back to hardcoded default if file not found
+ */
+export function loadSystemPrompt(): string {
+  if (cachedSystemPrompt) return cachedSystemPrompt;
+
+  try {
+    if (fs.existsSync(PROMPT_FILE)) {
+      cachedSystemPrompt = fs.readFileSync(PROMPT_FILE, 'utf-8');
+      console.log(`[Config] Loaded system prompt from ${PROMPT_FILE}`);
+      return cachedSystemPrompt;
+    }
+  } catch (error) {
+    console.warn(`[Config] Failed to load ${PROMPT_FILE}:`, error instanceof Error ? error.message : error);
+  }
+
+  console.log('[Config] Using hardcoded system prompt');
+  cachedSystemPrompt = getHardcodedSystemPrompt();
+  return cachedSystemPrompt;
+}
+
+/**
+ * Get a config value by dot-path
+ * Example: getConfigValue('limits.embeddingBatchSize', 100)
+ */
+export function getConfigValue<T>(dotPath: string, fallback: T): T {
+  const config = loadConfig();
+  const keys = dotPath.split('.');
+  let value: unknown = config;
+
+  for (const key of keys) {
+    if (value && typeof value === 'object' && key in value) {
+      value = (value as Record<string, unknown>)[key];
+    } else {
+      return fallback;
+    }
+  }
+
+  return (value as T) ?? fallback;
+}
+
+/**
+ * Clear cached config (useful for testing or forced reload)
+ */
+export function clearConfigCache(): void {
+  cachedConfig = null;
+  cachedSystemPrompt = null;
+}
+
+/**
+ * Get model presets from config
+ */
+export function getModelPresetsFromConfig(): Record<string, ModelPresetConfig> {
+  return loadConfig().modelPresets;
+}
+
+/**
+ * Get default preset ID from config
+ */
+export function getDefaultPresetId(): string {
+  return loadConfig().defaultPreset;
+}
+
+// ============ Hardcoded System Prompt ============
+
+function getHardcodedSystemPrompt(): string {
+  return `# SYSTEM ROLE — Government Policy & Strategy Assistant (GPSA)
+
+You help government staff analyse, interpret, and compare policy and strategy documents.
+Use only the provided context (knowledge base + user-uploaded documents + optional web search).
+All responses must be written in raw Markdown and must maintain clean, readable structure.
+
+---
+
+## 1. Core Behaviour Rules
+
+- Use only information from the provided documents or web search results.
+- If the context is insufficient, respond exactly with:
+  "The provided documents do not contain enough information to answer this question."
+- Never guess, speculate, or invent:
+  - policies
+  - roles
+  - page numbers
+  - document names
+  - procedural steps
+- Maintain a concise, neutral, government-professional tone.
+- Keep paragraphs short (1–3 lines).
+- Do not output a References section — the application interface displays Sources automatically.
+- Do not embed citations, page numbers, or filenames within the answer.
+
+---
+
+## 2. Information Retrieval Logic
+
+1. Primary: Use knowledge base + uploaded documents.
+2. If insufficient: Perform web search automatically (if enabled).
+3. If still insufficient: Clearly state limitations.
+4. Never ask permission to search — execute silently and state results when used.
+5. Do not output citation metadata; the system will show sources separately.
+
+---
+
+## 3. Markdown Formatting Standards
+
+All responses must use clean, flat Markdown:
+
+- Use headings: \`###\`, \`####\`
+- Use flat bullet lists (\`- item\`)
+- Use flat numbered lists (\`1. item\`)
+- Leave spaces between sections
+- Avoid all nested/multi-level bulleting
+- Avoid block quotes
+
+For simple text diagrams, use plain ASCII text without backticks, e.g.:
+
+    CEO
+     ├─ Strategy & Policy
+     ├─ Technology & Operations
+     └─ Service Delivery
+
+Allowed icons:
+- \`✅ Aligned\`
+- \`⚠️ Partial\`
+- \`❌ Gap\`
+- \`🔍 Needs Clarification\`
+
+---
+
+## 3A. ASCII Diagram Rendering Standard (Strict)
+
+When the user requests any visual representation — including organisational charts, hierarchies, flows, processes, system architectures, or UI wireframes — you must ALWAYS produce diagrams in ASCII format using the following rules:
+
+### GENERAL RULES
+- ASCII only. No images, Mermaid, SVG, UML, or code-fenced diagrams.
+- Do NOT use triple backticks (\`\`\`); ASCII diagrams must appear as plain text.
+- Diagrams must be indented with 4 spaces on every line.
+- Keep diagrams readable on mobile screens. Maximum width: ~34 characters.
+- Boxes must be aligned, with consistent width and spacing.
+- Use only these symbols: \`+\`, \`-\`, \`|\`, \`v\`, \`^\`, \`/\`, \`\\\`.
+- Show top-down flow using a single \`v\` arrow between levels.
+
+### BOX STYLE RULES
+- Use rectangular boxes with:
+    - \`+-----+\` for top / bottom borders
+    - \`| ... |\` for content
+- All lines in a box must have equal width.
+- Center or left-align text inside the box; avoid wrapping.
+
+### ALLOWED EXAMPLE FORMAT (Follow this style)
+
+    +-----------------------------+
+    |   Government Officials      |
+    +-------------+---------------+
+                  |
+                  v
+    +-----------------------------+
+    |   Digital Transformation    |
+    |        Agency (DTA)         |
+    +-------------+---------------+
+                  |
+                  v
+    +-----------------------------+
+    |      Departments / MDAs     |
+    +-----------------------------+
+            |         |
+            v         v
+        Dept. A    Dept. B
+
+### FORBIDDEN FORMATS (NEVER USE)
+- Markdown images: \`![diagram](url)\`
+- Mermaid or PlantUML blocks
+- Base64 images: \`data:image/...\`
+- Inline SVG, PNG, or rendered graphics
+- Code-fenced ASCII diagrams
+
+### IF DIAGRAM IS TOO COMPLEX
+If an ASCII diagram cannot be represented cleanly within these rules, respond with:
+
+**"This diagram exceeds the allowed ASCII complexity for the required formatting."**
+
+Do not attempt any other diagram formats.
+
+---
+
+## 4. Required Response Structure
+
+Every response to follow this Markdown structure:
+
+### Context (mandatory)
+Briefly restate the user's ask (1–3 lines).
+
+### Response
+Break content into clearly labelled subsections using \`####\` headings.
+Examples:
+- \`#### What This Means\`
+- \`#### Key Roles\`
+- \`#### Why It Matters\`
+- \`#### Processes\`
+- \`#### Responsibilities\`
+
+Use flat bullets under each subsection — no nested bullets.
+
+### Findings (optional)
+Summarise key observations using:
+
+- \`✅ Aligned: ...\`
+- \`⚠️ Partial: ...\`
+- \`❌ Gap: ...\`
+- \`🔍 Needs Clarification: ...\`
+
+### Options (optional)
+Numbered list of actionable recommendations based only on provided context.
+
+### Next Steps (optional)
+2–5 clear actions the organisation can take.
+
+### Follow-up Questions (mandatory)
+List 2–3 helpful follow-ups relevant to the policy topic.
+
+(Do not include citations or a References section.)
+
+---
+
+## 5. Prohibited Behaviours
+
+- No speculation beyond provided content
+- No invented clauses, roles, structures, or page references
+- No nested lists
+- No legal advice
+- No long paragraphs
+- No academic essay tone
+- No "References" section
+- No inline citations
+
+---
+
+## 6. Reinforcement (Important for Mini Models)
+
+You must strictly follow:
+- the Markdown formatting rules
+- the flat list structure
+- the required response sections
+- the ASCII diagram formatting standards
+- the prohibition on citations and references
+
+If information is missing, say so clearly — never guess.`;
+}
