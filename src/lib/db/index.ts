@@ -10,6 +10,7 @@
 import Database from 'better-sqlite3';
 import * as fs from 'fs';
 import * as path from 'path';
+import { validateLiteLLMOnStartup } from '../litellm-validator';
 
 // Database file path
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
@@ -42,6 +43,9 @@ export function getDatabase(): Database.Database {
 
   // Initialize default settings
   initializeDefaultSettings(db);
+
+  // Validate LiteLLM config (fail fast if default model missing)
+  validateLiteLLMOnStartup();
 
   return db;
 }

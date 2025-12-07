@@ -1,6 +1,6 @@
 # =============================================================================
 # LITELLM PROXY CONFIGURATION
-# Multi-provider setup: OpenAI, Mistral, Ollama
+# Models synced with config/defaults.json
 # Updated: December 2025
 # =============================================================================
 
@@ -33,15 +33,8 @@ model_list:
       supports_function_calling: true
       max_input_tokens: 1000000
 
-  - model_name: gpt-3.5-turbo
-    litellm_params:
-      model: gpt-3.5-turbo
-      api_key: os.environ/OPENAI_API_KEY
-    model_info:
-      supports_function_calling: true
-
   # ===========================================================================
-  # MISTRAL AI MODELS - Mistral 3 Family (Latest)
+  # MISTRAL AI MODELS
   # ===========================================================================
   - model_name: mistral-large-3
     litellm_params:
@@ -50,14 +43,6 @@ model_list:
     model_info:
       supports_function_calling: true
       max_input_tokens: 256000
-
-  - model_name: mistral-medium-3.1
-    litellm_params:
-      model: mistral/mistral-medium-2508
-      api_key: os.environ/MISTRAL_API_KEY
-    model_info:
-      supports_function_calling: true
-      supports_vision: true
 
   - model_name: mistral-small-3.2
     litellm_params:
@@ -73,15 +58,8 @@ model_list:
     model_info:
       supports_function_calling: true
 
-  - model_name: ministral-3b
-    litellm_params:
-      model: mistral/ministral-3b-latest
-      api_key: os.environ/MISTRAL_API_KEY
-    model_info:
-      supports_function_calling: true
-
   # ===========================================================================
-  # OLLAMA LOCAL MODELS (with Tool/Function Calling Support)
+  # OLLAMA LOCAL MODELS
   # ===========================================================================
   - model_name: ollama-llama3.2
     litellm_params:
@@ -90,9 +68,9 @@ model_list:
     model_info:
       supports_function_calling: true
 
-  - model_name: ollama-llama3.1
+  - model_name: ollama-qwen2.5
     litellm_params:
-      model: ollama/llama3.1
+      model: ollama/qwen2.5
       api_base: os.environ/OLLAMA_API_BASE
     model_info:
       supports_function_calling: true
@@ -100,13 +78,6 @@ model_list:
   - model_name: ollama-mistral
     litellm_params:
       model: ollama/mistral
-      api_base: os.environ/OLLAMA_API_BASE
-    model_info:
-      supports_function_calling: true
-
-  - model_name: ollama-qwen2.5
-    litellm_params:
-      model: ollama/qwen2.5
       api_base: os.environ/OLLAMA_API_BASE
     model_info:
       supports_function_calling: true
@@ -121,40 +92,10 @@ model_list:
   # ===========================================================================
   # EMBEDDING MODELS
   # ===========================================================================
-
-  # ---------------------------------------------------------------------------
-  # OpenAI Embeddings
-  # ---------------------------------------------------------------------------
   - model_name: text-embedding-3-large
     litellm_params:
       model: text-embedding-3-large
       api_key: os.environ/OPENAI_API_KEY
-
-  - model_name: text-embedding-3-small
-    litellm_params:
-      model: text-embedding-3-small
-      api_key: os.environ/OPENAI_API_KEY
-
-  # ---------------------------------------------------------------------------
-  # Mistral Embeddings
-  # ---------------------------------------------------------------------------
-  - model_name: mistral-embed
-    litellm_params:
-      model: mistral/mistral-embed
-      api_key: os.environ/MISTRAL_API_KEY
-
-  - model_name: codestral-embed
-    litellm_params:
-      model: mistral/codestral-embed-2505
-      api_key: os.environ/MISTRAL_API_KEY
-
-  # ---------------------------------------------------------------------------
-  # Ollama Embeddings (Local)
-  # ---------------------------------------------------------------------------
-  - model_name: ollama-nomic-embed
-    litellm_params:
-      model: ollama/nomic-embed-text
-      api_base: os.environ/OLLAMA_API_BASE
 
   - model_name: ollama-mxbai-embed
     litellm_params:
@@ -164,22 +105,10 @@ model_list:
   # ===========================================================================
   # AUDIO/TRANSCRIPTION MODELS
   # ===========================================================================
-
-  # ---------------------------------------------------------------------------
-  # OpenAI Whisper
-  # ---------------------------------------------------------------------------
   - model_name: whisper-1
     litellm_params:
       model: whisper-1
       api_key: os.environ/OPENAI_API_KEY
-
-  # ---------------------------------------------------------------------------
-  # Mistral Voxtral
-  # ---------------------------------------------------------------------------
-  - model_name: voxtral-small
-    litellm_params:
-      model: mistral/voxtral-small-latest
-      api_key: os.environ/MISTRAL_API_KEY
 
   - model_name: voxtral-mini
     litellm_params:
