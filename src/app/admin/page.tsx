@@ -557,7 +557,7 @@ export default function AdminPage() {
 
       const data = await response.json();
       setProviderStatus(data.providers || {});
-      setServiceStatus(data.services || []);
+      setServiceStatus((data.services || []).filter(Boolean));
     } catch (err) {
       console.error('Failed to load provider status:', err);
       // Don't show error to user - providers status is optional
@@ -581,7 +581,7 @@ export default function AdminPage() {
       }
 
       const data = await response.json();
-      setRerankerStatus(data.providers || []);
+      setRerankerStatus((data.providers || []).filter(Boolean));
     } catch (err) {
       console.error('Failed to load reranker status:', err);
       // Don't show error to user - reranker status is optional
@@ -1608,10 +1608,10 @@ export default function AdminPage() {
 
   // Dashboard services filter and search
   const filteredDashboardServices = useMemo(() => {
-    // Combine services from API with reranker status
+    // Combine services from API with reranker status (filter out any null items)
     const allServices: ServiceStatus[] = [
-      ...serviceStatus,
-      ...rerankerStatus.map(r => ({
+      ...serviceStatus.filter(Boolean),
+      ...rerankerStatus.filter(Boolean).map(r => ({
         category: 'reranker' as const,
         name: r.name,
         model: r.provider === 'cohere' ? 'rerank-english-v3.0' : 'Transformers.js',
@@ -1632,7 +1632,7 @@ export default function AdminPage() {
 
     // Apply provider filter
     if (dashboardProviderFilter !== 'all') {
-      result = result.filter(s => s.provider.toLowerCase() === dashboardProviderFilter.toLowerCase());
+      result = result.filter(s => s?.provider?.toLowerCase() === dashboardProviderFilter.toLowerCase());
     }
 
     // Apply search
@@ -1650,8 +1650,8 @@ export default function AdminPage() {
   // Get unique providers from services for filter dropdown
   const dashboardProviders = useMemo(() => {
     const allServices: ServiceStatus[] = [
-      ...serviceStatus,
-      ...rerankerStatus.map(r => ({
+      ...serviceStatus.filter(Boolean),
+      ...rerankerStatus.filter(Boolean).map(r => ({
         category: 'reranker' as const,
         name: r.name,
         model: r.provider === 'cohere' ? 'rerank-english-v3.0' : 'Transformers.js',
@@ -1662,7 +1662,7 @@ export default function AdminPage() {
         latency: r.latency,
       })),
     ];
-    const providers = new Set(allServices.map(s => s.provider));
+    const providers = new Set(allServices.map(s => s?.provider).filter(Boolean));
     return Array.from(providers).sort();
   }, [serviceStatus, rerankerStatus]);
 
