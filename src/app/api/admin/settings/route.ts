@@ -32,12 +32,15 @@ import type { ApiError } from '@/types';
 
 // Dynamically generate available models from MODEL_PRESETS (single source of truth)
 // Each preset becomes an available model option
-const AVAILABLE_MODELS = MODEL_PRESETS.map(preset => ({
-  id: preset.model,
-  name: preset.name,
-  description: preset.description,
-  provider: getProviderFromModel(preset.model),
-}));
+// Note: Must be a function because MODEL_PRESETS is a lazy-loaded Proxy
+function getAvailableModels() {
+  return Array.from(MODEL_PRESETS).map(preset => ({
+    id: preset.model,
+    name: preset.name,
+    description: preset.description,
+    provider: getProviderFromModel(preset.model),
+  }));
+}
 
 // Helper to determine provider from model name
 function getProviderFromModel(model: string): 'openai' | 'mistral' | 'ollama' | 'azure' {
@@ -124,7 +127,7 @@ export async function GET() {
       },
       uploadLimits,
       retentionSettings,
-      availableModels: AVAILABLE_MODELS,
+      availableModels: getAvailableModels(),
       modelPresets: MODEL_PRESETS,
       brandingIcons: BRANDING_ICONS,
       models: {
@@ -249,7 +252,7 @@ export async function PUT(request: NextRequest) {
         // Validate LLM settings
         const { model, temperature, maxTokens } = settings;
 
-        if (!model || !AVAILABLE_MODELS.some(m => m.id === model)) {
+        if (!model || !getAvailableModels().some(m => m.id === model)) {
           return NextResponse.json<ApiError>(
             { error: 'Invalid model selected', code: 'VALIDATION_ERROR' },
             { status: 400 }
