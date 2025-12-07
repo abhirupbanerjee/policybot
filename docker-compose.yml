@@ -63,12 +63,11 @@ services:
     image: chromadb/chroma:latest
     container_name: policy-bot-chroma
     volumes:
-      - ./data/chroma:/chroma/chroma
+      - ./data/chroma:/data
     environment:
       - ANONYMIZED_TELEMETRY=false
       - ALLOW_RESET=false
       - IS_PERSISTENT=TRUE
-      - PERSIST_DIRECTORY=/chroma/chroma
     networks:
       - policy-bot-network
     restart: unless-stopped
