@@ -502,8 +502,8 @@ export default function AdminPage() {
       if (data.models?.transcription) {
         setTranscriptionModel(data.models.transcription);
       }
-      setAvailableModels(data.availableModels || []);
-      setModelPresets(data.modelPresets || []);
+      setAvailableModels((data.availableModels || []).filter(Boolean));
+      setModelPresets((data.modelPresets || []).filter(Boolean));
       setRagModified(false);
       setLlmModified(false);
       setAcronymsModified(false);
@@ -2037,7 +2037,7 @@ export default function AdminPage() {
                             </td>
                           </tr>
                         ) : (
-                          filteredDashboardServices.map((service, idx) => (
+                          filteredDashboardServices.filter(Boolean).map((service, idx) => (
                             <tr key={`${service.category}-${service.model}-${idx}`} className="hover:bg-gray-50">
                               <td className="px-4 py-3 text-gray-500 capitalize">{service.category}</td>
                               <td className="px-4 py-3 font-medium text-gray-900 capitalize">{service.provider}</td>
@@ -2072,7 +2072,7 @@ export default function AdminPage() {
                 {/* Error Details */}
                 {(() => {
                   const errors = filteredDashboardServices
-                    .filter(s => !s.available && s.error)
+                    .filter(s => s && !s.available && s.error)
                     .map(s => ({ category: s.category, provider: s.name, error: s.error! }));
 
                   if (errors.length === 0) return null;
@@ -2692,7 +2692,7 @@ export default function AdminPage() {
                     </div>
                     <div className="p-6">
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        {modelPresets.map((preset) => {
+                        {modelPresets.filter(Boolean).map((preset) => {
                           const provider = getModelProvider(preset.model);
                           const status = providerStatus[provider];
                           const available = status?.available ?? true;
@@ -2780,7 +2780,7 @@ export default function AdminPage() {
                           onChange={(e) => handleLlmChange('model', e.target.value)}
                           className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         >
-                          {availableModels.map((model) => {
+                          {availableModels.filter(Boolean).map((model) => {
                             const provider = model.provider || getModelProvider(model.id);
                             const status = providerStatus[provider];
                             const available = status?.available ?? true;
@@ -3361,8 +3361,8 @@ export default function AdminPage() {
                           className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         >
                           {(() => {
-                            const cohereStatus = rerankerStatus.find(s => s.provider === 'cohere');
-                            const localStatus = rerankerStatus.find(s => s.provider === 'local');
+                            const cohereStatus = rerankerStatus.find(s => s?.provider === 'cohere');
+                            const localStatus = rerankerStatus.find(s => s?.provider === 'local');
                             const cohereAvailable = cohereStatus?.available ?? true;
                             const localAvailable = localStatus?.available ?? true;
                             return (
