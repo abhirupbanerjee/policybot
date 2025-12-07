@@ -445,16 +445,18 @@ Key-value configuration store.
 | `acronym-mappings` | AcronymMappings | Custom acronym expansions |
 | `retention-settings` | RetentionSettings | Data retention policies |
 | `branding-settings` | BrandingSettings | Bot name and icon for sidebar |
+| `embedding-settings` | EmbeddingSettings | Embedding model configuration |
+| `reranker-settings` | RerankerSettings | Chunk reranking configuration |
 
 **Settings Interfaces:**
 
 ```typescript
 export interface RagSettings {
-  topKChunks: number;           // Number of chunks to retrieve (default: 20)
-  maxContextChunks: number;     // Max chunks in context (default: 15)
+  topKChunks: number;           // Number of chunks to retrieve (default: 15)
+  maxContextChunks: number;     // Max chunks in context (default: 10)
   similarityThreshold: number;  // Min similarity score (default: 0.5)
-  chunkSize: number;            // Characters per chunk (default: 800)
-  chunkOverlap: number;         // Overlap between chunks (default: 150)
+  chunkSize: number;            // Characters per chunk (default: 1200)
+  chunkOverlap: number;         // Overlap between chunks (default: 200)
   queryExpansionEnabled: boolean; // Expand acronyms (default: true)
   cacheEnabled: boolean;        // Redis caching (default: true)
   cacheTTLSeconds: number;      // Cache TTL (default: 3600)
@@ -462,7 +464,7 @@ export interface RagSettings {
 
 export interface LlmSettings {
   model: string;       // Model name routed via LiteLLM (default: 'gpt-4.1-mini')
-  temperature: number; // Response randomness (default: 0.3)
+  temperature: number; // Response randomness (default: 0.2)
   maxTokens: number;   // Max response tokens (default: 2000)
 }
 
@@ -488,8 +490,21 @@ export interface RetentionSettings {
 }
 
 export interface BrandingSettings {
-  botName: string;    // Display name in sidebar (default: "Policy Bot")
+  botName: string;    // Display name in sidebar (default: "Grenada AI Assistant")
   botIcon: string;    // Icon key: government, operations, finance, kpi, logs, data, monitoring, architecture, internet, systems, policy
+}
+
+export interface EmbeddingSettings {
+  model: string;       // Embedding model (default: 'text-embedding-3-large')
+  dimensions: number;  // Vector dimensions (default: 3072)
+}
+
+export interface RerankerSettings {
+  enabled: boolean;        // Enable reranking (default: false)
+  provider: string;        // Provider: 'cohere' or 'local'
+  topKForReranking: number;  // Chunks to rerank (default: 50)
+  minRerankerScore: number;  // Minimum rerank score (default: 0.3)
+  cacheTTLSeconds: number;   // Cache TTL (default: 3600)
 }
 ```
 

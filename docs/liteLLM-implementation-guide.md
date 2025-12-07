@@ -2,6 +2,28 @@
 
 > Customized for multi-provider LLM abstraction with proxy approach, embeddings routing, function calling support, and audio transcription.
 
+## Policy Bot Integration
+
+This guide is configured for the Policy Bot RAG application. Default model preset:
+
+| Setting | Value |
+|---------|-------|
+| Default Model | `gpt-4.1-mini` |
+| Temperature | `0.2` |
+| Max Tokens | `2000` |
+| Embedding Model | `text-embedding-3-large` |
+| Embedding Dimensions | `3072` |
+
+Available model presets in Policy Bot (via `config/defaults.json`):
+- **gpt-4.1** - High Performance (1M context)
+- **gpt-4.1-mini** - Balanced (default)
+- **gpt-4.1-nano** - Cost-Effective
+- **mistral-large-3** - Mistral Flagship (256K context)
+- **mistral-small-3.2** - Mistral Cost-Effective
+- **ministral-8b** - Mistral Ultra Cost-Effective
+- **ollama-llama3.2** - Local (no API cost)
+- **ollama-qwen2.5** - Local with excellent reasoning
+
 ---
 
 ## Architecture Overview
@@ -434,25 +456,15 @@ Since your `generateResponseWithTools()` uses function calling, here's how to ha
 # Provider capability mapping (Updated December 2025)
 
 # Full tool/function calling support
+# Matches Policy Bot config/defaults.json toolCapable list
 TOOL_CAPABLE_MODELS = [
     # OpenAI
-    "openai-gpt41",
-    "openai-gpt41-mini",
-    "openai-gpt41-nano",
-    "openai-gpt35",
-    # Azure
-    "azure-gpt41",
-    "azure-gpt41-mini",
+    "gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "gpt-3.5-turbo",
     # Mistral
-    "mistral-large-3",
-    "mistral-medium-31",
-    "mistral-small-32",
-    "ministral-8b",
+    "mistral-large-3", "mistral-medium-3.1", "mistral-small-3.2",
+    "ministral-8b", "ministral-3b",
     # Ollama (Now with full tool support!)
-    "ollama-llama32",      # Fine-tuned for function calling
-    "ollama-llama31-8b",
-    "ollama-mistral",      # v0.3+ supports tools
-    "ollama-qwen25",
+    "ollama-llama3.2", "ollama-llama3.1", "ollama-mistral", "ollama-qwen2.5",
 ]
 
 # Limited or no tool support (show warning)
@@ -697,14 +709,15 @@ curl -X POST http://localhost:4000/embeddings \
 
 | Use Case | Recommended Model | Why |
 |----------|-------------------|-----|
-| **Production Chat** | `openai-gpt41` or `azure-gpt41` | Best instruction following, 1M context |
-| **Budget Chat** | `openai-gpt41-mini` or `ministral-8b` | Good quality at lower cost |
-| **Local/Offline Chat** | `ollama-llama32` or `ollama-mistral` | Full tool support, runs locally |
-| **RAG Embeddings** | `openai-embedding-large` | Best quality for retrieval |
+| **Production Chat** | `gpt-4.1` | Best instruction following, 1M context |
+| **Balanced (Default)** | `gpt-4.1-mini` | Good quality at lower cost (Policy Bot default) |
+| **Budget Chat** | `gpt-4.1-nano` or `ministral-8b` | Cost-effective for simple queries |
+| **Local/Offline Chat** | `ollama-llama3.2` or `ollama-qwen2.5` | Full tool support, runs locally |
+| **RAG Embeddings** | `text-embedding-3-large` | Best quality for retrieval (Policy Bot default) |
 | **Local Embeddings** | `ollama-embedding` (nomic) | Good quality, no API cost |
 | **Audio Transcription** | `voxtral-transcribe` | Beats Whisper, half the cost |
-| **Budget Transcription** | `openai-whisper` | Well-established, $0.006/min |
-| **Function Calling** | `openai-gpt41`, `mistral-large-3`, `ollama-llama32` | Reliable tool use |
+| **Budget Transcription** | `whisper-1` | Well-established, $0.006/min |
+| **Function Calling** | `gpt-4.1-mini`, `mistral-large-3`, `ollama-llama3.2` | Reliable tool use |
 
 ---
 

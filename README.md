@@ -28,16 +28,19 @@ A Retrieval-Augmented Generation (RAG) chatbot that helps government staff query
 - **Subscription Model** - Users subscribe to categories to access their documents
 
 ### Administration
-- **Admin Dashboard** - Comprehensive UI for managing documents, users, and categories
+- **Admin Dashboard** - Comprehensive UI with 5 tabs: Dashboard, Documents, Categories, Users, Settings
+- **Dashboard Statistics** - Real-time system overview with database, ChromaDB, and storage metrics
 - **Document Registry** - Monitor processing status and manage document categories
 - **Category Management** - Create, edit, and delete document categories
 - **User Subscriptions** - Assign default category subscriptions when creating users
 - **Super User Management** - Assign categories to super users for delegated management
 - **Web Search Configuration** - Enable/disable and configure Tavily web search settings
+- **Reranker Configuration** - Optional chunk reranking via Cohere API or local Transformers.js
 - **Multi-Provider LLM Settings** - Switch between OpenAI, Mistral, and Ollama models via LiteLLM
 - **Model Presets** - Quick-select from 8 pre-configured model+RAG combinations
 - **Provider Status Dashboard** - Real-time status of LLM providers and services
 - **RAG Configuration** - Configure chunk sizes, similarity thresholds, and caching
+- **Acronym Mappings** - Configure query expansion for common abbreviations
 - **Custom Branding** - Configure bot name and icon in admin settings
 
 ### Security & Access Control
@@ -98,11 +101,12 @@ A Retrieval-Augmented Generation (RAG) chatbot that helps government staff query
 3. **Cache Check** - Redis checks for cached response (configurable TTL)
 4. **Embedding** - Query converted to vector using `text-embedding-3-large` (3072 dimensions)
 5. **Search** - ChromaDB performs semantic search across category-specific collections
-6. **Context Building** - Top results combined with conversation history
-7. **Generation** - LLM generates response via LiteLLM proxy with function calling
-8. **Web Search** (if needed) - LLM automatically triggers Tavily web search for current information
-9. **Combined Response** - Merges policy documents and web sources with [WEB] tags
-10. **Cache & Return** - Response cached and returned with source metadata
+6. **Reranking** (optional) - Cohere or local model re-scores chunks by query relevance
+7. **Context Building** - Top results combined with conversation history
+8. **Generation** - LLM generates response via LiteLLM proxy with function calling
+9. **Web Search** (if needed) - LLM automatically triggers Tavily web search for current information
+10. **Combined Response** - Merges policy documents and web sources with [WEB] tags
+11. **Cache & Return** - Response cached and returned with source metadata
 
 ## Infrastructure
 
@@ -151,6 +155,8 @@ A Retrieval-Augmented Generation (RAG) chatbot that helps government staff query
 - **Azure Document Intelligence** - Primary OCR for PDF/image extraction
 - **Mistral OCR** - Fallback PDF text extraction
 - **Tavily API** - Real-time web search (optional, configurable via admin panel)
+- **Cohere Reranker** - Chunk reranking for improved RAG relevance (optional)
+- **Local Reranker** - Transformers.js with Xenova/all-MiniLM-L6-v2 (no API cost)
 
 ### Data Storage
 - **SQLite** - Users, categories, documents, subscriptions, and configuration
@@ -188,29 +194,37 @@ cd policy-bot
 cp .env.example .env.local
 ```
 
-3. Configure environment variables:
+3. Configure environment variables (see `.env.example` for full list):
 ```env
-# Required
+# [REQUIRED] Core Configuration
 OPENAI_API_KEY=sk-...
-AUTH_DISABLED=true
+ADMIN_EMAILS=admin@example.com
+AUTH_DISABLED=true  # Development only
+
+# [REQUIRED] Infrastructure
+CHROMA_HOST=localhost
+CHROMA_PORT=8000
+REDIS_URL=redis://localhost:6379
 DATA_DIR=./data
 
-# LiteLLM Proxy (routes all LLM requests)
-OPENAI_BASE_URL=http://litellm:4000/v1
+# [OPTIONAL] LiteLLM Proxy (for multi-provider support)
+OPENAI_BASE_URL=http://localhost:4000/v1
+LITELLM_MASTER_KEY=sk-litellm-master-change-this
 
-# Optional - Mistral models
+# [OPTIONAL] Additional Providers
 MISTRAL_API_KEY=your-mistral-api-key
+OLLAMA_API_BASE=http://localhost:11434
 
-# Optional - Azure Document Intelligence (OCR)
-AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT=https://...
-AZURE_DOCUMENT_INTELLIGENCE_KEY=...
+# [OPTIONAL] Document Processing
+AZURE_DI_ENDPOINT=https://...
+AZURE_DI_KEY=...
 
-# Optional - Tavily Web Search (configure via admin panel after setup)
-# TAVILY_API_KEY is stored in database
+# [OPTIONAL] RAG Enhancements
+COHERE_API_KEY=your-cohere-api-key  # Reranking
+TAVILY_API_KEY=your-tavily-api-key  # Web search
 
-# Embedding configuration (defaults shown)
+# [HAS DEFAULT] Embeddings
 EMBEDDING_MODEL=text-embedding-3-large
-EMBEDDING_DIMENSIONS=3072
 ```
 
 4. Start development services:
@@ -224,39 +238,49 @@ npm run dev
 
 ### Production Deployment
 
-1. Configure production environment:
+1. Configure production environment (see `.env.example` for full list):
 ```env
-# Domain & TLS
-DOMAIN=policybot.example.com
-ACME_EMAIL=admin@example.com
-
-# LLM Providers
+# [REQUIRED] Core
 OPENAI_API_KEY=sk-...
-MISTRAL_API_KEY=your-mistral-api-key  # Optional
+ADMIN_EMAILS=admin@example.com
+NEXTAUTH_SECRET=<generate with: openssl rand -base64 32>
 
-# LiteLLM Proxy
-OPENAI_BASE_URL=http://litellm:4000/v1
+# [REQUIRED] Infrastructure
+CHROMA_HOST=chroma
+CHROMA_PORT=8000
+REDIS_URL=redis://redis:6379
+DATA_DIR=/app/data
 
-# Azure Document Intelligence (recommended for OCR)
-AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT=https://...
-AZURE_DOCUMENT_INTELLIGENCE_KEY=...
-
-# Embeddings (defaults to text-embedding-3-large, 3072 dimensions)
-EMBEDDING_MODEL=text-embedding-3-large
-EMBEDDING_DIMENSIONS=3072
-
-# Authentication
-NEXTAUTH_SECRET=<generate-secret>
+# [REQUIRED] Authentication (at least one provider)
 NEXTAUTH_URL=https://policybot.example.com
 AZURE_AD_CLIENT_ID=...
 AZURE_AD_CLIENT_SECRET=...
 AZURE_AD_TENANT_ID=...
+# Or Google OAuth
 GOOGLE_CLIENT_ID=...
 GOOGLE_CLIENT_SECRET=...
 
-# Access Control
+# [REQUIRED] Deployment
+DOMAIN=policybot.example.com
+ACME_EMAIL=admin@example.com
+
+# [OPTIONAL] LiteLLM Proxy (multi-provider)
+OPENAI_BASE_URL=http://litellm:4000/v1
+LITELLM_MASTER_KEY=sk-litellm-master-change-this
+
+# [OPTIONAL] Additional Providers
+MISTRAL_API_KEY=your-mistral-api-key
+
+# [OPTIONAL] Document Processing
+AZURE_DI_ENDPOINT=https://...
+AZURE_DI_KEY=...
+
+# [OPTIONAL] RAG Enhancements
+COHERE_API_KEY=your-cohere-api-key  # Reranking
+TAVILY_API_KEY=your-tavily-api-key  # Web search
+
+# [HAS DEFAULT] Access Control
 ACCESS_MODE=allowlist
-ADMIN_EMAILS=admin@example.com
 ```
 
 2. Deploy with Docker Compose:
@@ -396,13 +420,14 @@ policy-bot/
 ### Settings
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/admin/settings` | Get LLM, RAG, and Tavily settings |
-| PUT | `/api/admin/settings` | Update settings |
+| GET | `/api/admin/settings` | Get all settings (LLM, RAG, reranker, etc.) |
+| PATCH | `/api/admin/settings` | Update settings by type |
 | GET | `/api/admin/system-prompt` | Get system prompt |
-| POST | `/api/admin/system-prompt` | Update system prompt |
-| POST | `/api/admin/refresh` | Re-index documents with current settings |
+| PUT | `/api/admin/system-prompt` | Update system prompt |
+| POST | `/api/admin/refresh` | Re-index all documents |
 | GET | `/api/admin/stats` | Get system statistics |
 | GET | `/api/admin/providers` | Get LLM provider and service status |
+| GET | `/api/admin/reranker-status` | Get reranker availability (Cohere/local) |
 
 ## Database Schema
 
@@ -439,16 +464,18 @@ Policy Bot supports multiple LLM providers through LiteLLM proxy, configurable v
 
 The admin panel provides 8 pre-configured model presets that optimize both LLM and RAG settings:
 
-| Preset | Model | Temperature | Max Tokens | Chunks |
-|--------|-------|-------------|------------|--------|
-| GPT-4.1 (High Performance) | gpt-4.1 | 0.3 | 4000 | 25/20 |
-| GPT-4.1 Mini (Balanced) | gpt-4.1-mini | 0.5 | 3000 | 20/15 |
-| GPT-4.1 Nano (Cost-Effective) | gpt-4.1-nano | 0.7 | 2000 | 15/10 |
-| Mistral Large 3 | mistral-large-3 | 0.3 | 4000 | 25/20 |
-| Mistral Small 3.2 | mistral-small-3.2 | 0.5 | 3000 | 20/15 |
-| Ministral 8B | ministral-8b | 0.7 | 2000 | 15/10 |
-| Ollama Llama 3.2 | ollama-llama3.2 | 0.5 | 2000 | 15/10 |
-| Ollama Qwen 2.5 | ollama-qwen2.5 | 0.3 | 3000 | 20/15 |
+| Preset | Model | Temperature | Max Tokens | Top K / Max Context |
+|--------|-------|-------------|------------|---------------------|
+| GPT-4.1 (High Performance) | gpt-4.1 | 0.1 | 4000 | 25/20 |
+| GPT-4.1 Mini (Balanced) | gpt-4.1-mini | 0.2 | 3000 | 20/15 |
+| GPT-4.1 Nano (Cost-Effective) | gpt-4.1-nano | 0.2 | 2000 | 15/10 |
+| Mistral Large 3 | mistral-large-3 | 0.2 | 3000 | 20/15 |
+| Mistral Small 3.2 | mistral-small-3.2 | 0.2 | 2000 | 15/10 |
+| Ministral 8B | ministral-8b | 0.2 | 2000 | 10/8 |
+| Ollama Llama 3.2 | ollama-llama3.2 | 0.2 | 2000 | 15/10 |
+| Ollama Qwen 2.5 | ollama-qwen2.5 | 0.2 | 2000 | 15/10 |
+
+**Default preset:** `gpt-4.1-mini` (Balanced) - temperature: 0.2, maxTokens: 2000
 
 ### Provider Status Dashboard
 
@@ -482,14 +509,30 @@ Configurable via admin panel Settings > RAG Settings:
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| Top K Chunks | 20 | Number of chunks to retrieve |
-| Max Context Chunks | 15 | Chunks sent to LLM |
+| Top K Chunks | 15 | Number of chunks to retrieve |
+| Max Context Chunks | 10 | Chunks sent to LLM |
 | Similarity Threshold | 0.5 | Minimum relevance score (0-1) |
-| Chunk Size | 800 | Characters per chunk |
-| Chunk Overlap | 150 | Overlap between chunks |
+| Chunk Size | 1200 | Characters per chunk |
+| Chunk Overlap | 200 | Overlap between chunks |
 | Query Expansion | Enabled | Expand acronyms automatically |
 | Response Caching | Enabled | Cache responses in Redis |
 | Cache TTL | 3600s | Cache expiration (1 hour) |
+
+### Reranker Configuration
+
+Optional chunk reranking for improved RAG relevance (Settings > Reranker):
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| Enabled | false | Enable chunk reranking |
+| Provider | cohere | `cohere` (API) or `local` (Transformers.js) |
+| Top K for Reranking | 50 | Chunks to rerank before filtering |
+| Min Reranker Score | 0.3 | Minimum score to include (0-1) |
+| Cache TTL | 3600s | Reranker cache expiration |
+
+**Providers:**
+- **Cohere API** - Fast, requires `COHERE_API_KEY`, uses `rerank-english-v3.0`
+- **Local** - No API cost, uses `Xenova/all-MiniLM-L6-v2`, slower first load
 
 ### Branding Configuration
 
@@ -633,11 +676,13 @@ model_list:
 See [docs/README.md](docs/README.md) for complete documentation index.
 
 **Core Docs:**
-- [Solution Architecture](docs/SOLUTION.md) - System design and LiteLLM integration
+- [Solution Architecture](docs/SOLUTION.md) - System design, RAG pipeline, and reranker integration
 - [API Specification](docs/API_SPECIFICATION.md) - REST API reference
-- [Infrastructure Guide](docs/INFRASTRUCTURE.md) - Docker and deployment
+- [OpenAPI Specification](docs/openapi.yaml) - OpenAPI 3.0 schema
+- [Infrastructure Guide](docs/INFRASTRUCTURE.md) - Docker, deployment, and cost estimation
 - [Database Schema](docs/DATABASE.md) - SQLite schema, settings, and model presets
 - [UI Wireframes](docs/UI_WIREFRAMES.md) - Admin dashboard and component designs
+- [LiteLLM Guide](docs/liteLLM-implementation-guide.md) - Multi-provider LLM configuration
 - [Web Search Integration](docs/web-search.md) - Tavily web search setup
 - [Deployment Checklist](docs/DEPLOYMENT_CHECKLIST.md) - Production deployment guide
 

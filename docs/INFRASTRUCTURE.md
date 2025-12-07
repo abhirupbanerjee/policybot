@@ -29,32 +29,32 @@ Policy Bot uses Docker Compose for containerized deployment with three environme
 │  │   │  Chat API    │  │  Admin API   │  │ SuperUser API│          │    │
 │  │   └──────────────┘  └──────────────┘  └──────────────┘          │    │
 │  └─────────────────────────────────────────────────────────────────┘    │
-│         │                      │                      │                  │
-│         ▼                      ▼                      ▼                  │
-│  ┌─────────────┐        ┌─────────────┐        ┌─────────────┐         │
-│  │   SQLITE    │        │  CHROMADB   │        │    REDIS    │         │
-│  │  /app/data  │        │  Port 8000  │        │  Port 6379  │         │
-│  │  /policy-   │        │  (internal) │        │  (internal) │         │
-│  │  bot.db     │        └─────────────┘        └─────────────┘         │
-│  └─────────────┘               │                      │                  │
-│         │                      ▼                      ▼                  │
-│         │               ┌─────────────┐        ┌─────────────┐         │
-│         │               │ chroma_data │        │ redis_data  │         │
-│         │               │  (volume)   │        │  (volume)   │         │
-│         │               └─────────────┘        └─────────────┘         │
-│         │                                                               │
-│         ▼                                                               │
-│  ┌─────────────┐                                                        │
-│  │  app_data   │ ◄── SQLite DB + global-docs + threads                 │
-│  │  (volume)   │                                                        │
-│  └─────────────┘                                                        │
+│         │              │              │              │                   │
+│         ▼              ▼              ▼              ▼                   │
+│  ┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐        │
+│  │   SQLITE    │ │  CHROMADB   │ │    REDIS    │ │   LITELLM   │        │
+│  │  /app/data  │ │  Port 8000  │ │  Port 6379  │ │  Port 4000  │        │
+│  │  /policy-   │ │  (internal) │ │  (internal) │ │  (internal) │        │
+│  │  bot.db     │ └─────────────┘ └─────────────┘ └─────────────┘        │
+│  └─────────────┘       │              │              │                   │
+│         │              ▼              ▼              │                   │
+│         │        ┌─────────────┐ ┌─────────────┐    │                   │
+│         │        │ chroma_data │ │ redis_data  │    │                   │
+│         │        │  (volume)   │ │  (volume)   │    │                   │
+│         │        └─────────────┘ └─────────────┘    │                   │
+│         │                                           │                   │
+│         ▼                                           ▼                   │
+│  ┌─────────────┐                     ┌────────────────────────────┐     │
+│  │  app_data   │ ◄── SQLite DB +     │      EXTERNAL SERVICES     │     │
+│  │  (volume)   │     global-docs +   │  ┌────────┐ ┌────────┐     │     │
+│  └─────────────┘     threads         │  │ OpenAI │ │Mistral │     │     │
+│                                      │  ├────────┤ ├────────┤     │     │
+│                                      │  │ Tavily │ │ Cohere │     │     │
+│                                      │  ├────────┤ ├────────┤     │     │
+│                                      │  │ Ollama │ │Azure DI│     │     │
+│                                      │  └────────┘ └────────┘     │     │
+│                                      └────────────────────────────┘     │
 └─────────────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-                    ┌─────────────────┐
-                    │   OPENAI API    │
-                    │   (External)    │
-                    └─────────────────┘
 ```
 
 ---
@@ -114,6 +114,13 @@ MISTRAL_API_KEY=your-mistral-api-key
 # Tavily (Optional - for web search)
 TAVILY_API_KEY=your-tavily-api-key
 
+# Cohere (Optional - for reranking)
+COHERE_API_KEY=your-cohere-api-key
+
+# LiteLLM Proxy (Optional - for multi-provider support)
+LITELLM_MASTER_KEY=sk-litellm-master-change-this
+LITELLM_HOST=http://localhost:4000
+
 # Embeddings (defaults shown)
 EMBEDDING_MODEL=text-embedding-3-large
 EMBEDDING_DIMENSIONS=3072
@@ -148,6 +155,13 @@ MISTRAL_API_KEY=your-mistral-api-key
 
 # Tavily (Optional - for web search)
 TAVILY_API_KEY=your-tavily-api-key
+
+# Cohere (Optional - for reranking)
+COHERE_API_KEY=your-cohere-api-key
+
+# LiteLLM Proxy
+LITELLM_MASTER_KEY=sk-litellm-master-change-this
+LITELLM_HOST=http://litellm:4000
 
 # Embeddings
 EMBEDDING_MODEL=text-embedding-3-large
@@ -332,6 +346,27 @@ services:
     networks:
       - policy-bot-network
     restart: unless-stopped
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-latest
+    container_name: policy-bot-litellm
+    volumes:
+      - ./litellm_config.yaml:/app/config.yaml
+    env_file:
+      - .env
+    environment:
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
+    command: --config /app/config.yaml --port 4000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - policy-bot-network
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 networks:
   policy-bot-network:
@@ -695,6 +730,7 @@ docker compose up -d --build
 | App | `/api/auth/session` | 200 OK |
 | Chroma | `http://chroma:8000/api/v1/heartbeat` | 200 OK |
 | Redis | `redis-cli ping` | PONG |
+| LiteLLM | `http://litellm:4000/health` | 200 OK |
 
 ### Health Check Script
 
@@ -723,6 +759,13 @@ if docker exec policy-bot-redis redis-cli ping | grep -q PONG; then
   echo "✓ Redis: healthy"
 else
   echo "✗ Redis: unhealthy"
+fi
+
+# Check LiteLLM
+if docker exec policy-bot-litellm curl -sf http://localhost:4000/health > /dev/null; then
+  echo "✓ LiteLLM: healthy"
+else
+  echo "✗ LiteLLM: unhealthy"
 fi
 
 # Check SQLite database
@@ -882,7 +925,7 @@ sudo swapon /swapfile
 
 | Model | Usage | Cost |
 |-------|-------|------|
-| gpt-5-mini | ~100K tokens/day | ~$15 |
+| gpt-4.1-mini (default) | ~100K tokens/day | ~$15 |
 | text-embedding-3-large | ~50K tokens/day | ~$1 |
 | whisper-1 | ~1 hour audio/day | ~$18 |
 
@@ -893,7 +936,9 @@ sudo swapon /swapfile
 | API | Usage | Cost |
 |-----|-------|------|
 | Mistral OCR | ~100 pages/day | ~$5/month |
+| Mistral LLM (mistral-small-3.2) | ~50K tokens/day | ~$3/month |
 | Tavily Search | ~1000 queries/month | ~$10/month |
+| Cohere Reranker | ~10K queries/month | ~$1/month |
 
 ### Infrastructure (Self-Hosted VM)
 

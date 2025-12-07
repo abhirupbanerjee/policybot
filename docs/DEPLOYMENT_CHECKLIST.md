@@ -126,6 +126,14 @@
   ```
   - [ ] Test passed ✅
 
+- [ ] **Reranker Test** (if Cohere reranker enabled)
+  ```
+  Query: "What is the leave entitlement for senior staff?"
+  Expected: Results should be reranked with improved relevance ordering
+  Check: Admin → Settings → Reranker shows enabled status
+  ```
+  - [ ] Test passed ✅
+
 ### UI Verification
 
 - [ ] Admin → Documents page
@@ -148,12 +156,36 @@
   - [ ] File upload works
   - [ ] Voice input works (if enabled)
 
+### Settings Verification
+
+- [ ] Admin → Settings → RAG Settings
+  - [ ] topKChunks: 15
+  - [ ] maxContextChunks: 10
+  - [ ] chunkSize: 1200
+  - [ ] chunkOverlap: 200
+  - [ ] similarityThreshold: 0.5
+
+- [ ] Admin → Settings → Embedding Settings
+  - [ ] model: text-embedding-3-large
+  - [ ] dimensions: 3072
+
+- [ ] Admin → Settings → Reranker (if enabled)
+  - [ ] provider: cohere (or local)
+  - [ ] topKForReranking: 50
+  - [ ] minRerankerScore: 0.3
+
+- [ ] Admin → Settings → Model Settings
+  - [ ] Default preset: gpt-4.1-mini
+  - [ ] temperature: 0.2
+  - [ ] maxTokens: 2000
+
 ### Performance Checks
 
 - [ ] Response times acceptable (<5 seconds)
 - [ ] No memory leaks
 - [ ] ChromaDB responding normally
 - [ ] Redis cache working (check logs)
+- [ ] LiteLLM proxy responding (if enabled)
 
 ---
 
@@ -254,12 +286,14 @@ nano data/config/rag-settings.json
 Update values:
 ```json
 {
-  "topKChunks": 20,
-  "maxContextChunks": 15,
+  "topKChunks": 15,
+  "maxContextChunks": 10,
   "similarityThreshold": 0.5,
-  "chunkSize": 800,
-  "chunkOverlap": 150,
-  ...
+  "chunkSize": 1200,
+  "chunkOverlap": 200,
+  "queryExpansionEnabled": true,
+  "cacheEnabled": true,
+  "cacheTTLSeconds": 3600
 }
 ```
 

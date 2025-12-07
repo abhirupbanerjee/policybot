@@ -71,6 +71,10 @@ Policy Bot is a RAG-based (Retrieval-Augmented Generation) chatbot designed to h
 │  │ text-embedding- │  │  Tavily API     │  │   whisper-1     │          │
 │  │ 3-large (3072d) │  │  (Web Search)   │  │  (Transcribe)   │          │
 │  └─────────────────┘  └─────────────────┘  └─────────────────┘          │
+│  ┌─────────────────┐  ┌─────────────────┐                               │
+│  │   Cohere API    │  │ Local Reranker  │                               │
+│  │   (Reranking)   │  │ (Transformers.js│                               │
+│  └─────────────────┘  └─────────────────┘                               │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -91,6 +95,7 @@ Policy Bot is a RAG-based (Retrieval-Augmented Generation) chatbot designed to h
 | Transcription | OpenAI whisper-1 | Voice-to-text |
 | OCR | Azure Document Intelligence, Mistral OCR | PDF/image text extraction |
 | Web Search | Tavily API (optional) | Real-time web search via function calling |
+| Reranking | Cohere API, Transformers.js | Chunk reranking for improved relevance |
 | Vector DB | ChromaDB | Category-based document embeddings storage |
 | Cache | Redis 7 | Query caching (RAG + Tavily), sessions |
 | Auth | NextAuth + Azure AD + Google | Multi-provider SSO |
@@ -161,6 +166,12 @@ User Query
     │
     ▼
 ┌─────────────────┐
+│ Rerank Chunks   │──── If reranker enabled (Cohere or local)
+│ (Optional)      │     Re-score chunks by query relevance
+└─────────────────┘
+    │
+    ▼
+┌─────────────────┐
 │ Build Context   │◀──── Include user-uploaded doc (if any)
 │ + Last 5 msgs   │
 └─────────────────┘
@@ -181,6 +192,12 @@ User Query
 ```
 
 **Web Search Integration**: If Tavily is enabled in admin settings, the LLM can automatically trigger web searches using OpenAI function calling. Results are cached separately in Redis with configurable TTL (60 seconds to 1 month).
+
+**Reranker Integration**: When enabled, retrieved chunks are re-scored using either:
+- **Cohere API** (`rerank-english-v3.0`): Fast, API-based reranking
+- **Local Transformers.js** (`Xenova/all-MiniLM-L6-v2`): No API cost, slower first load
+
+Reranking improves result quality by using a cross-encoder model to score each chunk against the query, then filtering by minimum score threshold.
 
 ### 3. Document Ingestion
 
@@ -368,13 +385,14 @@ User Access
 4. Backend retrieves conversation history (last 5 messages)
 5. Backend checks if thread has uploaded document
 6. RAG pipeline:
-   a. Embed query
+   a. Embed query using text-embedding-3-large
    b. Search ChromaDB collections for subscribed categories
    c. Include global documents from all category searches
-   d. If user doc exists, extract and include relevant text
-   e. Build context with conversation history
-   f. Generate response with GPT (function calling enabled)
-   g. If needed, call Tavily for web search
+   d. If reranker enabled, re-score chunks with Cohere/local model
+   e. If user doc exists, extract and include relevant text
+   f. Build context with conversation history
+   g. Generate response with LLM via LiteLLM (function calling enabled)
+   h. If needed, call Tavily for web search
 7. Cache response
 8. Save message to thread
 9. Return response with source citations
@@ -540,6 +558,7 @@ Admin/Super User manages subscriptions:
 |------|-----|---------|
 | Query responses | Configurable (1 hour default) | Redis |
 | Tavily results | Configurable (1 day default) | Redis |
+| Reranker results | Configurable (1 hour default) | Redis |
 | Sessions | 24 hours | Redis |
 | Embeddings | Permanent | ChromaDB |
 
@@ -690,6 +709,7 @@ model_list:
 | `OPENAI_BASE_URL` | Set to `http://litellm:4000/v1` in Docker |
 | `OPENAI_API_KEY` | Required for OpenAI models |
 | `MISTRAL_API_KEY` | Required for Mistral models |
+| `COHERE_API_KEY` | Required for Cohere reranking (optional) |
 
 ---
 
@@ -743,3 +763,89 @@ model_list:
 - **Redis**: `redis-cli ping` every 30s
 - **LiteLLM**: HTTP health endpoint every 30s with 30s start period
 - **App**: Depends on Redis (healthy) and LiteLLM (healthy)
+
+---
+
+## Admin Dashboard
+
+The admin dashboard provides a comprehensive interface for system management with five main tabs:
+
+### Dashboard Tab (Statistics)
+
+Real-time system overview:
+- **Database Statistics**: Users, categories, documents, threads, messages counts
+- **ChromaDB Status**: Collections count, total vectors, connection status
+- **Storage Usage**: Total bytes, documents/threads breakdown, percentage used
+- **Recent Activity**: Document uploads, user additions, setting changes
+
+### Documents Tab
+
+- Upload files (PDF, DOCX, XLSX, PPTX, images) or text content
+- Assign documents to categories or mark as global
+- View processing status (processing/ready/error)
+- Reindex individual documents or all documents
+- Delete documents and their embeddings
+
+### Categories Tab
+
+- Create, edit, delete categories
+- View document counts per category
+- Manage category slugs for URL routing
+
+### Users Tab
+
+- Add users with role assignment (admin/superuser/user)
+- Manage category subscriptions per user
+- Assign categories to super users
+- View subscription status (active/inactive)
+
+### Settings Tab
+
+Seven configuration sections accessible via sidebar:
+
+| Section | Configuration |
+|---------|--------------|
+| **System Prompt** | RAG instruction customization |
+| **LLM Settings** | Model selection, temperature, max tokens |
+| **RAG Settings** | Chunk size, overlap, similarity threshold, caching |
+| **Acronyms** | Query expansion mappings (e.g., EA → enterprise architecture) |
+| **Web Search** | Tavily API configuration and search parameters |
+| **Branding** | Bot name and icon for sidebar |
+| **Reranker** | Cohere/local provider, score thresholds |
+
+---
+
+## Configuration Defaults
+
+Current default values from `config/defaults.json`:
+
+### RAG Settings
+| Setting | Default | Description |
+|---------|---------|-------------|
+| topKChunks | 15 | Number of chunks to retrieve |
+| maxContextChunks | 10 | Max chunks in LLM context |
+| similarityThreshold | 0.5 | Minimum similarity score |
+| chunkSize | 1200 | Characters per chunk |
+| chunkOverlap | 200 | Overlap between chunks |
+| cacheTTLSeconds | 3600 | Query cache TTL (1 hour) |
+
+### LLM Settings
+| Setting | Default | Description |
+|---------|---------|-------------|
+| model | gpt-4.1-mini | Default LLM model |
+| temperature | 0.2 | Response randomness |
+| maxTokens | 2000 | Max response tokens |
+
+### Reranker Settings
+| Setting | Default | Description |
+|---------|---------|-------------|
+| enabled | false | Enable chunk reranking |
+| provider | cohere | Reranker provider (cohere/local) |
+| topKForReranking | 50 | Chunks to rerank |
+| minRerankerScore | 0.3 | Minimum rerank score |
+
+### Embedding Settings
+| Setting | Default | Description |
+|---------|---------|-------------|
+| model | text-embedding-3-large | Embedding model |
+| dimensions | 3072 | Vector dimensions |

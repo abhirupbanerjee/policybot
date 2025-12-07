@@ -36,6 +36,14 @@ tags:
     description: Document management (admin only)
   - name: Admin - Users
     description: User management (admin only)
+  - name: Admin - Settings
+    description: System configuration (admin only)
+  - name: Admin - System
+    description: System operations (admin only)
+  - name: Super User - Documents
+    description: Document management for assigned categories
+  - name: Super User - Users
+    description: User subscription management for assigned categories
   - name: Branding
     description: Public branding endpoints
 
@@ -284,6 +292,34 @@ components:
           description: Additional context
       required:
         - error
+
+    ProviderStatus:
+      type: object
+      properties:
+        provider:
+          type: string
+        available:
+          type: boolean
+        configured:
+          type: boolean
+        error:
+          type: string
+
+    ServiceStatus:
+      type: object
+      properties:
+        name:
+          type: string
+        model:
+          type: string
+        provider:
+          type: string
+        available:
+          type: boolean
+        configured:
+          type: boolean
+        error:
+          type: string
 
   responses:
     Unauthorized:
@@ -1285,5 +1321,1117 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/users/{userId}/subscriptions:
+    parameters:
+      - name: userId
+        in: path
+        required: true
+        schema:
+          type: integer
+
+    get:
+      tags:
+        - Admin - Users
+      summary: Get user subscriptions
+      description: Get a user's category subscriptions (admin only)
+      operationId: getUserSubscriptions
+      responses:
+        '200':
+          description: User subscriptions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      email:
+                        type: string
+                      name:
+                        type: string
+                      role:
+                        type: string
+                  subscriptions:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        categoryId:
+                          type: integer
+                        categoryName:
+                          type: string
+                        categorySlug:
+                          type: string
+                        isActive:
+                          type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      tags:
+        - Admin - Users
+      summary: Add subscription
+      description: Add a subscription for a user (admin only)
+      operationId: addUserSubscription
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                categoryId:
+                  type: integer
+              required:
+                - categoryId
+      responses:
+        '201':
+          description: Subscription added
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  subscription:
+                    type: object
+                    properties:
+                      userId:
+                        type: integer
+                      categoryId:
+                        type: integer
+                      categoryName:
+                        type: string
+                      isActive:
+                        type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: User already subscribed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+    put:
+      tags:
+        - Admin - Users
+      summary: Toggle subscription
+      description: Toggle subscription active status (admin only)
+      operationId: toggleUserSubscription
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                categoryId:
+                  type: integer
+                isActive:
+                  type: boolean
+              required:
+                - categoryId
+                - isActive
+      responses:
+        '200':
+          description: Subscription toggled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  subscription:
+                    type: object
+                    properties:
+                      userId:
+                        type: integer
+                      categoryId:
+                        type: integer
+                      isActive:
+                        type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - Admin - Users
+      summary: Remove subscription
+      description: Remove a subscription from a user (admin only)
+      operationId: removeUserSubscription
+      parameters:
+        - name: categoryId
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Subscription removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  removed:
+                    type: object
+                    properties:
+                      userId:
+                        type: integer
+                      categoryId:
+                        type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/documents/text:
+    post:
+      tags:
+        - Admin - Documents
+      summary: Upload text content
+      description: Upload text content directly as a document (bypasses OCR)
+      operationId: uploadTextDocument
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  maxLength: 255
+                  description: Document name
+                content:
+                  type: string
+                  minLength: 10
+                  description: Text content (max 10MB)
+                categoryIds:
+                  type: array
+                  items:
+                    type: integer
+                  description: Category IDs to assign
+                isGlobal:
+                  type: boolean
+                  description: Index in all categories
+              required:
+                - name
+                - content
+      responses:
+        '202':
+          description: Document accepted for processing
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  filename:
+                    type: string
+                  size:
+                    type: integer
+                  status:
+                    type: string
+                    enum: [processing]
+                  message:
+                    type: string
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Document already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '413':
+          description: Content too large
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /admin/documents/{docId}/reindex:
+    parameters:
+      - name: docId
+        in: path
+        required: true
+        schema:
+          type: integer
+
+    post:
+      tags:
+        - Admin - Documents
+      summary: Reindex document
+      description: Reindex an existing document (re-extract and re-embed)
+      operationId: reindexDocument
+      responses:
+        '202':
+          description: Reindex started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  filename:
+                    type: string
+                  status:
+                    type: string
+                    enum: [processing]
+                  message:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/settings:
+    get:
+      tags:
+        - Admin - Settings
+      summary: Get all settings
+      description: Get all configurable settings (admin only)
+      operationId: getSettings
+      responses:
+        '200':
+          description: All settings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rag:
+                    type: object
+                    properties:
+                      chunkSize:
+                        type: integer
+                      chunkOverlap:
+                        type: integer
+                      topK:
+                        type: integer
+                      cacheTTLSeconds:
+                        type: integer
+                  llm:
+                    type: object
+                    properties:
+                      model:
+                        type: string
+                      temperature:
+                        type: number
+                      maxTokens:
+                        type: integer
+                  acronyms:
+                    type: object
+                    properties:
+                      mappings:
+                        type: object
+                        additionalProperties:
+                          type: string
+                  tavily:
+                    type: object
+                    properties:
+                      enabled:
+                        type: boolean
+                      cacheTTLSeconds:
+                        type: integer
+                  branding:
+                    type: object
+                    properties:
+                      botName:
+                        type: string
+                      botIcon:
+                        type: string
+                  embedding:
+                    type: object
+                    properties:
+                      model:
+                        type: string
+                      dimensions:
+                        type: integer
+                  reranker:
+                    type: object
+                    properties:
+                      enabled:
+                        type: boolean
+                      provider:
+                        type: string
+                      topKForReranking:
+                        type: integer
+                      minRerankerScore:
+                        type: number
+                  uploadLimits:
+                    type: object
+                    properties:
+                      maxFilesPerThread:
+                        type: integer
+                      maxFileSizeMB:
+                        type: integer
+                      allowedTypes:
+                        type: array
+                        items:
+                          type: string
+                  availableModels:
+                    type: array
+                    items:
+                      type: string
+                  modelPresets:
+                    type: array
+                    items:
+                      type: object
+                  brandingIcons:
+                    type: array
+                    items:
+                      type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    patch:
+      tags:
+        - Admin - Settings
+      summary: Update settings
+      description: Update settings by type (admin only)
+      operationId: updateSettings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                type:
+                  type: string
+                  enum:
+                    - rag
+                    - llm
+                    - acronyms
+                    - tavily
+                    - uploadLimits
+                    - retention
+                    - preset
+                    - branding
+                    - embedding
+                    - reranker
+                    - restoreAllDefaults
+                settings:
+                  type: object
+                  description: Settings object (varies by type)
+              required:
+                - type
+      responses:
+        '200':
+          description: Settings updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  settings:
+                    type: object
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/system-prompt:
+    get:
+      tags:
+        - Admin - Settings
+      summary: Get system prompt
+      description: Get the current system prompt with metadata (admin only)
+      operationId: getSystemPrompt
+      responses:
+        '200':
+          description: System prompt
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  systemPrompt:
+                    type: string
+                  updatedAt:
+                    type: string
+                    format: date-time
+                  updatedBy:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    put:
+      tags:
+        - Admin - Settings
+      summary: Update system prompt
+      description: Update the system prompt (admin only)
+      operationId: updateSystemPrompt
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                systemPrompt:
+                  type: string
+                  minLength: 10
+              required:
+                - systemPrompt
+      responses:
+        '200':
+          description: System prompt updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  systemPrompt:
+                    type: string
+                  updatedAt:
+                    type: string
+                    format: date-time
+                  updatedBy:
+                    type: string
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/refresh:
+    post:
+      tags:
+        - Admin - System
+      summary: Reindex all documents
+      description: Reindex all documents and clear cache (admin only)
+      operationId: refreshAll
+      responses:
+        '202':
+          description: Reindex started
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  documentsQueued:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/stats:
+    get:
+      tags:
+        - Admin - System
+      summary: Get system statistics
+      description: Get system statistics for the admin dashboard (admin only)
+      operationId: getStats
+      responses:
+        '200':
+          description: System statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  database:
+                    type: object
+                    properties:
+                      users:
+                        type: integer
+                      categories:
+                        type: integer
+                      documents:
+                        type: integer
+                      threads:
+                        type: integer
+                      messages:
+                        type: integer
+                  chromadb:
+                    type: object
+                    properties:
+                      collections:
+                        type: integer
+                      totalVectors:
+                        type: integer
+                  storage:
+                    type: object
+                    properties:
+                      totalBytes:
+                        type: integer
+                      documentsBytes:
+                        type: integer
+                      threadsBytes:
+                        type: integer
+                      percentUsed:
+                        type: number
+                  recentActivity:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        type:
+                          type: string
+                        description:
+                          type: string
+                        timestamp:
+                          type: string
+                          format: date-time
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/providers:
+    get:
+      tags:
+        - Admin - System
+      summary: Check provider status
+      description: Check the status and availability of configured LLM providers (admin only)
+      operationId: getProviders
+      responses:
+        '200':
+          description: Provider status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  providers:
+                    type: object
+                    properties:
+                      openai:
+                        $ref: '#/components/schemas/ProviderStatus'
+                      mistral:
+                        $ref: '#/components/schemas/ProviderStatus'
+                      ollama:
+                        $ref: '#/components/schemas/ProviderStatus'
+                      azure:
+                        $ref: '#/components/schemas/ProviderStatus'
+                  services:
+                    type: object
+                    properties:
+                      embedding:
+                        $ref: '#/components/schemas/ServiceStatus'
+                      ocr:
+                        $ref: '#/components/schemas/ServiceStatus'
+                      audio:
+                        $ref: '#/components/schemas/ServiceStatus'
+                  usingProxy:
+                    type: boolean
+                  proxyUrl:
+                    type: string
+                    nullable: true
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/reranker-status:
+    get:
+      tags:
+        - Admin - System
+      summary: Check reranker status
+      description: Check reranker availability (Cohere API and local transformers.js)
+      operationId: getRerankerStatus
+      responses:
+        '200':
+          description: Reranker status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cohere:
+                    type: object
+                    properties:
+                      available:
+                        type: boolean
+                      configured:
+                        type: boolean
+                      error:
+                        type: string
+                  local:
+                    type: object
+                    properties:
+                      available:
+                        type: boolean
+                      model:
+                        type: string
+                      error:
+                        type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /superuser/documents:
+    get:
+      tags:
+        - Super User - Documents
+      summary: List assigned documents
+      description: Get documents in super user's assigned categories
+      operationId: getSuperuserDocuments
+      responses:
+        '200':
+          description: Documents list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  assignedCategories:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        categoryId:
+                          type: integer
+                        categoryName:
+                          type: string
+                        categorySlug:
+                          type: string
+                  documents:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        filename:
+                          type: string
+                        size:
+                          type: integer
+                        status:
+                          type: string
+                          enum: [processing, ready, error]
+                        uploadedBy:
+                          type: string
+                        uploadedAt:
+                          type: string
+                          format: date-time
+                        categories:
+                          type: array
+                          items:
+                            $ref: '#/components/schemas/CategoryAssignment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Super user access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+    post:
+      tags:
+        - Super User - Documents
+      summary: Upload document
+      description: Upload a document to one of super user's assigned categories
+      operationId: uploadSuperuserDocument
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: PDF file (max 50MB)
+                categoryId:
+                  type: string
+                  description: Category ID (must be assigned to super user)
+              required:
+                - file
+                - categoryId
+      responses:
+        '202':
+          description: Document accepted for processing
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+                  filename:
+                    type: string
+                  size:
+                    type: integer
+                  status:
+                    type: string
+                    enum: [processing]
+                  message:
+                    type: string
+                  category:
+                    type: object
+                    properties:
+                      categoryId:
+                        type: integer
+                      categoryName:
+                        type: string
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: No access to this category
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '413':
+          description: File too large
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /superuser/documents/text:
+    post:
+      tags:
+        - Super User - Documents
+      summary: Upload text content
+      description: Upload text content directly to one of super user's assigned categories
+      operationId: uploadSuperuserTextDocument
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  maxLength: 255
+                  description: Document name
+                content:
+                  type: string
+                  minLength: 10
+                  description: Text content (max 10MB)
+                categoryId:
+                  type: integer
+                  description: Category ID (must be assigned to super user)
+              required:
+                - name
+                - content
+                - categoryId
+      responses:
+        '202':
+          description: Document accepted for processing
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  filename:
+                    type: string
+                  size:
+                    type: integer
+                  status:
+                    type: string
+                    enum: [processing]
+                  message:
+                    type: string
+                  category:
+                    type: object
+                    properties:
+                      categoryId:
+                        type: integer
+                      categoryName:
+                        type: string
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: No access to this category
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /superuser/documents/{docId}:
+    parameters:
+      - name: docId
+        in: path
+        required: true
+        schema:
+          type: integer
+
+    delete:
+      tags:
+        - Super User - Documents
+      summary: Delete document
+      description: Delete a document (only if uploaded by this super user)
+      operationId: deleteSuperuserDocument
+      responses:
+        '200':
+          description: Document deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  deleted:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      filename:
+                        type: string
+                      chunksRemoved:
+                        type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Cannot delete this document
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /superuser/users:
+    get:
+      tags:
+        - Super User - Users
+      summary: List category users
+      description: Get users subscribed to super user's assigned categories
+      operationId: getSuperuserUsers
+      responses:
+        '200':
+          description: Users list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  assignedCategories:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        categoryId:
+                          type: integer
+                        categoryName:
+                          type: string
+                        categorySlug:
+                          type: string
+                  users:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        email:
+                          type: string
+                        name:
+                          type: string
+                          nullable: true
+                        subscriptions:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              categoryId:
+                                type: integer
+                              categoryName:
+                                type: string
+                              isActive:
+                                type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Super user access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+    post:
+      tags:
+        - Super User - Users
+      summary: Add subscription
+      description: Add subscription for a user to one of super user's categories
+      operationId: addSuperuserSubscription
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                userEmail:
+                  type: string
+                  format: email
+                categoryId:
+                  type: integer
+              required:
+                - userEmail
+                - categoryId
+      responses:
+        '201':
+          description: Subscription added
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  subscription:
+                    type: object
+                    properties:
+                      userId:
+                        type: integer
+                      categoryId:
+                        type: integer
+                      categoryName:
+                        type: string
+                      isActive:
+                        type: boolean
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: No access to this category
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: User already subscribed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+    delete:
+      tags:
+        - Super User - Users
+      summary: Remove subscription
+      description: Remove subscription from one of super user's categories
+      operationId: removeSuperuserSubscription
+      parameters:
+        - name: userEmail
+          in: query
+          required: true
+          schema:
+            type: string
+            format: email
+        - name: categoryId
+          in: query
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Subscription removed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  removed:
+                    type: object
+                    properties:
+                      userId:
+                        type: integer
+                      categoryId:
+                        type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: No access to this category
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
         '404':
           $ref: '#/components/responses/NotFound'
