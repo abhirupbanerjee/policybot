@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Upload, RefreshCw, Trash2, FileText, AlertCircle, Users, UserPlus, Shield, User, Settings, Save, FolderOpen, Plus, Edit2, BarChart3, Database, HardDrive, Globe, Tag, Landmark, DollarSign, Activity, Layers, Server, ScrollText, ChevronUp, ChevronDown, ChevronsUpDown, Search, X, LayoutDashboard, Cpu, Mic, Sparkles } from 'lucide-react';
+import { ArrowLeft, Upload, RefreshCw, Trash2, FileText, AlertCircle, Users, UserPlus, Shield, User, Settings, Save, FolderOpen, Plus, Edit2, BarChart3, Database, HardDrive, Globe, Tag, Landmark, DollarSign, Activity, Layers, Server, ScrollText, ChevronUp, ChevronDown, ChevronsUpDown, Search, X, LayoutDashboard, Cpu, Mic, Sparkles, Download } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import Spinner from '@/components/ui/Spinner';
 import { type SortDirection } from '@/components/ui/SortableTable';
+import BackupTab from '@/components/admin/BackupTab';
 import type { GlobalDocument } from '@/types';
 
 interface AllowedUser {
@@ -134,7 +135,7 @@ interface ModelPreset {
   };
 }
 
-type TabType = 'dashboard' | 'documents' | 'categories' | 'users' | 'settings' | 'stats';
+type TabType = 'dashboard' | 'documents' | 'categories' | 'users' | 'settings' | 'stats' | 'backup';
 type SettingsSection = 'prompt' | 'rag' | 'llm' | 'acronyms' | 'tavily' | 'branding' | 'reranker';
 
 interface BrandingSettings {
@@ -1807,6 +1808,17 @@ export default function AdminPage() {
             >
               <Settings size={16} className="inline mr-2" />
               Settings
+            </button>
+            <button
+              onClick={() => setActiveTab('backup')}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'backup'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <Download size={16} className="inline mr-2" />
+              Backup
             </button>
           </nav>
         </div>
@@ -3719,6 +3731,11 @@ export default function AdminPage() {
               <div className="text-center py-12 text-gray-500">Failed to load stats</div>
             )}
           </div>
+        )}
+
+        {/* Backup Tab */}
+        {activeTab === 'backup' && (
+          <BackupTab />
         )}
       </main>
 
