@@ -8,6 +8,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 
 // ============ Types ============
 
@@ -421,6 +422,24 @@ export function getModelPresetsFromConfig(): Record<string, ModelPresetConfig> {
  */
 export function getDefaultPresetId(): string {
   return loadConfig().defaultPreset;
+}
+
+/**
+ * Get hash of the system prompt file for version tracking
+ * Returns a short hash that changes when the file content changes
+ * Used to auto-sync SQLite when the config file is updated
+ */
+export function getSystemPromptFileHash(): string {
+  try {
+    if (fs.existsSync(PROMPT_FILE)) {
+      const content = fs.readFileSync(PROMPT_FILE, 'utf-8');
+      return crypto.createHash('md5').update(content).digest('hex').substring(0, 12);
+    }
+  } catch (error) {
+    console.warn('[Config] Failed to hash system prompt file:', error instanceof Error ? error.message : error);
+  }
+  // Return hash of hardcoded default
+  return crypto.createHash('md5').update(getHardcodedSystemPrompt()).digest('hex').substring(0, 12);
 }
 
 // ============ Hardcoded System Prompt ============

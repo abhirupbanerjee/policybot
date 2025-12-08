@@ -1101,6 +1101,8 @@ export default function AdminPage() {
       }
 
       const data = await response.json();
+      // Update both states to the restored default
+      // Save button will be disabled since they match (default is already active)
       setSystemPrompt({
         prompt: data.prompt,
         updatedAt: data.updatedAt,
@@ -1752,15 +1754,15 @@ export default function AdminPage() {
               Dashboard
             </button>
             <button
-              onClick={() => setActiveTab('documents')}
+              onClick={() => setActiveTab('stats')}
               className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === 'documents'
+                activeTab === 'stats'
                   ? 'border-blue-600 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >
-              <FileText size={16} className="inline mr-2" />
-              Documents
+              <BarChart3 size={16} className="inline mr-2" />
+              Stats
             </button>
             <button
               onClick={() => setActiveTab('categories')}
@@ -1772,6 +1774,17 @@ export default function AdminPage() {
             >
               <FolderOpen size={16} className="inline mr-2" />
               Categories
+            </button>
+            <button
+              onClick={() => setActiveTab('documents')}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'documents'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <FileText size={16} className="inline mr-2" />
+              Documents
             </button>
             <button
               onClick={() => setActiveTab('users')}
@@ -1794,17 +1807,6 @@ export default function AdminPage() {
             >
               <Settings size={16} className="inline mr-2" />
               Settings
-            </button>
-            <button
-              onClick={() => setActiveTab('stats')}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === 'stats'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <BarChart3 size={16} className="inline mr-2" />
-              Stats
             </button>
           </nav>
         </div>
@@ -2554,7 +2556,7 @@ export default function AdminPage() {
                       : 'text-gray-600 hover:bg-gray-50'
                   }`}
                 >
-                  LLM Settings
+                  LLM
                 </button>
                 <button
                   onClick={() => setSettingsSection('rag')}
@@ -2564,17 +2566,17 @@ export default function AdminPage() {
                       : 'text-gray-600 hover:bg-gray-50'
                   }`}
                 >
-                  RAG Settings
+                  RAG
                 </button>
                 <button
-                  onClick={() => setSettingsSection('acronyms')}
+                  onClick={() => setSettingsSection('reranker')}
                   className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    settingsSection === 'acronyms'
+                    settingsSection === 'reranker'
                       ? 'bg-blue-50 text-blue-700'
                       : 'text-gray-600 hover:bg-gray-50'
                   }`}
                 >
-                  Acronym Mappings
+                  Reranker
                 </button>
                 <button
                   onClick={() => setSettingsSection('tavily')}
@@ -2597,14 +2599,14 @@ export default function AdminPage() {
                   Branding
                 </button>
                 <button
-                  onClick={() => setSettingsSection('reranker')}
+                  onClick={() => setSettingsSection('acronyms')}
                   className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    settingsSection === 'reranker'
+                    settingsSection === 'acronyms'
                       ? 'bg-blue-50 text-blue-700'
                       : 'text-gray-600 hover:bg-gray-50'
                   }`}
                 >
-                  Reranker
+                  Acronyms
                 </button>
               </nav>
             </div>
@@ -2842,30 +2844,57 @@ export default function AdminPage() {
 
               {/* RAG Settings Section */}
               {settingsSection === 'rag' && (
-                <div className="bg-white rounded-lg border shadow-sm">
-                  <div className="px-6 py-4 border-b">
+                <div className="space-y-4">
+                  {/* Embedding Model Info Card */}
+                  <div className="bg-white rounded-lg border shadow-sm p-4">
                     <div className="flex items-center justify-between">
-                      <div>
-                        <h2 className="font-semibold text-gray-900">RAG Settings</h2>
-                        <p className="text-sm text-gray-500">Configure retrieval and chunking parameters</p>
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-purple-100 rounded-lg">
+                          <Cpu size={20} className="text-purple-600" />
+                        </div>
+                        <div>
+                          <h3 className="text-sm font-medium text-gray-900">Active Embedding Model</h3>
+                          <p className="text-sm text-gray-600">
+                            {embeddingSettings?.model || 'Not configured'}
+                            {embeddingSettings?.dimensions && (
+                              <span className="text-gray-400 ml-2">({embeddingSettings.dimensions} dimensions)</span>
+                            )}
+                          </p>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-2">
-                        {ragModified && (
-                          <Button variant="secondary" onClick={handleResetRag} disabled={savingSettings}>
-                            Reset
-                          </Button>
+                      <div className="text-xs text-gray-500">
+                        {embeddingSettings?.updatedAt && (
+                          <span>Updated: {formatDate(embeddingSettings.updatedAt)}</span>
                         )}
-                        <Button onClick={handleSaveRag} disabled={!ragModified || savingSettings} loading={savingSettings}>
-                          <Save size={18} className="mr-2" />
-                          Save
-                        </Button>
                       </div>
                     </div>
                   </div>
-                  {settingsLoading ? (
-                    <div className="px-6 py-12 flex justify-center"><Spinner size="lg" /></div>
-                  ) : editedRag && (
-                    <div className="p-6 space-y-6">
+
+                  {/* RAG Configuration Card */}
+                  <div className="bg-white rounded-lg border shadow-sm">
+                    <div className="px-6 py-4 border-b">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h2 className="font-semibold text-gray-900">RAG</h2>
+                          <p className="text-sm text-gray-500">Configure retrieval and chunking parameters</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {ragModified && (
+                            <Button variant="secondary" onClick={handleResetRag} disabled={savingSettings}>
+                              Reset
+                            </Button>
+                          )}
+                          <Button onClick={handleSaveRag} disabled={!ragModified || savingSettings} loading={savingSettings}>
+                            <Save size={18} className="mr-2" />
+                            Save
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                    {settingsLoading ? (
+                      <div className="px-6 py-12 flex justify-center"><Spinner size="lg" /></div>
+                    ) : editedRag && (
+                      <div className="p-6 space-y-6">
                       <div className="grid grid-cols-2 gap-6">
                         <div>
                           <label className="block text-sm font-medium text-gray-700 mb-2">Top K Chunks</label>
@@ -2976,18 +3005,19 @@ export default function AdminPage() {
                           Last updated: {formatDate(ragSettings.updatedAt)} by {ragSettings.updatedBy}
                         </p>
                       )}
-                    </div>
-                  )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
-              {/* Acronym Mappings Section */}
+              {/* Acronyms Section */}
               {settingsSection === 'acronyms' && (
                 <div className="bg-white rounded-lg border shadow-sm">
                   <div className="px-6 py-4 border-b">
                     <div className="flex items-center justify-between">
                       <div>
-                        <h2 className="font-semibold text-gray-900">Acronym Mappings</h2>
+                        <h2 className="font-semibold text-gray-900">Acronyms</h2>
                         <p className="text-sm text-gray-500">Define acronym expansions for query enhancement</p>
                       </div>
                       <div className="flex items-center gap-2">
@@ -3308,31 +3338,66 @@ export default function AdminPage() {
 
               {/* Reranker Section */}
               {settingsSection === 'reranker' && (
-                <div className="bg-white rounded-lg border shadow-sm">
-                  <div className="px-6 py-4 border-b">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h2 className="font-semibold text-gray-900">Reranker Settings</h2>
-                        <p className="text-sm text-gray-500">Configure document reranking for improved RAG quality</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {rerankerModified && (
-                          <Button variant="secondary" onClick={handleResetReranker} disabled={savingSettings}>
-                            Reset
-                          </Button>
-                        )}
-                        <Button onClick={handleSaveReranker} disabled={!rerankerModified || savingSettings} loading={savingSettings}>
-                          <Save size={18} className="mr-2" />
-                          Save
-                        </Button>
-                      </div>
+                <div className="space-y-4">
+                  {/* Reranker Status Dashboard */}
+                  <div className="bg-white rounded-lg border shadow-sm p-4">
+                    <h3 className="text-sm font-medium text-gray-900 mb-3">Reranker Status</h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      {rerankerStatus.map((status) => (
+                        <div key={status.provider} className={`p-3 rounded-lg border ${
+                          status.available ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'
+                        }`}>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <div className={`w-2 h-2 rounded-full ${status.available ? 'bg-green-500' : 'bg-gray-400'}`} />
+                              <span className="font-medium text-gray-900">{status.name}</span>
+                            </div>
+                            {editedReranker?.provider === status.provider && (
+                              <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">Active</span>
+                            )}
+                          </div>
+                          <p className="text-xs text-gray-500 mt-1">
+                            {status.available ? 'Available' : (status.error || 'Unavailable')}
+                            {status.latency && ` • ${status.latency}ms`}
+                          </p>
+                        </div>
+                      ))}
+                      {rerankerStatus.length === 0 && (
+                        <p className="text-sm text-gray-500 col-span-2">No reranker providers found</p>
+                      )}
+                    </div>
+                    <div className="mt-3 pt-3 border-t text-xs text-gray-500">
+                      <span className="font-medium">Default:</span> {editedReranker?.provider === 'cohere' ? 'Cohere API' : 'Local'} •
+                      <span className="font-medium ml-2">Fallback:</span> {editedReranker?.provider === 'cohere' ? 'Local' : 'None'}
                     </div>
                   </div>
-                  {settingsLoading ? (
-                    <div className="px-6 py-12 flex justify-center"><Spinner size="lg" /></div>
-                  ) : editedReranker ? (
-                    <div className="p-6 space-y-6">
-                      {/* Enable/Disable Toggle */}
+
+                  {/* Reranker Configuration Card */}
+                  <div className="bg-white rounded-lg border shadow-sm">
+                    <div className="px-6 py-4 border-b">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <h2 className="font-semibold text-gray-900">Reranker</h2>
+                          <p className="text-sm text-gray-500">Configure document reranking for improved RAG quality</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {rerankerModified && (
+                            <Button variant="secondary" onClick={handleResetReranker} disabled={savingSettings}>
+                              Reset
+                            </Button>
+                          )}
+                          <Button onClick={handleSaveReranker} disabled={!rerankerModified || savingSettings} loading={savingSettings}>
+                            <Save size={18} className="mr-2" />
+                            Save
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                    {settingsLoading ? (
+                      <div className="px-6 py-12 flex justify-center"><Spinner size="lg" /></div>
+                    ) : editedReranker ? (
+                      <div className="p-6 space-y-6">
+                        {/* Enable/Disable Toggle */}
                       <div className="flex items-center justify-between">
                         <div>
                           <label className="font-medium text-gray-900">Enable Reranker</label>
@@ -3441,14 +3506,15 @@ export default function AdminPage() {
                         </div>
                       </div>
 
-                      {/* Last Updated */}
-                      {rerankerSettings?.updatedAt && (
-                        <p className="text-xs text-gray-500">
-                          Last updated: {formatDate(rerankerSettings.updatedAt)} by {rerankerSettings.updatedBy}
-                        </p>
-                      )}
-                    </div>
-                  ) : null}
+                        {/* Last Updated */}
+                        {rerankerSettings?.updatedAt && (
+                          <p className="text-xs text-gray-500">
+                            Last updated: {formatDate(rerankerSettings.updatedAt)} by {rerankerSettings.updatedBy}
+                          </p>
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
               )}
             </div>

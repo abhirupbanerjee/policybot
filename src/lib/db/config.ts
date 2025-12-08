@@ -11,6 +11,7 @@ import {
   loadSystemPrompt,
   getModelPresetsFromConfig,
   getDefaultPresetId,
+  getSystemPromptFileHash,
   type ModelPresetConfig,
 } from '../config-loader';
 
@@ -51,6 +52,7 @@ export interface UploadLimits {
 
 export interface SystemPrompt {
   content: string;
+  fileHash?: string;  // Hash of system-prompt.md when this was saved
 }
 
 export interface RetentionSettings {
@@ -299,10 +301,28 @@ export function getUploadLimits(): UploadLimits {
 /**
  * Get system prompt
  * Priority: SQLite > JSON config (system-prompt.md) > hardcoded defaults
+ *
+ * Auto-syncs with file: If system-prompt.md has changed since the SQLite
+ * value was saved (detected via hash), the SQLite entry is cleared and
+ * the new file content is used. This ensures builds with updated prompts
+ * automatically take effect.
  */
 export function getSystemPrompt(): string {
   const setting = getSetting<SystemPrompt>('system-prompt');
-  if (setting?.content) return setting.content;
+
+  if (setting?.content) {
+    // Check if the config file has changed since this prompt was saved
+    const currentFileHash = getSystemPromptFileHash();
+
+    if (setting.fileHash && setting.fileHash !== currentFileHash) {
+      // File has changed - clear SQLite to use new file version
+      console.log('[Config] System prompt file changed (hash mismatch), syncing to new version');
+      deleteSetting('system-prompt');
+      return loadSystemPrompt();
+    }
+
+    return setting.content;
+  }
 
   // Fall back to JSON config (loads from system-prompt.md)
   return loadSystemPrompt();
@@ -421,9 +441,11 @@ export function setUploadLimits(limits: Partial<UploadLimits>, updatedBy?: strin
 
 /**
  * Update system prompt
+ * Stores the current file hash so we can detect when the file changes
  */
 export function setSystemPrompt(content: string, updatedBy?: string): void {
-  setSetting('system-prompt', { content }, updatedBy);
+  const fileHash = getSystemPromptFileHash();
+  setSetting('system-prompt', { content, fileHash }, updatedBy);
 }
 
 /**
