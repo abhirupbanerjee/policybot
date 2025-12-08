@@ -22,7 +22,6 @@ import {
   exportThreadUploads,
   exportThreadOutputs,
   exportSettings,
-  exportEnvFile,
   importDocuments,
   importCategories,
   importDocumentCategories,
@@ -35,7 +34,6 @@ import {
   importThreadUploads,
   importThreadOutputs,
   importSettings,
-  restoreEnvFile,
   clearAllData,
 } from './db/backup';
 import { getGlobalDocsDir, getThreadsDir, ensureDir } from './storage';
@@ -50,7 +48,6 @@ export interface BackupOptions {
   includeSettings: boolean;
   includeUsers: boolean;
   includeThreads: boolean;
-  includeEnvFile: boolean;
 }
 
 export interface RestoreOptions {
@@ -61,7 +58,6 @@ export interface RestoreOptions {
   restoreSettings: boolean;
   restoreUsers: boolean;
   restoreThreads: boolean;
-  restoreEnvFile: boolean;
   refreshVectorDb: boolean;
 }
 
@@ -80,7 +76,6 @@ export interface BackupManifest {
     settings: boolean;
     users: boolean;
     threads: boolean;
-    envFile: boolean;
     documentCount: number;
     categoryCount: number;
     userCount: number;
@@ -158,9 +153,6 @@ export async function createBackup(
     threadOutputs = exportThreadOutputs();
   }
 
-  // Env file
-  const envContent = options.includeEnvFile ? exportEnvFile() : null;
-
   // Create manifest
   const manifest: BackupManifest = {
     version: '1.0.0',
@@ -177,7 +169,6 @@ export async function createBackup(
       settings: options.includeSettings,
       users: options.includeUsers,
       threads: options.includeThreads,
-      envFile: options.includeEnvFile && envContent !== null,
       documentCount: documents.length,
       categoryCount: categories.length,
       userCount: users.length,
@@ -219,10 +210,6 @@ export async function createBackup(
     archive.append(JSON.stringify({ exportedAt: new Date().toISOString(), count: threadCategories.length, records: threadCategories }, null, 2), { name: 'data/thread_categories.json' });
     archive.append(JSON.stringify({ exportedAt: new Date().toISOString(), count: threadUploads.length, records: threadUploads }, null, 2), { name: 'data/thread_uploads.json' });
     archive.append(JSON.stringify({ exportedAt: new Date().toISOString(), count: threadOutputs.length, records: threadOutputs }, null, 2), { name: 'data/thread_outputs.json' });
-  }
-
-  if (options.includeEnvFile && envContent) {
-    archive.append(envContent, { name: 'env.txt' });
   }
 
   // Add document files
@@ -465,16 +452,6 @@ export async function restoreBackup(
           fs.writeFileSync(targetPath, entry.getData());
           result.details.filesRestored++;
         }
-      }
-    }
-
-    // Restore .env file
-    if (options.restoreEnvFile && manifest.contents.envFile) {
-      const envEntry = zip.getEntry('env.txt');
-      if (envEntry) {
-        const envContent = envEntry.getData().toString('utf-8');
-        restoreEnvFile(envContent);
-        result.warnings.push('Environment file restored - restart may be required for changes to take effect');
       }
     }
 

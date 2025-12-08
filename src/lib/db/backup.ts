@@ -8,8 +8,6 @@ import { execute, queryAll, transaction, getDatabase } from './index';
 import type { DbDocument } from './documents';
 import type { DbCategory } from './categories';
 import type { DbUser } from './users';
-import * as fs from 'fs';
-import * as path from 'path';
 
 // ============ Types ============
 
@@ -218,52 +216,6 @@ export function exportSettings(): SettingRecord[] {
     FROM settings
     ORDER BY key
   `);
-}
-
-/**
- * Get the .env file path (checks multiple possible locations)
- */
-function getEnvFilePath(): string | null {
-  // Possible locations for .env file
-  const possiblePaths = [
-    path.join(process.cwd(), '.env'),
-    path.resolve('.env'),
-    '/app/.env', // Docker container common path
-    path.join(__dirname, '..', '..', '..', '.env'), // Relative to dist
-  ];
-
-  for (const envPath of possiblePaths) {
-    try {
-      if (fs.existsSync(envPath)) {
-        return envPath;
-      }
-    } catch {
-      // Continue checking other paths
-    }
-  }
-  return null;
-}
-
-/**
- * Check if .env file exists
- */
-export function checkEnvFileExists(): boolean {
-  return getEnvFilePath() !== null;
-}
-
-/**
- * Export .env file content (sanitized keys only on export, full content for backup)
- */
-export function exportEnvFile(): string | null {
-  const envPath = getEnvFilePath();
-  if (!envPath) return null;
-
-  try {
-    return fs.readFileSync(envPath, 'utf-8');
-  } catch {
-    // Ignore errors
-  }
-  return null;
 }
 
 // ============ Import Functions ============
@@ -521,14 +473,6 @@ export function importSettings(records: SettingRecord[]): void {
       setting.updated_by
     );
   }
-}
-
-/**
- * Restore .env file
- */
-export function restoreEnvFile(content: string): void {
-  const envPath = path.join(process.cwd(), '.env');
-  fs.writeFileSync(envPath, content, 'utf-8');
 }
 
 // ============ Clear Functions ============

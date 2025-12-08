@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import { Download, UploadCloud, AlertTriangle, CheckCircle, FileText, Users, FolderOpen, Settings, MessageSquare, FileCode, RefreshCw, AlertCircle } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
@@ -20,7 +20,6 @@ interface BackupManifest {
     settings: boolean;
     users: boolean;
     threads: boolean;
-    envFile: boolean;
     documentCount: number;
     categoryCount: number;
     userCount: number;
@@ -54,7 +53,6 @@ export default function BackupTab() {
     includeSettings: true,
     includeUsers: true,
     includeThreads: false,
-    includeEnvFile: false,
   });
 
   // Restore state
@@ -70,32 +68,11 @@ export default function BackupTab() {
     restoreSettings: true,
     restoreUsers: true,
     restoreThreads: false,
-    restoreEnvFile: false,
     refreshVectorDb: true,
   });
 
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Env file availability
-  const [envFileAvailable, setEnvFileAvailable] = useState<boolean | null>(null);
-
-  // Check .env availability on mount
-  useEffect(() => {
-    const checkEnvAvailability = async () => {
-      try {
-        const response = await fetch('/api/admin/backup');
-        if (response.ok) {
-          const data = await response.json();
-          setEnvFileAvailable(data.envFileAvailable);
-        }
-      } catch {
-        // Ignore errors - just won't show env option
-        setEnvFileAvailable(false);
-      }
-    };
-    checkEnvAvailability();
-  }, []);
 
   // Handle backup creation
   const handleCreateBackup = async () => {
@@ -173,7 +150,6 @@ export default function BackupTab() {
           restoreSettings: data.manifest.contents.settings,
           restoreUsers: data.manifest.contents.users,
           restoreThreads: data.manifest.contents.threads,
-          restoreEnvFile: data.manifest.contents.envFile,
         }));
       }
     } catch (err) {
@@ -332,38 +308,7 @@ export default function BackupTab() {
               </label>
             </div>
 
-            <div className="border-t pt-4">
-              {envFileAvailable === null ? (
-                <div className="flex items-center gap-3 p-3 border rounded-lg bg-gray-50 border-gray-200">
-                  <Spinner size="sm" />
-                  <span className="text-sm text-gray-500">Checking .env file availability...</span>
-                </div>
-              ) : envFileAvailable ? (
-                <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors bg-yellow-50 border-yellow-200">
-                  <input
-                    type="checkbox"
-                    checked={backupOptions.includeEnvFile}
-                    onChange={(e) => setBackupOptions(prev => ({ ...prev, includeEnvFile: e.target.checked }))}
-                    className="rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
-                  />
-                  <AlertTriangle size={18} className="text-yellow-600" />
-                  <div>
-                    <span className="text-sm font-medium">Include .env file</span>
-                    <p className="text-xs text-yellow-600">Contains sensitive API keys - handle with care</p>
-                  </div>
-                </label>
-              ) : (
-                <div className="flex items-center gap-3 p-3 border rounded-lg bg-gray-100 border-gray-200">
-                  <AlertCircle size={18} className="text-gray-400" />
-                  <div>
-                    <span className="text-sm font-medium text-gray-500">.env file not available</span>
-                    <p className="text-xs text-gray-400">No .env file found in project root</p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="flex justify-end pt-4">
+            <div className="flex justify-end pt-4 border-t mt-4">
               <Button
                 onClick={handleCreateBackup}
                 disabled={backupInProgress}
@@ -395,6 +340,14 @@ export default function BackupTab() {
           </div>
         </div>
         <div className="p-6">
+          {/* Important Reminder */}
+          <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-3">
+            <AlertTriangle size={18} className="text-amber-600 mt-0.5 flex-shrink-0" />
+            <div className="text-sm text-amber-800">
+              <span className="font-medium">Before restoring:</span> Ensure your <code className="bg-amber-100 px-1 rounded">.env</code> file is properly configured with API keys and environment variables. The backup does not include sensitive configuration files.
+            </div>
+          </div>
+
           {/* File Upload */}
           {!restoreFile ? (
             <div className="space-y-4">
@@ -565,22 +518,6 @@ export default function BackupTab() {
                       <p className="text-xs text-green-600">Recommended for new instances - rebuilds document embeddings</p>
                     </div>
                   </label>
-
-                  {restoreManifest?.contents.envFile && (
-                    <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 bg-yellow-50 border-yellow-200">
-                      <input
-                        type="checkbox"
-                        checked={restoreOptions.restoreEnvFile}
-                        onChange={(e) => setRestoreOptions(prev => ({ ...prev, restoreEnvFile: e.target.checked }))}
-                        className="rounded border-gray-300 text-yellow-600 focus:ring-yellow-500"
-                      />
-                      <AlertTriangle size={18} className="text-yellow-600" />
-                      <div>
-                        <span className="text-sm font-medium text-yellow-700">Restore .env file</span>
-                        <p className="text-xs text-yellow-600">Contains API keys - will overwrite current .env</p>
-                      </div>
-                    </label>
-                  )}
                 </div>
               </div>
 

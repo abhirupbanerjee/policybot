@@ -1,45 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { createBackup, type BackupOptions } from '@/lib/backup';
-import { checkEnvFileExists } from '@/lib/db/backup';
 import type { ApiError } from '@/types';
-
-/**
- * GET /api/admin/backup
- * Get backup info including .env file availability
- */
-export async function GET() {
-  try {
-    const user = await getCurrentUser();
-    if (!user) {
-      return NextResponse.json<ApiError>(
-        { error: 'Unauthorized', code: 'AUTH_REQUIRED' },
-        { status: 401 }
-      );
-    }
-
-    if (!user.isAdmin) {
-      return NextResponse.json<ApiError>(
-        { error: 'Admin access required', code: 'ADMIN_REQUIRED' },
-        { status: 403 }
-      );
-    }
-
-    return NextResponse.json({
-      envFileAvailable: checkEnvFileExists(),
-    });
-  } catch (error) {
-    console.error('Backup info error:', error);
-    return NextResponse.json<ApiError>(
-      {
-        error: 'Failed to get backup info',
-        code: 'SERVICE_ERROR',
-        details: error instanceof Error ? error.message : undefined,
-      },
-      { status: 500 }
-    );
-  }
-}
 
 /**
  * POST /api/admin/backup
@@ -71,7 +33,6 @@ export async function POST(request: NextRequest) {
       includeSettings: body.includeSettings !== false,
       includeUsers: body.includeUsers !== false,
       includeThreads: body.includeThreads === true, // Default false (can be large)
-      includeEnvFile: body.includeEnvFile === true, // Default false (sensitive)
     };
 
     // Create backup
