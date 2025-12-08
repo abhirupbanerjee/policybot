@@ -105,7 +105,9 @@ export async function GET() {
       },
       tavily: {
         ...tavilySettings,
-        apiKey: process.env.TAVILY_API_KEY || '',
+        // Show masked key if exists in DB or env, empty string otherwise
+        apiKey: (tavilySettings.apiKey || process.env.TAVILY_API_KEY) ? '••••••••••••••••••••' : '',
+        hasApiKey: !!(tavilySettings.apiKey || process.env.TAVILY_API_KEY),
         updatedAt: tavilyMeta?.updatedAt || new Date().toISOString(),
         updatedBy: tavilyMeta?.updatedBy || 'system',
       },
@@ -321,6 +323,7 @@ export async function PUT(request: NextRequest) {
 
       case 'tavily': {
         const {
+          apiKey,
           enabled,
           defaultTopic,
           defaultSearchDepth,
@@ -329,6 +332,14 @@ export async function PUT(request: NextRequest) {
           excludeDomains,
           cacheTTLSeconds,
         } = settings;
+
+        // Validate API key (optional - can use env var as fallback)
+        if (apiKey !== undefined && typeof apiKey !== 'string') {
+          return NextResponse.json<ApiError>(
+            { error: 'API key must be a string', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
 
         // Validate enabled flag
         if (typeof enabled !== 'boolean') {
@@ -386,6 +397,7 @@ export async function PUT(request: NextRequest) {
         }
 
         result = setTavilySettings({
+          ...(apiKey !== undefined && apiKey !== '' ? { apiKey } : {}),
           enabled,
           defaultTopic,
           defaultSearchDepth,

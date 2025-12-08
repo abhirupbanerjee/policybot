@@ -32,7 +32,8 @@ export const tavilyWebSearch: ToolDefinition = {
 
   execute: async (args: { query: string; max_results?: number }) => {
     const settings = getTavilySettings();
-    const apiKey = process.env.TAVILY_API_KEY;
+    // Check settings first, fall back to environment variable
+    const apiKey = settings.apiKey || process.env.TAVILY_API_KEY;
 
     // Check if web search is enabled
     if (!settings.enabled) {
@@ -44,7 +45,7 @@ export const tavilyWebSearch: ToolDefinition = {
 
     if (!apiKey) {
       return JSON.stringify({
-        error: 'Web search not configured - TAVILY_API_KEY not set',
+        error: 'Web search not configured - please set API key in admin settings',
         results: [],
       });
     }

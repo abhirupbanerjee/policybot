@@ -35,6 +35,7 @@ export interface LlmSettings {
 }
 
 export interface TavilySettings {
+  apiKey?: string;  // Stored encrypted, falls back to TAVILY_API_KEY env var
   enabled: boolean;
   defaultTopic: 'general' | 'news' | 'finance';
   defaultSearchDepth: 'basic' | 'advanced';
