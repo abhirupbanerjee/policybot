@@ -221,26 +221,45 @@ export function exportSettings(): SettingRecord[] {
 }
 
 /**
+ * Get the .env file path (checks multiple possible locations)
+ */
+function getEnvFilePath(): string | null {
+  // Possible locations for .env file
+  const possiblePaths = [
+    path.join(process.cwd(), '.env'),
+    path.resolve('.env'),
+    '/app/.env', // Docker container common path
+    path.join(__dirname, '..', '..', '..', '.env'), // Relative to dist
+  ];
+
+  for (const envPath of possiblePaths) {
+    try {
+      if (fs.existsSync(envPath)) {
+        return envPath;
+      }
+    } catch {
+      // Continue checking other paths
+    }
+  }
+  return null;
+}
+
+/**
  * Check if .env file exists
  */
 export function checkEnvFileExists(): boolean {
-  const envPath = path.join(process.cwd(), '.env');
-  try {
-    return fs.existsSync(envPath);
-  } catch {
-    return false;
-  }
+  return getEnvFilePath() !== null;
 }
 
 /**
  * Export .env file content (sanitized keys only on export, full content for backup)
  */
 export function exportEnvFile(): string | null {
-  const envPath = path.join(process.cwd(), '.env');
+  const envPath = getEnvFilePath();
+  if (!envPath) return null;
+
   try {
-    if (fs.existsSync(envPath)) {
-      return fs.readFileSync(envPath, 'utf-8');
-    }
+    return fs.readFileSync(envPath, 'utf-8');
   } catch {
     // Ignore errors
   }
