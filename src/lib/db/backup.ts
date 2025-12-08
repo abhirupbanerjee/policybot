@@ -221,6 +221,18 @@ export function exportSettings(): SettingRecord[] {
 }
 
 /**
+ * Check if .env file exists
+ */
+export function checkEnvFileExists(): boolean {
+  const envPath = path.join(process.cwd(), '.env');
+  try {
+    return fs.existsSync(envPath);
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Export .env file content (sanitized keys only on export, full content for backup)
  */
 export function exportEnvFile(): string | null {
