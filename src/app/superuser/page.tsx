@@ -522,7 +522,7 @@ export default function SuperUserPage() {
                 <FileText className="w-12 h-12 text-gray-300 mx-auto mb-4" />
                 <h3 className="text-lg font-medium text-gray-900 mb-2">No documents yet</h3>
                 <p className="text-gray-500 mb-4">
-                  Upload PDF documents to your assigned categories
+                  Upload documents to your assigned categories
                 </p>
               </div>
             ) : filteredAndSortedDocs.length === 0 ? (
@@ -761,7 +761,7 @@ export default function SuperUserPage() {
             {uploadMode === 'file' && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  PDF File *
+                  File *
                 </label>
                 <div className="border-2 border-dashed rounded-lg p-4">
                   {uploadFile ? (
@@ -784,11 +784,11 @@ export default function SuperUserPage() {
                   ) : (
                     <label className="flex flex-col items-center cursor-pointer">
                       <Upload size={24} className="text-gray-400 mb-2" />
-                      <span className="text-sm text-gray-600">Click to select a PDF file</span>
-                      <span className="text-xs text-gray-400 mt-1">Max size: 50MB</span>
+                      <span className="text-sm text-gray-600">Click to select a file</span>
+                      <span className="text-xs text-gray-400 mt-1">PDF, DOCX, XLSX, PPTX, Images (max 50MB)</span>
                       <input
                         type="file"
-                        accept=".pdf,application/pdf"
+                        accept=".pdf,.docx,.xlsx,.pptx,.png,.jpg,.jpeg,.webp,.gif,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.openxmlformats-officedocument.presentationml.presentation,image/png,image/jpeg,image/webp,image/gif"
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (file) setUploadFile(file);

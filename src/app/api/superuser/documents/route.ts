@@ -12,6 +12,7 @@ import { getSuperUserWithAssignments } from '@/lib/db/users';
 import { getDocumentsByCategory } from '@/lib/db/documents';
 import { getCategoryById } from '@/lib/db/categories';
 import { ingestDocument } from '@/lib/ingest';
+import { isSupportedMimeType } from '@/lib/document-extractor';
 
 const MAX_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 
@@ -148,9 +149,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Category not found' }, { status: 404 });
     }
 
-    // Validate file type
-    if (file.type !== 'application/pdf') {
-      return NextResponse.json({ error: 'Only PDF files allowed' }, { status: 400 });
+    // Validate file type (PDF, images, DOCX, XLSX, PPTX)
+    if (!isSupportedMimeType(file.type)) {
+      return NextResponse.json(
+        { error: `Invalid file type. Allowed: PDF, DOCX, XLSX, PPTX, PNG, JPG, WEBP, GIF` },
+        { status: 400 }
+      );
     }
 
     // Validate file size

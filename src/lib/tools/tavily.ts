@@ -1,4 +1,4 @@
-import { getTavilySettings } from '../storage';
+import { getTavilySettings } from '../db/config';
 import { hashQuery, getCachedQuery, cacheQuery } from '../redis';
 import type { ToolDefinition } from '../tools';
 
@@ -31,7 +31,8 @@ export const tavilyWebSearch: ToolDefinition = {
   },
 
   execute: async (args: { query: string; max_results?: number }) => {
-    const settings = await getTavilySettings();
+    const settings = getTavilySettings();
+    const apiKey = process.env.TAVILY_API_KEY;
 
     // Check if web search is enabled
     if (!settings.enabled) {
@@ -41,9 +42,9 @@ export const tavilyWebSearch: ToolDefinition = {
       });
     }
 
-    if (!settings.apiKey) {
+    if (!apiKey) {
       return JSON.stringify({
-        error: 'Web search not configured',
+        error: 'Web search not configured - TAVILY_API_KEY not set',
         results: [],
       });
     }
@@ -65,7 +66,7 @@ export const tavilyWebSearch: ToolDefinition = {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          api_key: settings.apiKey,
+          api_key: apiKey,
           query: args.query,
           max_results: Math.min(args.max_results || settings.maxResults, 10),
           search_depth: settings.defaultSearchDepth,
