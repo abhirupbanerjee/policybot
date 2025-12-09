@@ -8,7 +8,6 @@
 import { execute, queryOne, queryAll, transaction } from './db';
 import { getSummarizationSettings, getLlmSettings } from './db/config';
 import OpenAI from 'openai';
-import { encoding_for_model, TiktokenModel } from 'tiktoken';
 
 // ============ Types ============
 
@@ -78,51 +77,34 @@ Provide a summary in 2-3 paragraphs. Focus on the most important information tha
 
 // ============ Token Counting ============
 
-// Cache for tiktoken encoders
-const encoderCache = new Map<string, ReturnType<typeof encoding_for_model>>();
-
 /**
- * Get a cached tiktoken encoder for a model
+ * Estimate token count using character-based heuristics.
+ * This is a reliable fallback that works in all environments.
+ *
+ * Average ratios:
+ * - English text: ~4 characters per token
+ * - Code: ~3.5 characters per token
+ * - Mixed content: ~3.75 characters per token
  */
-function getEncoder(model: string): ReturnType<typeof encoding_for_model> {
-  // Map common model names to tiktoken model names
-  const modelMapping: Record<string, TiktokenModel> = {
-    'gpt-4.1': 'gpt-4o',
-    'gpt-4.1-mini': 'gpt-4o-mini',
-    'gpt-4.1-nano': 'gpt-4o-mini',
-    'gpt-4o': 'gpt-4o',
-    'gpt-4o-mini': 'gpt-4o-mini',
-    'gpt-4': 'gpt-4',
-    'gpt-3.5-turbo': 'gpt-3.5-turbo',
-  };
-
-  const tiktokenModel = modelMapping[model] || 'gpt-4o';
-
-  if (!encoderCache.has(tiktokenModel)) {
-    try {
-      encoderCache.set(tiktokenModel, encoding_for_model(tiktokenModel));
-    } catch {
-      // Fallback to gpt-4o encoding if model not found
-      encoderCache.set(tiktokenModel, encoding_for_model('gpt-4o'));
-    }
-  }
-
-  return encoderCache.get(tiktokenModel)!;
-}
-
-/**
- * Count tokens in a text string
- */
+// Model parameter reserved for future use with model-specific tokenizers
 export function countTokens(text: string, model?: string): number {
-  const llmSettings = getLlmSettings();
-  const encoder = getEncoder(model || llmSettings.model);
+  void model; // Suppress unused warning - reserved for future model-specific counting
+  if (!text) return 0;
 
-  try {
-    return encoder.encode(text).length;
-  } catch {
-    // Fallback to rough estimation (4 chars per token)
-    return Math.ceil(text.length / 4);
-  }
+  // Use a slightly conservative estimate (3.5 chars per token)
+  // This accounts for code, punctuation, and special characters
+  const charCount = text.length;
+
+  // Count words as an additional heuristic
+  const wordCount = text.split(/\s+/).filter(w => w.length > 0).length;
+
+  // Estimate: average of char-based and word-based estimates
+  // Words average ~1.3 tokens each (accounting for subword tokenization)
+  const charBasedEstimate = Math.ceil(charCount / 3.5);
+  const wordBasedEstimate = Math.ceil(wordCount * 1.3);
+
+  // Use the average of both estimates for better accuracy
+  return Math.ceil((charBasedEstimate + wordBasedEstimate) / 2);
 }
 
 /**
