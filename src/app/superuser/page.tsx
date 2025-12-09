@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Users, User, FolderOpen, Tag, Plus, FileText, Upload, Trash2, X, ChevronUp, ChevronDown, ChevronsUpDown, Search, Edit2, Save, RefreshCw, MessageSquare, LayoutDashboard, Database, CheckCircle, AlertCircle, Clock } from 'lucide-react';
+import { ArrowLeft, Users, User, FolderOpen, Tag, Plus, FileText, Upload, Trash2, X, ChevronUp, ChevronDown, ChevronsUpDown, Search, Edit2, Save, RefreshCw, MessageSquare, LayoutDashboard, Database, CheckCircle, AlertCircle, Clock, Wand2 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import Spinner from '@/components/ui/Spinner';
@@ -77,6 +77,13 @@ interface SuperUserStats {
   }[];
 }
 
+interface OptimizationResult {
+  original: string;
+  optimized: string;
+  changes: string[];
+  tokensUsed: number;
+}
+
 export default function SuperUserPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
@@ -136,6 +143,11 @@ export default function SuperUserPage() {
   const [editedCategoryAddendum, setEditedCategoryAddendum] = useState('');
   const [savingCategoryPrompt, setSavingCategoryPrompt] = useState(false);
   const [categoryPromptModified, setCategoryPromptModified] = useState(false);
+
+  // Prompt optimization state
+  const [optimizing, setOptimizing] = useState(false);
+  const [optimizationResult, setOptimizationResult] = useState<OptimizationResult | null>(null);
+  const [showOptimizationDiff, setShowOptimizationDiff] = useState(false);
 
   const loadStats = useCallback(async () => {
     try {
@@ -552,6 +564,47 @@ export default function SuperUserPage() {
     } finally {
       setSavingCategoryPrompt(false);
     }
+  };
+
+  const handleOptimizePrompt = async () => {
+    if (!editingCategoryPrompt || !editedCategoryAddendum.trim()) return;
+
+    setOptimizing(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/categories/${editingCategoryPrompt}/prompt/optimize`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ categoryAddendum: editedCategoryAddendum }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to optimize prompt');
+      }
+
+      const result: OptimizationResult = await response.json();
+      setOptimizationResult(result);
+      setShowOptimizationDiff(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to optimize prompt');
+    } finally {
+      setOptimizing(false);
+    }
+  };
+
+  const handleAcceptOptimization = () => {
+    if (!optimizationResult) return;
+    setEditedCategoryAddendum(optimizationResult.optimized);
+    setCategoryPromptModified(optimizationResult.optimized !== (categoryPromptData?.categoryAddendum || ''));
+    setShowOptimizationDiff(false);
+    setOptimizationResult(null);
+  };
+
+  const handleRejectOptimization = () => {
+    setShowOptimizationDiff(false);
+    setOptimizationResult(null);
   };
 
   if (loading) {
@@ -1561,20 +1614,32 @@ export default function SuperUserPage() {
 
             {/* Actions */}
             <div className="flex justify-between pt-4 border-t">
-              <Button
-                variant="secondary"
-                onClick={handleResetCategoryToGlobal}
-                disabled={savingCategoryPrompt || !categoryPromptData.categoryAddendum}
-                className="text-orange-600 border-orange-300 hover:bg-orange-50"
-              >
-                <RefreshCw size={16} className="mr-2" />
-                Reset to Global Only
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="secondary"
+                  onClick={handleResetCategoryToGlobal}
+                  disabled={savingCategoryPrompt || optimizing || !categoryPromptData.categoryAddendum}
+                  className="text-orange-600 border-orange-300 hover:bg-orange-50"
+                >
+                  <RefreshCw size={16} className="mr-2" />
+                  Reset to Global Only
+                </Button>
+                <Button
+                  variant="secondary"
+                  onClick={handleOptimizePrompt}
+                  disabled={savingCategoryPrompt || optimizing || !editedCategoryAddendum.trim()}
+                  loading={optimizing}
+                  className="text-purple-600 border-purple-300 hover:bg-purple-50"
+                >
+                  <Wand2 size={16} className="mr-2" />
+                  Optimize
+                </Button>
+              </div>
               <div className="flex gap-2">
                 <Button
                   variant="secondary"
                   onClick={handleCloseCategoryPromptModal}
-                  disabled={savingCategoryPrompt}
+                  disabled={savingCategoryPrompt || optimizing}
                 >
                   Cancel
                 </Button>
@@ -1583,6 +1648,7 @@ export default function SuperUserPage() {
                   disabled={
                     !categoryPromptModified ||
                     savingCategoryPrompt ||
+                    optimizing ||
                     editedCategoryAddendum.length > categoryPromptData.charInfo.availableForCategory
                   }
                   loading={savingCategoryPrompt}
@@ -1595,6 +1661,87 @@ export default function SuperUserPage() {
           </div>
         ) : (
           <p className="text-gray-500 text-center py-8">Failed to load category prompt data</p>
+        )}
+      </Modal>
+
+      {/* Optimization Diff Modal */}
+      <Modal
+        isOpen={showOptimizationDiff && optimizationResult !== null}
+        onClose={handleRejectOptimization}
+        title="Optimization Results"
+      >
+        {optimizationResult && (
+          <div className="space-y-4">
+            {/* Changes Made */}
+            {optimizationResult.changes.length > 0 && (
+              <div>
+                <h4 className="text-sm font-medium text-gray-700 mb-2">Changes Made:</h4>
+                <ul className="space-y-1">
+                  {optimizationResult.changes.map((change, idx) => (
+                    <li key={idx} className="flex items-start gap-2 text-sm text-gray-600">
+                      <CheckCircle size={14} className="text-green-500 mt-0.5 flex-shrink-0" />
+                      {change}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {optimizationResult.changes.length === 0 && (
+              <div className="text-sm text-gray-500 text-center py-2">
+                No optimization changes needed - the prompt is already efficient.
+              </div>
+            )}
+
+            {/* Side by Side Diff */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Original
+                  <span className="ml-2 text-xs text-gray-400 font-normal">
+                    ({optimizationResult.original.length} chars)
+                  </span>
+                </label>
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3 h-48 overflow-y-auto">
+                  <pre className="text-xs text-gray-700 whitespace-pre-wrap font-mono">
+                    {optimizationResult.original || <span className="text-gray-400 italic">Empty</span>}
+                  </pre>
+                </div>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Optimized
+                  <span className="ml-2 text-xs text-gray-400 font-normal">
+                    ({optimizationResult.optimized.length} chars)
+                  </span>
+                </label>
+                <div className="bg-green-50 border border-green-200 rounded-lg p-3 h-48 overflow-y-auto">
+                  <pre className="text-xs text-gray-700 whitespace-pre-wrap font-mono">
+                    {optimizationResult.optimized || <span className="text-gray-400 italic">Empty</span>}
+                  </pre>
+                </div>
+              </div>
+            </div>
+
+            {/* Tokens Used */}
+            <p className="text-xs text-gray-500 text-center">
+              Tokens used: {optimizationResult.tokensUsed.toLocaleString()}
+            </p>
+
+            {/* Actions */}
+            <div className="flex justify-end gap-2 pt-4 border-t">
+              <Button variant="secondary" onClick={handleRejectOptimization}>
+                Reject
+              </Button>
+              <Button
+                onClick={handleAcceptOptimization}
+                disabled={optimizationResult.original === optimizationResult.optimized}
+              >
+                <CheckCircle size={16} className="mr-2" />
+                Accept Optimization
+              </Button>
+            </div>
+          </div>
         )}
       </Modal>
     </div>
