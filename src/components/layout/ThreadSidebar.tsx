@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Plus, MessageSquare, Trash2, Menu, X, Settings, LogOut, Users,
-  Landmark, DollarSign, BarChart3, FileText, Database, Activity, Layers, Globe, Server, ScrollText
+  Plus, MessageSquare, Trash2, Menu, X, Settings, LogOut, Users, Brain,
+  Landmark, DollarSign, BarChart3, FileText, Database, Activity, Layers, Globe, Server, ScrollText, BookOpen
 } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
 import Link from 'next/link';
@@ -321,6 +321,12 @@ export default function ThreadSidebar({
                           <span className="text-xs text-gray-500">
                             {formatDate(thread.updatedAt)}
                           </span>
+                          {thread.isSummarized && (
+                            <span className="inline-flex items-center gap-0.5 px-1 py-0.5 bg-blue-50 text-blue-600 rounded text-[9px] font-medium" title="This thread has been summarized">
+                              <BookOpen size={10} />
+                              <span>Summarized</span>
+                            </span>
+                          )}
                         </div>
                         {thread.categories && thread.categories.length > 0 && (
                           <div className="flex flex-wrap gap-1 mt-1">
@@ -376,6 +382,16 @@ export default function ThreadSidebar({
             >
               <Users size={16} />
               Manage Users
+            </Link>
+          )}
+          {session?.user && (
+            <Link
+              href="/profile"
+              className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              onClick={() => setIsOpen(false)}
+            >
+              <Brain size={16} />
+              Your Memory
             </Link>
           )}
           {session?.user && (

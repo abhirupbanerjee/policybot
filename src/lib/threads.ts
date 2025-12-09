@@ -173,6 +173,8 @@ export async function listThreads(userId: string): Promise<Thread[]> {
     updatedAt: new Date(t.updated_at),
     uploadCount: t.uploadCount,
     categories: t.categories,
+    isSummarized: Boolean(t.is_summarized),
+    totalTokens: t.total_tokens || 0,
   }));
 }
 

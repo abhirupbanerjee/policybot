@@ -16,6 +16,8 @@ export interface DbThread {
   title: string;
   created_at: string;
   updated_at: string;
+  is_summarized: number;
+  total_tokens: number;
 }
 
 export interface DbMessage {
@@ -151,7 +153,7 @@ export function getThreadsForUser(
   offset: number = 0
 ): ThreadWithDetails[] {
   const threads = queryAll<DbThread>(`
-    SELECT id, user_id, title, created_at, updated_at
+    SELECT id, user_id, title, created_at, updated_at, is_summarized, total_tokens
     FROM threads
     WHERE user_id = ?
     ORDER BY updated_at DESC

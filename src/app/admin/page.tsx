@@ -136,7 +136,7 @@ interface ModelPreset {
 }
 
 type TabType = 'dashboard' | 'documents' | 'categories' | 'users' | 'settings' | 'stats' | 'backup';
-type SettingsSection = 'prompt' | 'rag' | 'llm' | 'acronyms' | 'tavily' | 'branding' | 'reranker';
+type SettingsSection = 'prompt' | 'rag' | 'llm' | 'acronyms' | 'tavily' | 'branding' | 'reranker' | 'memory' | 'summarization';
 
 interface BrandingSettings {
   botName: string;
@@ -151,6 +151,25 @@ interface RerankerSettings {
   topKForReranking: number;
   minRerankerScore: number;
   cacheTTLSeconds: number;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+interface MemorySettings {
+  enabled: boolean;
+  extractionThreshold: number;
+  maxFactsPerCategory: number;
+  autoExtractOnThreadEnd: boolean;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+interface SummarizationSettings {
+  enabled: boolean;
+  tokenThreshold: number;
+  keepRecentMessages: number;
+  summaryMaxTokens: number;
+  archiveOriginalMessages: boolean;
   updatedAt?: string;
   updatedBy?: string;
 }
@@ -327,6 +346,10 @@ export default function AdminPage() {
   const [editedBranding, setEditedBranding] = useState<Omit<BrandingSettings, 'updatedAt' | 'updatedBy'> | null>(null);
   const [rerankerSettings, setRerankerSettings] = useState<RerankerSettings | null>(null);
   const [editedReranker, setEditedReranker] = useState<Omit<RerankerSettings, 'updatedAt' | 'updatedBy'> | null>(null);
+  const [memorySettings, setMemorySettings] = useState<MemorySettings | null>(null);
+  const [editedMemory, setEditedMemory] = useState<Omit<MemorySettings, 'updatedAt' | 'updatedBy'> | null>(null);
+  const [summarizationSettings, setSummarizationSettings] = useState<SummarizationSettings | null>(null);
+  const [editedSummarization, setEditedSummarization] = useState<Omit<SummarizationSettings, 'updatedAt' | 'updatedBy'> | null>(null);
   const [embeddingSettings, setEmbeddingSettings] = useState<EmbeddingSettings | null>(null);
   const [transcriptionModel, setTranscriptionModel] = useState<string>('whisper-1');
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
@@ -350,6 +373,8 @@ export default function AdminPage() {
   const [tavilyModified, setTavilyModified] = useState(false);
   const [brandingModified, setBrandingModified] = useState(false);
   const [rerankerModified, setRerankerModified] = useState(false);
+  const [memoryModified, setMemoryModified] = useState(false);
+  const [summarizationModified, setSummarizationModified] = useState(false);
   const [rerankerStatus, setRerankerStatus] = useState<RerankerProviderStatus[]>([]);
   const [rerankerStatusLoading, setRerankerStatusLoading] = useState(true);
 
@@ -532,6 +557,25 @@ export default function AdminPage() {
           cacheTTLSeconds: data.reranker.cacheTTLSeconds,
         });
       }
+      if (data.memory) {
+        setMemorySettings(data.memory);
+        setEditedMemory({
+          enabled: data.memory.enabled,
+          extractionThreshold: data.memory.extractionThreshold,
+          maxFactsPerCategory: data.memory.maxFactsPerCategory,
+          autoExtractOnThreadEnd: data.memory.autoExtractOnThreadEnd,
+        });
+      }
+      if (data.summarization) {
+        setSummarizationSettings(data.summarization);
+        setEditedSummarization({
+          enabled: data.summarization.enabled,
+          tokenThreshold: data.summarization.tokenThreshold,
+          keepRecentMessages: data.summarization.keepRecentMessages,
+          summaryMaxTokens: data.summarization.summaryMaxTokens,
+          archiveOriginalMessages: data.summarization.archiveOriginalMessages,
+        });
+      }
       if (data.embedding) {
         setEmbeddingSettings(data.embedding);
       }
@@ -546,6 +590,8 @@ export default function AdminPage() {
       setTavilyModified(false);
       setBrandingModified(false);
       setRerankerModified(false);
+      setMemoryModified(false);
+      setSummarizationModified(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load settings');
     } finally {
@@ -1678,6 +1724,87 @@ export default function AdminPage() {
     }
   };
 
+  // Memory settings handlers
+  const handleSaveMemory = async () => {
+    if (!editedMemory || !memoryModified) return;
+
+    setSavingSettings(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/admin/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'memory', settings: editedMemory }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to save memory settings');
+      }
+
+      const data = await response.json();
+      setMemorySettings(data.memory);
+      setMemoryModified(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save memory settings');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const handleResetMemory = () => {
+    if (memorySettings) {
+      setEditedMemory({
+        enabled: memorySettings.enabled,
+        extractionThreshold: memorySettings.extractionThreshold,
+        maxFactsPerCategory: memorySettings.maxFactsPerCategory,
+        autoExtractOnThreadEnd: memorySettings.autoExtractOnThreadEnd,
+      });
+      setMemoryModified(false);
+    }
+  };
+
+  // Summarization settings handlers
+  const handleSaveSummarization = async () => {
+    if (!editedSummarization || !summarizationModified) return;
+
+    setSavingSettings(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/admin/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'summarization', settings: editedSummarization }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to save summarization settings');
+      }
+
+      const data = await response.json();
+      setSummarizationSettings(data.summarization);
+      setSummarizationModified(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save summarization settings');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const handleResetSummarization = () => {
+    if (summarizationSettings) {
+      setEditedSummarization({
+        enabled: summarizationSettings.enabled,
+        tokenThreshold: summarizationSettings.tokenThreshold,
+        keepRecentMessages: summarizationSettings.keepRecentMessages,
+        summaryMaxTokens: summarizationSettings.summaryMaxTokens,
+        archiveOriginalMessages: summarizationSettings.archiveOriginalMessages,
+      });
+      setSummarizationModified(false);
+    }
+  };
+
   // Utility functions
   const formatFileSize = (bytes: number) => {
     if (bytes < 1024) return `${bytes} B`;
@@ -2792,6 +2919,26 @@ export default function AdminPage() {
                 >
                   Acronyms
                 </button>
+                <button
+                  onClick={() => setSettingsSection('memory')}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    settingsSection === 'memory'
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  Memory
+                </button>
+                <button
+                  onClick={() => setSettingsSection('summarization')}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    settingsSection === 'summarization'
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  Summarization
+                </button>
               </nav>
             </div>
 
@@ -3755,6 +3902,245 @@ export default function AdminPage() {
                       </div>
                     ) : null}
                   </div>
+                </div>
+              )}
+
+              {/* Memory Section */}
+              {settingsSection === 'memory' && (
+                <div className="bg-white rounded-lg border shadow-sm">
+                  <div className="px-6 py-4 border-b">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h2 className="font-semibold text-gray-900">User Memory</h2>
+                        <p className="text-sm text-gray-500">
+                          Extract and store facts about users across conversations
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {memoryModified && (
+                          <Button variant="secondary" onClick={handleResetMemory} disabled={savingSettings}>
+                            Reset
+                          </Button>
+                        )}
+                        <Button onClick={handleSaveMemory} disabled={!memoryModified || savingSettings} loading={savingSettings}>
+                          <Save size={18} className="mr-2" />
+                          Save
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                  {settingsLoading ? (
+                    <div className="px-6 py-12 flex justify-center"><Spinner size="lg" /></div>
+                  ) : editedMemory ? (
+                    <div className="p-6 space-y-6">
+                      {/* Enable/Disable Toggle */}
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <label className="font-medium text-gray-900">Enable Memory</label>
+                          <p className="text-sm text-gray-500">Automatically extract and remember facts about users</p>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={editedMemory.enabled}
+                          onChange={(e) => {
+                            setEditedMemory({ ...editedMemory, enabled: e.target.checked });
+                            setMemoryModified(true);
+                          }}
+                          className="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      {/* Settings Grid */}
+                      <div className="grid grid-cols-2 gap-6">
+                        {/* Extraction Threshold */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-900 mb-1">Extraction Threshold</label>
+                          <input
+                            type="number"
+                            min="1"
+                            max="50"
+                            value={editedMemory.extractionThreshold}
+                            onChange={(e) => {
+                              setEditedMemory({ ...editedMemory, extractionThreshold: parseInt(e.target.value) || 5 });
+                              setMemoryModified(true);
+                            }}
+                            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                          <p className="mt-1 text-xs text-gray-500">Minimum messages before extraction (1-50)</p>
+                        </div>
+
+                        {/* Max Facts Per Category */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-900 mb-1">Max Facts Per Category</label>
+                          <input
+                            type="number"
+                            min="5"
+                            max="100"
+                            value={editedMemory.maxFactsPerCategory}
+                            onChange={(e) => {
+                              setEditedMemory({ ...editedMemory, maxFactsPerCategory: parseInt(e.target.value) || 20 });
+                              setMemoryModified(true);
+                            }}
+                            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                          <p className="mt-1 text-xs text-gray-500">Maximum facts stored per category (5-100)</p>
+                        </div>
+                      </div>
+
+                      {/* Auto Extract Toggle */}
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <label className="font-medium text-gray-900">Auto-Extract on Thread End</label>
+                          <p className="text-sm text-gray-500">Automatically extract facts when conversations end</p>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={editedMemory.autoExtractOnThreadEnd}
+                          onChange={(e) => {
+                            setEditedMemory({ ...editedMemory, autoExtractOnThreadEnd: e.target.checked });
+                            setMemoryModified(true);
+                          }}
+                          className="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      {/* Last Updated */}
+                      {memorySettings?.updatedAt && (
+                        <p className="text-xs text-gray-500">
+                          Last updated: {formatDate(memorySettings.updatedAt)} by {memorySettings.updatedBy}
+                        </p>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
+              {/* Summarization Section */}
+              {settingsSection === 'summarization' && (
+                <div className="bg-white rounded-lg border shadow-sm">
+                  <div className="px-6 py-4 border-b">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h2 className="font-semibold text-gray-900">Thread Summarization</h2>
+                        <p className="text-sm text-gray-500">
+                          Automatically compress long conversations to reduce token usage
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {summarizationModified && (
+                          <Button variant="secondary" onClick={handleResetSummarization} disabled={savingSettings}>
+                            Reset
+                          </Button>
+                        )}
+                        <Button onClick={handleSaveSummarization} disabled={!summarizationModified || savingSettings} loading={savingSettings}>
+                          <Save size={18} className="mr-2" />
+                          Save
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                  {settingsLoading ? (
+                    <div className="px-6 py-12 flex justify-center"><Spinner size="lg" /></div>
+                  ) : editedSummarization ? (
+                    <div className="p-6 space-y-6">
+                      {/* Enable/Disable Toggle */}
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <label className="font-medium text-gray-900">Enable Summarization</label>
+                          <p className="text-sm text-gray-500">Automatically summarize threads when token threshold is exceeded</p>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={editedSummarization.enabled}
+                          onChange={(e) => {
+                            setEditedSummarization({ ...editedSummarization, enabled: e.target.checked });
+                            setSummarizationModified(true);
+                          }}
+                          className="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      {/* Settings Grid */}
+                      <div className="grid grid-cols-2 gap-6">
+                        {/* Token Threshold */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-900 mb-1">Token Threshold</label>
+                          <input
+                            type="number"
+                            min="1000"
+                            max="1000000"
+                            step="1000"
+                            value={editedSummarization.tokenThreshold}
+                            onChange={(e) => {
+                              setEditedSummarization({ ...editedSummarization, tokenThreshold: parseInt(e.target.value) || 100000 });
+                              setSummarizationModified(true);
+                            }}
+                            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                          <p className="mt-1 text-xs text-gray-500">Trigger summarization at this token count</p>
+                        </div>
+
+                        {/* Keep Recent Messages */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-900 mb-1">Keep Recent Messages</label>
+                          <input
+                            type="number"
+                            min="2"
+                            max="50"
+                            value={editedSummarization.keepRecentMessages}
+                            onChange={(e) => {
+                              setEditedSummarization({ ...editedSummarization, keepRecentMessages: parseInt(e.target.value) || 10 });
+                              setSummarizationModified(true);
+                            }}
+                            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                          <p className="mt-1 text-xs text-gray-500">Messages to exclude from summarization (2-50)</p>
+                        </div>
+
+                        {/* Summary Max Tokens */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-900 mb-1">Summary Max Tokens</label>
+                          <input
+                            type="number"
+                            min="500"
+                            max="8000"
+                            step="100"
+                            value={editedSummarization.summaryMaxTokens}
+                            onChange={(e) => {
+                              setEditedSummarization({ ...editedSummarization, summaryMaxTokens: parseInt(e.target.value) || 2000 });
+                              setSummarizationModified(true);
+                            }}
+                            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                          <p className="mt-1 text-xs text-gray-500">Maximum tokens for generated summaries</p>
+                        </div>
+                      </div>
+
+                      {/* Archive Toggle */}
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <label className="font-medium text-gray-900">Archive Original Messages</label>
+                          <p className="text-sm text-gray-500">Keep original messages for reference (viewable in thread details)</p>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={editedSummarization.archiveOriginalMessages}
+                          onChange={(e) => {
+                            setEditedSummarization({ ...editedSummarization, archiveOriginalMessages: e.target.checked });
+                            setSummarizationModified(true);
+                          }}
+                          className="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      {/* Last Updated */}
+                      {summarizationSettings?.updatedAt && (
+                        <p className="text-xs text-gray-500">
+                          Last updated: {formatDate(summarizationSettings.updatedAt)} by {summarizationSettings.updatedBy}
+                        </p>
+                      )}
+                    </div>
+                  ) : null}
                 </div>
               )}
             </div>

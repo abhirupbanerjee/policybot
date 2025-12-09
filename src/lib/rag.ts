@@ -258,7 +258,9 @@ export async function ragQuery(
   userMessage: string,
   conversationHistory: Message[] = [],
   userDocPaths: string[] = [],
-  categorySlugs?: string[]
+  categorySlugs?: string[],
+  memoryContext?: string,
+  summaryContext?: string
 ): Promise<RAGResponse> {
   // Get RAG settings from SQLite config
   const ragSettings = getRagSettings();
@@ -313,7 +315,17 @@ export async function ragQuery(
     const categoryIds = getCategoryIdsBySlugs(categorySlugs);
     categoryId = categoryIds[0]; // Use first category for prompt resolution
   }
-  const systemPrompt = getResolvedSystemPrompt(categoryId);
+  let systemPrompt = getResolvedSystemPrompt(categoryId);
+
+  // Inject memory context if available
+  if (memoryContext && memoryContext.trim()) {
+    systemPrompt = `${systemPrompt}\n\n${memoryContext}`;
+  }
+
+  // Inject summary context if available
+  if (summaryContext && summaryContext.trim()) {
+    systemPrompt = `${systemPrompt}\n\n${summaryContext}`;
+  }
 
   // Generate response with tools (web search)
   const { content: answer, fullHistory } = await generateResponseWithTools(

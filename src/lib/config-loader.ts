@@ -79,6 +79,21 @@ export interface RetentionConfig {
   storageAlertThreshold: number;
 }
 
+export interface MemoryConfig {
+  enabled: boolean;
+  extractionThreshold: number;
+  maxFactsPerCategory: number;
+  autoExtractOnThreadEnd: boolean;
+}
+
+export interface SummarizationConfig {
+  enabled: boolean;
+  tokenThreshold: number;
+  keepRecentMessages: number;
+  summaryMaxTokens: number;
+  archiveOriginalMessages: boolean;
+}
+
 export interface BrandingConfig {
   botName: string;
   botIcon: string;
@@ -111,6 +126,8 @@ export interface AppConfig {
   tavily: TavilyConfig;
   upload: UploadConfig;
   retention: RetentionConfig;
+  memory: MemoryConfig;
+  summarization: SummarizationConfig;
   branding: BrandingConfig;
   limits: LimitsConfig;
   models: ModelsConfig;
@@ -344,6 +361,19 @@ function getHardcodedDefaults(): AppConfig {
     retention: {
       threadRetentionDays: 90,
       storageAlertThreshold: 70,
+    },
+    memory: {
+      enabled: false,
+      extractionThreshold: 5,
+      maxFactsPerCategory: 20,
+      autoExtractOnThreadEnd: true,
+    },
+    summarization: {
+      enabled: false,
+      tokenThreshold: 100000,
+      keepRecentMessages: 10,
+      summaryMaxTokens: 2000,
+      archiveOriginalMessages: true,
     },
     branding: {
       botName: 'Policy Bot',

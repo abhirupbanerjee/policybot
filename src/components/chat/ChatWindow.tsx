@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { MessageSquare, RefreshCw } from 'lucide-react';
+import { MessageSquare, RefreshCw, BookOpen, ChevronDown, ChevronUp } from 'lucide-react';
 import type { Message, Thread, UserSubscription } from '@/types';
 import MessageBubble from './MessageBubble';
 import MessageInput from './MessageInput';
@@ -14,9 +14,17 @@ interface ChatWindowProps {
   brandingName?: string;
 }
 
+interface ThreadSummary {
+  summary: string;
+  messagesSummarized: number;
+  createdAt: string;
+}
+
 export default function ChatWindow({ activeThread, onThreadCreated, userSubscriptions = [], brandingName = 'Policy Bot' }: ChatWindowProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [uploads, setUploads] = useState<string[]>([]);
+  const [showSummaryDetails, setShowSummaryDetails] = useState(false);
+  const [summaryData, setSummaryData] = useState<ThreadSummary | null>(null);
 
   // Compute dynamic header based on subscriptions
   const getHeaderInfo = () => {
@@ -55,12 +63,37 @@ export default function ChatWindow({ activeThread, onThreadCreated, userSubscrip
     if (activeThread) {
       setThreadId(activeThread.id);
       loadThread(activeThread.id);
+      // Load summary data if thread is summarized
+      if (activeThread.isSummarized) {
+        loadSummaryData(activeThread.id);
+      } else {
+        setSummaryData(null);
+      }
     } else {
       setThreadId(null);
       setMessages([]);
       setUploads([]);
+      setSummaryData(null);
     }
   }, [activeThread]);
+
+  const loadSummaryData = async (id: string) => {
+    try {
+      const response = await fetch(`/api/threads/${id}/summary`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data.hasSummary && data.summary) {
+          setSummaryData({
+            summary: data.summary.summary,
+            messagesSummarized: data.summary.messagesSummarized,
+            createdAt: data.summary.createdAt,
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load summary:', err);
+    }
+  };
 
   // Auto-scroll to bottom
   useEffect(() => {
@@ -182,6 +215,36 @@ export default function ChatWindow({ activeThread, onThreadCreated, userSubscrip
           {headerInfo.subtitle}
         </p>
       </header>
+
+      {/* Summarization Banner */}
+      {activeThread?.isSummarized && summaryData && (
+        <div className="bg-blue-50 border-b border-blue-100 px-6 py-3">
+          <button
+            onClick={() => setShowSummaryDetails(!showSummaryDetails)}
+            className="w-full flex items-center justify-between text-left"
+          >
+            <div className="flex items-center gap-2 text-blue-700">
+              <BookOpen size={18} />
+              <span className="text-sm font-medium">
+                This conversation has been summarized ({summaryData.messagesSummarized} messages compressed)
+              </span>
+            </div>
+            {showSummaryDetails ? (
+              <ChevronUp size={18} className="text-blue-600" />
+            ) : (
+              <ChevronDown size={18} className="text-blue-600" />
+            )}
+          </button>
+          {showSummaryDetails && (
+            <div className="mt-3 p-3 bg-white rounded-lg border border-blue-200">
+              <p className="text-sm text-gray-700 whitespace-pre-wrap">{summaryData.summary}</p>
+              <p className="text-xs text-gray-500 mt-2">
+                Summarized on {new Date(summaryData.createdAt).toLocaleDateString()}
+              </p>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4">

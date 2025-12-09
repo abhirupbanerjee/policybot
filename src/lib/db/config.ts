@@ -81,6 +81,21 @@ export interface RerankerSettings {
   cacheTTLSeconds: number;        // Cache duration (default: 3600)
 }
 
+export interface MemorySettings {
+  enabled: boolean;               // Enable/disable memory system
+  extractionThreshold: number;    // Minimum messages before extracting facts
+  maxFactsPerCategory: number;    // Maximum facts stored per user+category
+  autoExtractOnThreadEnd: boolean; // Auto-extract facts when thread ends
+}
+
+export interface SummarizationSettings {
+  enabled: boolean;               // Enable/disable auto-summarization
+  tokenThreshold: number;         // Trigger summarization when thread exceeds this
+  keepRecentMessages: number;     // Number of recent messages to preserve unsummarized
+  summaryMaxTokens: number;       // Maximum length of generated summary
+  archiveOriginalMessages: boolean; // Keep original messages for audit/recovery
+}
+
 // Available icon options for branding
 export const BRANDING_ICONS = [
   { key: 'government', label: 'Government', lucideIcon: 'Landmark' },
@@ -177,7 +192,9 @@ export type SettingKey =
   | 'retention-settings'
   | 'branding-settings'
   | 'embedding-settings'
-  | 'reranker-settings';
+  | 'reranker-settings'
+  | 'memory-settings'
+  | 'summarization-settings';
 
 // ============ Generic Operations ============
 
@@ -398,6 +415,43 @@ export function getRerankerSettings(): RerankerSettings {
   return config.reranker;
 }
 
+/**
+ * Get memory settings
+ * Priority: SQLite > JSON config > hardcoded defaults
+ */
+export function getMemorySettings(): MemorySettings {
+  const dbSettings = getSetting<MemorySettings>('memory-settings');
+  if (dbSettings) return dbSettings;
+
+  // Fall back to JSON config
+  const config = loadConfig();
+  return config.memory || {
+    enabled: false,
+    extractionThreshold: 5,
+    maxFactsPerCategory: 20,
+    autoExtractOnThreadEnd: true,
+  };
+}
+
+/**
+ * Get summarization settings
+ * Priority: SQLite > JSON config > hardcoded defaults
+ */
+export function getSummarizationSettings(): SummarizationSettings {
+  const dbSettings = getSetting<SummarizationSettings>('summarization-settings');
+  if (dbSettings) return dbSettings;
+
+  // Fall back to JSON config
+  const config = loadConfig();
+  return config.summarization || {
+    enabled: false,
+    tokenThreshold: 100000,
+    keepRecentMessages: 10,
+    summaryMaxTokens: 2000,
+    archiveOriginalMessages: true,
+  };
+}
+
 // ============ Typed Setters ============
 
 /**
@@ -496,6 +550,26 @@ export function setRerankerSettings(settings: Partial<RerankerSettings>, updated
   return updated;
 }
 
+/**
+ * Update memory settings
+ */
+export function setMemorySettings(settings: Partial<MemorySettings>, updatedBy?: string): MemorySettings {
+  const current = getMemorySettings();
+  const updated = { ...current, ...settings };
+  setSetting('memory-settings', updated, updatedBy);
+  return updated;
+}
+
+/**
+ * Update summarization settings
+ */
+export function setSummarizationSettings(settings: Partial<SummarizationSettings>, updatedBy?: string): SummarizationSettings {
+  const current = getSummarizationSettings();
+  const updated = { ...current, ...settings };
+  setSetting('summarization-settings', updated, updatedBy);
+  return updated;
+}
+
 // ============ Default System Prompt ============
 
 /**
@@ -522,6 +596,8 @@ export function getAllSettings(): {
   branding: BrandingSettings;
   embedding: EmbeddingSettings;
   reranker: RerankerSettings;
+  memory: MemorySettings;
+  summarization: SummarizationSettings;
 } {
   return {
     rag: getRagSettings(),
@@ -534,5 +610,7 @@ export function getAllSettings(): {
     branding: getBrandingSettings(),
     embedding: getEmbeddingSettings(),
     reranker: getRerankerSettings(),
+    memory: getMemorySettings(),
+    summarization: getSummarizationSettings(),
   };
 }

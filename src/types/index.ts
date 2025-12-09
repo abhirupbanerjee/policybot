@@ -49,6 +49,8 @@ export interface Thread {
   updatedAt: Date;
   uploadCount: number;
   categories?: ThreadCategory[];
+  isSummarized?: boolean;
+  totalTokens?: number;
 }
 
 export interface ThreadCategory {

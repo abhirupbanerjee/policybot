@@ -19,6 +19,10 @@ import {
   setEmbeddingSettings,
   getRerankerSettings,
   setRerankerSettings,
+  getMemorySettings,
+  setMemorySettings,
+  getSummarizationSettings,
+  setSummarizationSettings,
   getSettingMetadata,
   deleteSetting,
   MODEL_PRESETS,
@@ -78,6 +82,8 @@ export async function GET() {
     const brandingSettings = getBrandingSettings();
     const embeddingSettings = getEmbeddingSettings();
     const rerankerSettings = getRerankerSettings();
+    const memorySettings = getMemorySettings();
+    const summarizationSettings = getSummarizationSettings();
 
     // Get metadata for last updated info
     const ragMeta = getSettingMetadata('rag-settings');
@@ -87,6 +93,8 @@ export async function GET() {
     const brandingMeta = getSettingMetadata('branding-settings');
     const embeddingMeta = getSettingMetadata('embedding-settings');
     const rerankerMeta = getSettingMetadata('reranker-settings');
+    const memoryMeta = getSettingMetadata('memory-settings');
+    const summarizationMeta = getSettingMetadata('summarization-settings');
 
     return NextResponse.json({
       rag: {
@@ -128,6 +136,16 @@ export async function GET() {
         updatedAt: rerankerMeta?.updatedAt || new Date().toISOString(),
         updatedBy: rerankerMeta?.updatedBy || 'system',
       },
+      memory: {
+        ...memorySettings,
+        updatedAt: memoryMeta?.updatedAt || new Date().toISOString(),
+        updatedBy: memoryMeta?.updatedBy || 'system',
+      },
+      summarization: {
+        ...summarizationSettings,
+        updatedAt: summarizationMeta?.updatedAt || new Date().toISOString(),
+        updatedBy: summarizationMeta?.updatedBy || 'system',
+      },
       uploadLimits,
       retentionSettings,
       availableModels: getAvailableModels(),
@@ -147,6 +165,8 @@ export async function GET() {
         branding: getBrandingSettings(),
         embedding: { model: 'text-embedding-3-large', dimensions: 3072 },
         reranker: { enabled: false, provider: 'cohere', topKForReranking: 50, minRerankerScore: 0.3, cacheTTLSeconds: 3600 },
+        memory: { enabled: false, extractionThreshold: 5, maxFactsPerCategory: 20, autoExtractOnThreadEnd: true },
+        summarization: { enabled: false, tokenThreshold: 100000, keepRecentMessages: 10, summaryMaxTokens: 2000, archiveOriginalMessages: true },
       },
     });
   } catch (error) {
@@ -623,6 +643,114 @@ export async function PUT(request: NextRequest) {
         break;
       }
 
+      case 'memory': {
+        const {
+          enabled,
+          extractionThreshold,
+          maxFactsPerCategory,
+          autoExtractOnThreadEnd,
+        } = settings;
+
+        // Validate enabled flag
+        if (typeof enabled !== 'boolean') {
+          return NextResponse.json<ApiError>(
+            { error: 'Enabled must be a boolean', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Validate extractionThreshold
+        if (typeof extractionThreshold !== 'number' || extractionThreshold < 1 || extractionThreshold > 50) {
+          return NextResponse.json<ApiError>(
+            { error: 'Extraction threshold must be between 1 and 50', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Validate maxFactsPerCategory
+        if (typeof maxFactsPerCategory !== 'number' || maxFactsPerCategory < 1 || maxFactsPerCategory > 100) {
+          return NextResponse.json<ApiError>(
+            { error: 'Max facts per category must be between 1 and 100', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Validate autoExtractOnThreadEnd
+        if (typeof autoExtractOnThreadEnd !== 'boolean') {
+          return NextResponse.json<ApiError>(
+            { error: 'Auto extract on thread end must be a boolean', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        result = setMemorySettings({
+          enabled,
+          extractionThreshold,
+          maxFactsPerCategory,
+          autoExtractOnThreadEnd,
+        }, user.email);
+        break;
+      }
+
+      case 'summarization': {
+        const {
+          enabled,
+          tokenThreshold,
+          keepRecentMessages,
+          summaryMaxTokens,
+          archiveOriginalMessages,
+        } = settings;
+
+        // Validate enabled flag
+        if (typeof enabled !== 'boolean') {
+          return NextResponse.json<ApiError>(
+            { error: 'Enabled must be a boolean', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Validate tokenThreshold
+        if (typeof tokenThreshold !== 'number' || tokenThreshold < 1000 || tokenThreshold > 1000000) {
+          return NextResponse.json<ApiError>(
+            { error: 'Token threshold must be between 1,000 and 1,000,000', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Validate keepRecentMessages
+        if (typeof keepRecentMessages !== 'number' || keepRecentMessages < 1 || keepRecentMessages > 50) {
+          return NextResponse.json<ApiError>(
+            { error: 'Keep recent messages must be between 1 and 50', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Validate summaryMaxTokens
+        if (typeof summaryMaxTokens !== 'number' || summaryMaxTokens < 100 || summaryMaxTokens > 10000) {
+          return NextResponse.json<ApiError>(
+            { error: 'Summary max tokens must be between 100 and 10,000', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Validate archiveOriginalMessages
+        if (typeof archiveOriginalMessages !== 'boolean') {
+          return NextResponse.json<ApiError>(
+            { error: 'Archive original messages must be a boolean', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        result = setSummarizationSettings({
+          enabled,
+          tokenThreshold,
+          keepRecentMessages,
+          summaryMaxTokens,
+          archiveOriginalMessages,
+        }, user.email);
+        break;
+      }
+
       case 'restoreAllDefaults': {
         // Delete all settings from SQLite to fall back to JSON config defaults
         const settingKeys = [
@@ -636,6 +764,8 @@ export async function PUT(request: NextRequest) {
           'branding-settings',
           'embedding-settings',
           'reranker-settings',
+          'memory-settings',
+          'summarization-settings',
         ] as const;
 
         for (const key of settingKeys) {
@@ -651,6 +781,8 @@ export async function PUT(request: NextRequest) {
           branding: getBrandingSettings(),
           embedding: getEmbeddingSettings(),
           reranker: getRerankerSettings(),
+          memory: getMemorySettings(),
+          summarization: getSummarizationSettings(),
           systemPrompt: getDefaultSystemPrompt(),
         };
 

@@ -1,8 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { getCurrentUser } from '@/lib/auth';
+import { getUserByEmail } from '@/lib/db/users';
 import { ragQuery } from '@/lib/rag';
 import { getThread, addMessage, getMessages, getUploadPaths, getThreadCategorySlugsForQuery } from '@/lib/threads';
+import {
+  getMemoryContext,
+  processConversationForMemory,
+} from '@/lib/memory';
+import {
+  countTokens,
+  updateThreadTokenCount,
+  shouldSummarize,
+  summarizeThread,
+  getThreadSummary,
+  formatSummaryForContext,
+} from '@/lib/summarization';
+import { getMemorySettings, getSummarizationSettings } from '@/lib/db/config';
 import type { Message, ChatRequest, ChatResponse, ApiError } from '@/types';
 
 export async function POST(request: NextRequest) {
@@ -41,6 +55,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Get user from database for memory
+    const dbUser = getUserByEmail(user.email);
+    const memorySettings = getMemorySettings();
+    const summarizationSettings = getSummarizationSettings();
+
     // Create user message
     const userMessage: Message = {
       id: uuidv4(),
@@ -52,22 +71,45 @@ export async function POST(request: NextRequest) {
     // Save user message
     await addMessage(user.id, threadId, userMessage);
 
-    // Get conversation history
-    const conversationHistory = await getMessages(user.id, threadId, 5);
+    // Track user message tokens
+    const userTokens = countTokens(message);
+    updateThreadTokenCount(threadId, userTokens);
 
-    // Get user uploaded documents
-    const uploadPaths = await getUploadPaths(user.id, threadId);
+    // Get conversation history (dynamic based on settings)
+    // Get more messages than needed to allow for dynamic context management
+    const conversationHistory = await getMessages(user.id, threadId, 50);
 
     // Get thread categories for category-based search
     const categorySlugs = await getThreadCategorySlugsForQuery(threadId);
     console.log('[Chat API] Thread categories:', { threadId, categorySlugs });
 
-    // Run RAG query with category context
+    // Get category IDs for memory context
+    const categoryIds = thread.categories?.map(c => c.id) || [];
+
+    // Get memory context if enabled
+    let memoryContext = '';
+    if (memorySettings.enabled && dbUser) {
+      memoryContext = getMemoryContext(dbUser.id, categoryIds);
+    }
+
+    // Get thread summary context if available
+    let summaryContext = '';
+    const existingSummary = getThreadSummary(threadId);
+    if (existingSummary) {
+      summaryContext = formatSummaryForContext(existingSummary.summary);
+    }
+
+    // Get user uploaded documents
+    const uploadPaths = await getUploadPaths(user.id, threadId);
+
+    // Run RAG query with category context, memory, and summary
     const { answer, sources } = await ragQuery(
       message,
       conversationHistory.slice(0, -1), // Exclude the message we just added
       uploadPaths,
-      categorySlugs.length > 0 ? categorySlugs : undefined
+      categorySlugs.length > 0 ? categorySlugs : undefined,
+      memoryContext,
+      summaryContext
     );
 
     // Create assistant message
@@ -81,6 +123,30 @@ export async function POST(request: NextRequest) {
 
     // Save assistant message
     await addMessage(user.id, threadId, assistantMessage);
+
+    // Track assistant message tokens
+    const assistantTokens = countTokens(answer);
+    updateThreadTokenCount(threadId, assistantTokens);
+
+    // Check if summarization is needed (async, non-blocking)
+    if (summarizationSettings.enabled && shouldSummarize(threadId)) {
+      // Trigger summarization in background
+      summarizeThread(threadId).catch(err => {
+        console.error('[Chat API] Background summarization failed:', err);
+      });
+    }
+
+    // Process conversation for memory extraction if enabled (async, non-blocking)
+    if (memorySettings.enabled && memorySettings.autoExtractOnThreadEnd && dbUser) {
+      // Process with recent conversation
+      const recentMessages = conversationHistory.slice(-10).map(m => ({
+        role: m.role,
+        content: m.content,
+      }));
+      processConversationForMemory(dbUser.id, categoryIds[0] || null, recentMessages).catch(err => {
+        console.error('[Chat API] Background memory extraction failed:', err);
+      });
+    }
 
     return NextResponse.json<ChatResponse>({
       message: assistantMessage,

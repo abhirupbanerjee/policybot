@@ -228,6 +228,21 @@
     "storageAlertThreshold": 70
   },
 
+  "memory": {
+    "enabled": false,
+    "extractionThreshold": 5,
+    "maxFactsPerCategory": 20,
+    "autoExtractOnThreadEnd": true
+  },
+
+  "summarization": {
+    "enabled": false,
+    "tokenThreshold": 100000,
+    "keepRecentMessages": 10,
+    "summaryMaxTokens": 2000,
+    "archiveOriginalMessages": true
+  },
+
   "branding": {
     "botName": "Grenada AI Assistant",
     "botIcon": "government"

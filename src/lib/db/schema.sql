@@ -170,6 +170,55 @@ CREATE TABLE IF NOT EXISTS thread_outputs (
 
 CREATE INDEX IF NOT EXISTS idx_thread_outputs_thread ON thread_outputs(thread_id);
 
+-- ============ Memory & Summarization ============
+
+-- User memory storage (facts per user+category)
+CREATE TABLE IF NOT EXISTS user_memories (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  category_id INTEGER, -- NULL = global memory
+  facts_json TEXT NOT NULL, -- JSON array of fact strings
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, category_id),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_memories_user ON user_memories(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_memories_category ON user_memories(category_id);
+
+-- Thread summaries
+CREATE TABLE IF NOT EXISTS thread_summaries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  thread_id TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  messages_summarized INTEGER NOT NULL, -- count of messages included
+  tokens_before INTEGER, -- estimated tokens before summarization
+  tokens_after INTEGER, -- tokens in summary
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_thread_summaries_thread ON thread_summaries(thread_id);
+
+-- Archived messages (original messages after summarization)
+CREATE TABLE IF NOT EXISTS archived_messages (
+  id TEXT PRIMARY KEY,
+  thread_id TEXT NOT NULL,
+  role TEXT NOT NULL CHECK (role IN ('user', 'assistant', 'tool')),
+  content TEXT NOT NULL,
+  sources_json TEXT,
+  created_at DATETIME NOT NULL,
+  archived_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  summary_id INTEGER,
+  FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE,
+  FOREIGN KEY (summary_id) REFERENCES thread_summaries(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_archived_messages_thread ON archived_messages(thread_id);
+CREATE INDEX IF NOT EXISTS idx_archived_messages_summary ON archived_messages(summary_id);
+
 -- ============ Settings ============
 
 -- Key-value settings store (replaces JSON config files)
