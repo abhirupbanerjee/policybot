@@ -27,6 +27,7 @@ function checkProviderConfig(): Record<string, boolean> {
     mistral: Boolean(process.env.MISTRAL_API_KEY),
     ollama: Boolean(process.env.OLLAMA_API_BASE),
     azure: Boolean(process.env.AZURE_API_KEY && process.env.AZURE_API_BASE),
+    gemini: Boolean(process.env.GEMINI_API_KEY),
   };
 }
 
@@ -44,6 +45,10 @@ const MODEL_CONFIG = {
     { model: 'mistral-small-3.2', name: 'Mistral Small 3.2', provider: 'mistral' },
     { model: 'ministral-8b', name: 'Ministral 8B', provider: 'mistral' },
     { model: 'ministral-3b', name: 'Ministral 3B', provider: 'mistral' },
+    // Gemini
+    { model: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', provider: 'gemini' },
+    { model: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', provider: 'gemini' },
+    { model: 'gemini-2.5-flash-lite', name: 'Gemini 2.5 Flash-Lite', provider: 'gemini' },
     // Ollama
     { model: 'ollama-llama3.2', name: 'Llama 3.2', provider: 'ollama' },
     { model: 'ollama-llama3.1', name: 'Llama 3.1', provider: 'ollama' },
@@ -295,6 +300,36 @@ async function testProvider(provider: string): Promise<{ available: boolean; err
         return { available: true };
       }
 
+      case 'gemini': {
+        const apiKey = process.env.GEMINI_API_KEY;
+        if (!apiKey) {
+          return { available: false, error: 'API key not configured' };
+        }
+        // Test via LiteLLM proxy if configured
+        if (process.env.OPENAI_BASE_URL) {
+          return testModelViaProxy('gemini-2.5-flash', timeout);
+        }
+        // Direct API test - Google AI Studio
+        try {
+          const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
+            {
+              method: 'GET',
+              signal: AbortSignal.timeout(timeout),
+            }
+          );
+          if (response.ok) {
+            return { available: true };
+          }
+          return { available: false, error: `Gemini API error: ${response.status}` };
+        } catch (error) {
+          if (error instanceof Error) {
+            return { available: false, error: error.message };
+          }
+          return { available: false, error: 'Unknown error' };
+        }
+      }
+
       default:
         return { available: false, error: 'Unknown provider' };
     }
@@ -327,7 +362,7 @@ export async function GET() {
     }
 
     const configuredProviders = checkProviderConfig();
-    const providers = ['openai', 'mistral', 'ollama', 'azure'];
+    const providers = ['openai', 'mistral', 'ollama', 'azure', 'gemini'];
 
     // Test all providers in parallel
     const results = await Promise.all(

@@ -21,6 +21,9 @@ Available model presets in Policy Bot (via `config/defaults.json`):
 - **mistral-large-3** - Mistral Flagship (256K context)
 - **mistral-small-3.2** - Mistral Cost-Effective
 - **ministral-8b** - Mistral Ultra Cost-Effective
+- **gemini-2.5-pro** - Google Flagship Reasoning (1M context)
+- **gemini-2.5-flash** - Google Balanced (1M context)
+- **gemini-2.5-flash-lite** - Google Cost-Effective (1M context)
 - **ollama-llama3.2** - Local (no API cost)
 - **ollama-qwen2.5** - Local with excellent reasoning
 
@@ -103,6 +106,11 @@ AZURE_EMBEDDING_DEPLOYMENT=text-embedding-ada-002
 # Mistral
 # ===================
 MISTRAL_API_KEY=...
+
+# ===================
+# Google Gemini
+# ===================
+GEMINI_API_KEY=...
 
 # ===================
 # Ollama (Local)
@@ -681,6 +689,25 @@ curl -X POST http://localhost:4000/embeddings \
 
 > **Note**: Voxtral (released July 2025) outperforms OpenAI Whisper at half the cost ($0.001/min vs $0.006/min). Supports up to 30 min audio for transcription, 40 min for understanding.
 
+### Google Gemini Models
+
+| Model Name | API Model ID | Chat | Tools | Context | Notes |
+|------------|--------------|------|-------|---------|-------|
+| `gemini-2.5-pro` | `gemini/gemini-2.5-pro` | ✅ | ✅ | 1M | Flagship reasoning model |
+| `gemini-2.5-flash` | `gemini/gemini-2.5-flash` | ✅ | ✅ | 1M | Fast, balanced performance |
+| `gemini-2.5-flash-lite` | `gemini/gemini-2.5-flash-lite` | ✅ | ✅ | 1M | Lowest cost option |
+
+**Pricing (per 1M tokens):**
+- Gemini 2.5 Pro: $1.25 input / $10.00 output (≤200k context)
+- Gemini 2.5 Flash: $0.30 input / $2.50 output
+- Gemini 2.5 Flash-Lite: $0.10 input / $0.40 output
+
+**Features:**
+- All models support function calling
+- Built-in "thinking" capabilities with controllable budgets
+- Free tier available for development/testing
+- Native multimodal support (text, image, audio, video)
+
 ### Ollama Local Models
 
 | Model Name | Ollama Model | Chat | Embeddings | Tools | Audio | Context | Notes |
@@ -709,15 +736,16 @@ curl -X POST http://localhost:4000/embeddings \
 
 | Use Case | Recommended Model | Why |
 |----------|-------------------|-----|
-| **Production Chat** | `gpt-4.1` | Best instruction following, 1M context |
-| **Balanced (Default)** | `gpt-4.1-mini` | Good quality at lower cost (Policy Bot default) |
-| **Budget Chat** | `gpt-4.1-nano` or `ministral-8b` | Cost-effective for simple queries |
+| **Production Chat** | `gpt-4.1` or `gemini-2.5-pro` | Best instruction following, 1M context |
+| **Balanced (Default)** | `gpt-4.1-mini` or `gemini-2.5-flash` | Good quality at lower cost (Policy Bot default) |
+| **Budget Chat** | `gpt-4.1-nano` or `gemini-2.5-flash-lite` | Cost-effective for simple queries |
+| **Deep Reasoning** | `gemini-2.5-pro` | Built-in thinking capabilities |
 | **Local/Offline Chat** | `ollama-llama3.2` or `ollama-qwen2.5` | Full tool support, runs locally |
 | **RAG Embeddings** | `text-embedding-3-large` | Best quality for retrieval (Policy Bot default) |
 | **Local Embeddings** | `ollama-embedding` (nomic) | Good quality, no API cost |
 | **Audio Transcription** | `voxtral-transcribe` | Beats Whisper, half the cost |
 | **Budget Transcription** | `whisper-1` | Well-established, $0.006/min |
-| **Function Calling** | `gpt-4.1-mini`, `mistral-large-3`, `ollama-llama3.2` | Reliable tool use |
+| **Function Calling** | `gpt-4.1-mini`, `gemini-2.5-flash`, `mistral-large-3` | Reliable tool use |
 
 ---
 

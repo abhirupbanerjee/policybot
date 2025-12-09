@@ -43,10 +43,11 @@ function getAvailableModels() {
 }
 
 // Helper to determine provider from model name
-function getProviderFromModel(model: string): 'openai' | 'mistral' | 'ollama' | 'azure' {
+function getProviderFromModel(model: string): 'openai' | 'mistral' | 'ollama' | 'azure' | 'gemini' {
   if (model.startsWith('ollama-')) return 'ollama';
   if (model.startsWith('mistral') || model.startsWith('ministral')) return 'mistral';
   if (model.startsWith('azure-')) return 'azure';
+  if (model.startsWith('gemini')) return 'gemini';
   return 'openai';
 }
 
