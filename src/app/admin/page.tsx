@@ -155,6 +155,21 @@ interface RerankerSettings {
   updatedBy?: string;
 }
 
+interface CategoryPromptData {
+  category: { id: number; name: string; slug: string };
+  globalPrompt: string;
+  categoryAddendum: string;
+  combinedPrompt: string;
+  charInfo: {
+    globalLength: number;
+    categoryLength: number;
+    combinedLength: number;
+    availableForCategory: number;
+    maxCombined: number;
+  };
+  metadata: { updatedAt: string; updatedBy: string } | null;
+}
+
 interface EmbeddingSettings {
   model: string;
   dimensions: number;
@@ -277,6 +292,14 @@ export default function AdminPage() {
   const [promptLoading, setPromptLoading] = useState(true);
   const [savingPrompt, setSavingPrompt] = useState(false);
   const [promptModified, setPromptModified] = useState(false);
+
+  // Category prompt state
+  const [editingCategoryPrompt, setEditingCategoryPrompt] = useState<number | null>(null);
+  const [categoryPromptData, setCategoryPromptData] = useState<CategoryPromptData | null>(null);
+  const [categoryPromptLoading, setCategoryPromptLoading] = useState(false);
+  const [editedCategoryAddendum, setEditedCategoryAddendum] = useState('');
+  const [savingCategoryPrompt, setSavingCategoryPrompt] = useState(false);
+  const [categoryPromptModified, setCategoryPromptModified] = useState(false);
 
   // RAG/LLM settings state
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('prompt');
@@ -1115,6 +1138,102 @@ export default function AdminPage() {
       setError(err instanceof Error ? err.message : 'Failed to restore default prompt');
     } finally {
       setRestoringPrompt(false);
+    }
+  };
+
+  // Category prompt handlers
+  const loadCategoryPrompt = async (categoryId: number) => {
+    setCategoryPromptLoading(true);
+    try {
+      const response = await fetch(`/api/categories/${categoryId}/prompt`);
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to load category prompt');
+      }
+      const data = await response.json();
+      setCategoryPromptData(data);
+      setEditedCategoryAddendum(data.categoryAddendum || '');
+      setCategoryPromptModified(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load category prompt');
+    } finally {
+      setCategoryPromptLoading(false);
+    }
+  };
+
+  const handleOpenCategoryPromptModal = async (categoryId: number) => {
+    setEditingCategoryPrompt(categoryId);
+    await loadCategoryPrompt(categoryId);
+  };
+
+  const handleCloseCategoryPromptModal = () => {
+    setEditingCategoryPrompt(null);
+    setCategoryPromptData(null);
+    setEditedCategoryAddendum('');
+    setCategoryPromptModified(false);
+  };
+
+  const handleCategoryAddendumChange = (value: string) => {
+    setEditedCategoryAddendum(value);
+    setCategoryPromptModified(value !== (categoryPromptData?.categoryAddendum || ''));
+  };
+
+  const handleSaveCategoryPrompt = async () => {
+    if (!editingCategoryPrompt) return;
+
+    setSavingCategoryPrompt(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/categories/${editingCategoryPrompt}/prompt`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ promptAddendum: editedCategoryAddendum }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || data.details?.join(', ') || 'Failed to save category prompt');
+      }
+
+      const data = await response.json();
+      setCategoryPromptData(prev => prev ? {
+        ...prev,
+        categoryAddendum: data.categoryAddendum || '',
+        combinedPrompt: data.combinedPrompt,
+        charInfo: data.charInfo,
+        metadata: data.metadata,
+      } : null);
+      setCategoryPromptModified(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save category prompt');
+    } finally {
+      setSavingCategoryPrompt(false);
+    }
+  };
+
+  const handleResetCategoryToGlobal = async () => {
+    if (!editingCategoryPrompt) return;
+
+    setSavingCategoryPrompt(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/categories/${editingCategoryPrompt}/prompt`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to reset category prompt');
+      }
+
+      // Reload the category prompt data
+      await loadCategoryPrompt(editingCategoryPrompt);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reset category prompt');
+    } finally {
+      setSavingCategoryPrompt(false);
     }
   };
 
@@ -2627,6 +2746,7 @@ export default function AdminPage() {
             <div className="flex-1">
               {/* System Prompt Section */}
               {settingsSection === 'prompt' && (
+                <div className="space-y-6">
                 <div className="bg-white rounded-lg border shadow-sm">
                   <div className="px-6 py-4 border-b">
                     <div className="flex items-center justify-between">
@@ -2679,6 +2799,61 @@ export default function AdminPage() {
                       </div>
                     </div>
                   )}
+                </div>
+
+                {/* Category Prompts Card */}
+                <div className="bg-white rounded-lg border shadow-sm">
+                  <div className="px-6 py-4 border-b">
+                    <div>
+                      <h2 className="font-semibold text-gray-900">Category-Specific Prompts</h2>
+                      <p className="text-sm text-gray-500">
+                        Add custom prompt guidance for specific categories (appended to global prompt)
+                      </p>
+                    </div>
+                  </div>
+                  <div className="p-6">
+                    {categories.length === 0 ? (
+                      <p className="text-gray-500 text-center py-4">
+                        No categories yet. Create categories first.
+                      </p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b text-left">
+                              <th className="pb-3 font-medium text-gray-700">Category</th>
+                              <th className="pb-3 font-medium text-gray-700">Custom Prompt</th>
+                              <th className="pb-3 font-medium text-gray-700 text-right">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y">
+                            {categories.map((cat) => (
+                              <tr key={cat.id} className="hover:bg-gray-50">
+                                <td className="py-3">
+                                  <span className="font-medium text-gray-900">{cat.name}</span>
+                                  <span className="ml-2 text-xs text-gray-400">({cat.slug})</span>
+                                </td>
+                                <td className="py-3">
+                                  <span className="text-gray-500 text-xs">Click Edit to configure</span>
+                                </td>
+                                <td className="py-3 text-right">
+                                  <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    onClick={() => handleOpenCategoryPromptModal(cat.id)}
+                                  >
+                                    <Edit2 size={14} className="mr-1" />
+                                    Edit
+                                  </Button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
                 </div>
               )}
 
@@ -4702,6 +4877,129 @@ export default function AdminPage() {
             Reset to Defaults
           </Button>
         </div>
+      </Modal>
+
+      {/* Category Prompt Edit Modal */}
+      <Modal
+        isOpen={editingCategoryPrompt !== null}
+        onClose={handleCloseCategoryPromptModal}
+        title={`Edit Prompt: ${categoryPromptData?.category.name || 'Category'}`}
+      >
+        {categoryPromptLoading ? (
+          <div className="py-12 flex justify-center">
+            <Spinner size="lg" />
+          </div>
+        ) : categoryPromptData ? (
+          <div className="space-y-6">
+            {/* Global Prompt Preview (Read-only) */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Global System Prompt
+                <span className="ml-2 text-xs text-gray-400 font-normal">
+                  ({categoryPromptData.charInfo.globalLength} chars)
+                </span>
+              </label>
+              <div className="bg-gray-50 border rounded-lg p-3 max-h-40 overflow-y-auto">
+                <pre className="text-xs text-gray-600 whitespace-pre-wrap font-mono">
+                  {categoryPromptData.globalPrompt}
+                </pre>
+              </div>
+            </div>
+
+            {/* Category Addendum (Editable) */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Category-Specific Addendum
+                <span className="ml-2 text-xs text-gray-400 font-normal">
+                  ({editedCategoryAddendum.length} / {categoryPromptData.charInfo.availableForCategory} chars available)
+                </span>
+              </label>
+              <textarea
+                value={editedCategoryAddendum}
+                onChange={(e) => handleCategoryAddendumChange(e.target.value)}
+                rows={6}
+                className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm ${
+                  editedCategoryAddendum.length > categoryPromptData.charInfo.availableForCategory
+                    ? 'border-red-300 bg-red-50'
+                    : ''
+                }`}
+                placeholder="Add category-specific guidance here (optional)..."
+              />
+              {editedCategoryAddendum.length > categoryPromptData.charInfo.availableForCategory && (
+                <p className="mt-1 text-xs text-red-600">
+                  Exceeds available character limit
+                </p>
+              )}
+              <p className="mt-1 text-xs text-gray-500">
+                This text will be appended to the global system prompt for this category.
+              </p>
+            </div>
+
+            {/* Combined Preview (Read-only) */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Combined Prompt Preview
+                <span className="ml-2 text-xs text-gray-400 font-normal">
+                  (Total: {categoryPromptData.charInfo.globalLength + (editedCategoryAddendum ? editedCategoryAddendum.length + 42 : 0)} / {categoryPromptData.charInfo.maxCombined} chars)
+                </span>
+              </label>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 max-h-48 overflow-y-auto">
+                <pre className="text-xs text-gray-700 whitespace-pre-wrap font-mono">
+                  {categoryPromptData.globalPrompt}
+                  {editedCategoryAddendum && (
+                    <>
+                      {'\n\n--- Category-Specific Guidelines ---\n\n'}
+                      <span className="text-blue-700">{editedCategoryAddendum}</span>
+                    </>
+                  )}
+                </pre>
+              </div>
+            </div>
+
+            {/* Metadata */}
+            {categoryPromptData.metadata && (
+              <p className="text-xs text-gray-500">
+                Last updated: {formatDate(categoryPromptData.metadata.updatedAt)} by {categoryPromptData.metadata.updatedBy}
+              </p>
+            )}
+
+            {/* Actions */}
+            <div className="flex justify-between pt-4 border-t">
+              <Button
+                variant="secondary"
+                onClick={handleResetCategoryToGlobal}
+                disabled={savingCategoryPrompt || !categoryPromptData.categoryAddendum}
+                className="text-orange-600 border-orange-300 hover:bg-orange-50"
+              >
+                <RefreshCw size={16} className="mr-2" />
+                Reset to Global Only
+              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="secondary"
+                  onClick={handleCloseCategoryPromptModal}
+                  disabled={savingCategoryPrompt}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSaveCategoryPrompt}
+                  disabled={
+                    !categoryPromptModified ||
+                    savingCategoryPrompt ||
+                    editedCategoryAddendum.length > categoryPromptData.charInfo.availableForCategory
+                  }
+                  loading={savingCategoryPrompt}
+                >
+                  <Save size={16} className="mr-2" />
+                  Save
+                </Button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <p className="text-gray-500 text-center py-8">Failed to load category prompt data</p>
+        )}
       </Modal>
     </div>
   );

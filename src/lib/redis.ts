@@ -75,6 +75,33 @@ export async function invalidateTavilyCache(): Promise<void> {
   }
 }
 
+/**
+ * Invalidate cache entries for a specific category
+ * Used when category prompt is updated to ensure fresh responses
+ *
+ * Cache keys for category queries follow pattern: query:{hash}
+ * where hash is MD5 of "{message}:categories:{category-slugs}"
+ *
+ * Since we can't reverse the hash, we invalidate ALL query cache
+ * when a category prompt changes. This is acceptable because:
+ * - Category prompt updates are infrequent
+ * - Cache will rebuild naturally with user queries
+ */
+export async function invalidateCategoryCache(categorySlug: string): Promise<void> {
+  try {
+    const redis = await getRedisClient();
+    // We need to invalidate all query cache since cache keys are hashed
+    // and we can't identify which ones include this category
+    const keys = await redis.keys('query:*');
+    if (keys.length > 0) {
+      await redis.del(keys);
+      console.log(`Invalidated ${keys.length} query cache entries for category: ${categorySlug}`);
+    }
+  } catch (error) {
+    console.error(`Failed to invalidate cache for category ${categorySlug}:`, error);
+  }
+}
+
 export async function clearAllCache(): Promise<void> {
   try {
     const redis = await getRedisClient();

@@ -57,6 +57,15 @@ CREATE TABLE IF NOT EXISTS user_subscriptions (
 CREATE INDEX IF NOT EXISTS idx_user_subscriptions_user ON user_subscriptions(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_subscriptions_category ON user_subscriptions(category_id);
 
+-- Category-specific prompt addendum (appended to global system prompt)
+CREATE TABLE IF NOT EXISTS category_prompts (
+  category_id INTEGER PRIMARY KEY,
+  prompt_addendum TEXT NOT NULL,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_by TEXT NOT NULL,
+  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+);
+
 -- ============ Documents ============
 
 -- Document metadata

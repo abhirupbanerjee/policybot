@@ -11,7 +11,9 @@ import { queryCategories } from './chroma';
 import { getCachedQuery, cacheQuery, hashQuery } from './redis';
 import { extractTextFromDocument, chunkText } from './ingest';
 import { readFileBuffer } from './storage';
-import { getSystemPrompt, getRagSettings, getAcronymMappings } from './db/config';
+import { getRagSettings, getAcronymMappings } from './db/config';
+import { getResolvedSystemPrompt } from './db/category-prompts';
+import { getCategoryIdsBySlugs } from './db/categories';
 import { rerankChunks } from './reranker';
 import type { Message, Source, RetrievedChunk, RAGResponse } from '@/types';
 
@@ -304,8 +306,14 @@ export async function ragQuery(
   // Format context for LLM
   const context = formatContext(rerankedGlobalChunks, rerankedUserChunks);
 
-  // Get system prompt from SQLite config
-  const systemPrompt = getSystemPrompt();
+  // Get category-aware system prompt
+  // If categories are specified, use the first category's prompt addendum (if any)
+  let categoryId: number | undefined;
+  if (categorySlugs && categorySlugs.length > 0) {
+    const categoryIds = getCategoryIdsBySlugs(categorySlugs);
+    categoryId = categoryIds[0]; // Use first category for prompt resolution
+  }
+  const systemPrompt = getResolvedSystemPrompt(categoryId);
 
   // Generate response with tools (web search)
   const { content: answer, fullHistory } = await generateResponseWithTools(
