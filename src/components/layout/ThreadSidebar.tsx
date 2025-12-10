@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Plus, MessageSquare, Trash2, Menu, X, Settings, LogOut, Users, Brain,
+  Plus, MessageSquare, Trash2, Menu, X, Settings, LogOut, Brain,
   Landmark, DollarSign, BarChart3, FileText, Database, Activity, Layers, Globe, Server, ScrollText, BookOpen
 } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
@@ -380,8 +380,8 @@ export default function ThreadSidebar({
               className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
               onClick={() => setIsOpen(false)}
             >
-              <Users size={16} />
-              Manage Users
+              <Settings size={16} />
+              Manage
             </Link>
           )}
           {session?.user && (

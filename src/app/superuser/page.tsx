@@ -124,6 +124,10 @@ export default function SuperUserPage() {
   const [stats, setStats] = useState<SuperUserStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
 
+  // Global prompt state (for read-only display)
+  const [globalPrompt, setGlobalPrompt] = useState<string | null>(null);
+  const [globalPromptLoading, setGlobalPromptLoading] = useState(false);
+
   // Category prompt state
   const [editingCategoryPrompt, setEditingCategoryPrompt] = useState<number | null>(null);
   const [categoryPromptLoading, setCategoryPromptLoading] = useState(false);
@@ -205,6 +209,31 @@ export default function SuperUserPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Load global prompt when on Prompts tab and categories are available
+  useEffect(() => {
+    const loadGlobalPrompt = async () => {
+      if (activeTab !== 'prompts' || assignedCategories.length === 0 || globalPrompt !== null) {
+        return;
+      }
+
+      setGlobalPromptLoading(true);
+      try {
+        // Use the first category to fetch the global prompt
+        const response = await fetch(`/api/categories/${assignedCategories[0].categoryId}/prompt`);
+        if (response.ok) {
+          const data = await response.json();
+          setGlobalPrompt(data.globalPrompt || '');
+        }
+      } catch (err) {
+        console.error('Failed to load global prompt:', err);
+      } finally {
+        setGlobalPromptLoading(false);
+      }
+    };
+
+    loadGlobalPrompt();
+  }, [activeTab, assignedCategories, globalPrompt]);
 
   const handleAddSubscription = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -1213,15 +1242,24 @@ export default function SuperUserPage() {
                 </p>
               </div>
               <div className="p-6">
-                {categoryPromptData ? (
+                {globalPromptLoading ? (
+                  <div className="flex items-center justify-center py-4">
+                    <Spinner size="sm" />
+                    <span className="ml-2 text-gray-500 text-sm">Loading prompt...</span>
+                  </div>
+                ) : globalPrompt ? (
                   <div className="bg-gray-50 border rounded-lg p-4 max-h-48 overflow-y-auto">
                     <pre className="text-sm text-gray-700 whitespace-pre-wrap font-mono">
-                      {categoryPromptData.globalPrompt}
+                      {globalPrompt}
                     </pre>
                   </div>
+                ) : assignedCategories.length === 0 ? (
+                  <p className="text-gray-500 text-sm">
+                    No categories assigned. Contact admin to view system prompt.
+                  </p>
                 ) : (
                   <p className="text-gray-500 text-sm">
-                    Select a category below to view the global system prompt
+                    Unable to load global system prompt.
                   </p>
                 )}
               </div>
