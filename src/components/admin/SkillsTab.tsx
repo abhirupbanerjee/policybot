@@ -581,7 +581,6 @@ export default function SkillsTab() {
                           onClick={() => openEditModal(skill)}
                           className="p-1 text-gray-400 hover:text-blue-600"
                           title="Edit"
-                          disabled={skill.is_core}
                         >
                           <Edit2 size={16} />
                         </button>
