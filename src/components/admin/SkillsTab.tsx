@@ -85,12 +85,53 @@ const initialFormData: SkillFormData = {
   category_ids: [],
 };
 
-// Priority ranges
-const PRIORITY_ADMIN_RESERVED_MAX = 9; // 1-9 reserved for admin always/core skills
-const PRIORITY_SUPERUSER_MIN = 10; // Superusers must use 10+
+// Priority tiers
+const PRIORITY_TIERS = {
+  CORE: { min: 1, max: 9, label: 'Core', color: 'purple', adminOnly: true },
+  HIGH: { min: 10, max: 99, label: 'High', color: 'red', adminOnly: true },
+  MEDIUM: { min: 100, max: 499, label: 'Medium', color: 'amber', adminOnly: false },
+  LOW: { min: 500, max: Infinity, label: 'Low', color: 'blue', adminOnly: false },
+} as const;
+
+// Superusers must use priority 100+
+const PRIORITY_SUPERUSER_MIN = 100;
+const PRIORITY_ADMIN_MAX = 99;
+
+/**
+ * Get priority tier info for a given priority value
+ */
+function getPriorityTier(priority: number): { label: string; color: string; adminOnly: boolean } {
+  if (priority <= PRIORITY_TIERS.CORE.max) return PRIORITY_TIERS.CORE;
+  if (priority <= PRIORITY_TIERS.HIGH.max) return PRIORITY_TIERS.HIGH;
+  if (priority <= PRIORITY_TIERS.MEDIUM.max) return PRIORITY_TIERS.MEDIUM;
+  return PRIORITY_TIERS.LOW;
+}
+
+/**
+ * Get priority tier badge component
+ */
+function PriorityBadge({ priority }: { priority: number }) {
+  const tier = getPriorityTier(priority);
+  const colorClasses: Record<string, string> = {
+    purple: 'bg-purple-100 text-purple-700',
+    red: 'bg-red-100 text-red-700',
+    amber: 'bg-amber-100 text-amber-700',
+    blue: 'bg-blue-100 text-blue-700',
+    gray: 'bg-gray-100 text-gray-600',
+  };
+
+  return (
+    <span
+      className={`px-2 py-0.5 text-xs rounded-full ${colorClasses[tier.color]}`}
+      title={`Priority ${priority} (${tier.label}${tier.adminOnly ? ' - Admin only' : ''})`}
+    >
+      {priority} · {tier.label}
+    </span>
+  );
+}
 
 interface SkillsTabProps {
-  /** If true, restricts to superuser permissions (no 'always' trigger, priority >= 10) */
+  /** If true, restricts to superuser permissions (no 'always' trigger, priority >= 100) */
   isSuperuser?: boolean;
 }
 
@@ -575,7 +616,7 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
                         )}
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-900">{skill.priority}</td>
+                    <td className="px-6 py-4"><PriorityBadge priority={skill.priority} /></td>
                     <td className="px-6 py-4 text-sm text-gray-500">{skill.token_estimate || '~'}</td>
                     <td className="px-6 py-4">
                       {skill.is_active ? (
@@ -589,30 +630,40 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
                       )}
                     </td>
                     <td className="px-6 py-4">
-                      <div className="flex items-center justify-end gap-2">
-                        <button
-                          onClick={() => handleToggleActive(skill)}
-                          className="p-1 text-gray-400 hover:text-blue-600"
-                          title={skill.is_active ? 'Deactivate' : 'Activate'}
-                        >
-                          {skill.is_active ? <PowerOff size={16} /> : <Power size={16} />}
-                        </button>
-                        <button
-                          onClick={() => openEditModal(skill)}
-                          className="p-1 text-gray-400 hover:text-blue-600"
-                          title="Edit"
-                        >
-                          <Edit2 size={16} />
-                        </button>
-                        <button
-                          onClick={() => { setSelectedSkill(skill); setShowDeleteModal(true); }}
-                          className="p-1 text-gray-400 hover:text-red-600"
-                          title="Delete"
-                          disabled={skill.is_core}
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
+                      {(() => {
+                        // Superusers can only modify skills they created (priority >= 100 and not core)
+                        const isAdminSkill = skill.is_core || skill.priority < PRIORITY_SUPERUSER_MIN;
+                        const canModify = !isSuperuser || !isAdminSkill;
+
+                        return (
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => handleToggleActive(skill)}
+                              className={`p-1 ${canModify ? 'text-gray-400 hover:text-blue-600' : 'text-gray-200 cursor-not-allowed'}`}
+                              title={!canModify ? 'Cannot modify admin skill' : (skill.is_active ? 'Deactivate' : 'Activate')}
+                              disabled={!canModify}
+                            >
+                              {skill.is_active ? <PowerOff size={16} /> : <Power size={16} />}
+                            </button>
+                            <button
+                              onClick={() => openEditModal(skill)}
+                              className={`p-1 ${canModify ? 'text-gray-400 hover:text-blue-600' : 'text-gray-200 cursor-not-allowed'}`}
+                              title={!canModify ? 'Cannot edit admin skill' : 'Edit'}
+                              disabled={!canModify}
+                            >
+                              <Edit2 size={16} />
+                            </button>
+                            <button
+                              onClick={() => { setSelectedSkill(skill); setShowDeleteModal(true); }}
+                              className={`p-1 ${canModify && !skill.is_core ? 'text-gray-400 hover:text-red-600' : 'text-gray-200 cursor-not-allowed'}`}
+                              title={skill.is_core ? 'Cannot delete core skill' : (!canModify ? 'Cannot delete admin skill' : 'Delete')}
+                              disabled={skill.is_core || !canModify}
+                            >
+                              <Trash2 size={16} />
+                            </button>
+                          </div>
+                        );
+                      })()}
                     </td>
                   </tr>
                 ))
@@ -750,17 +801,31 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
               }}
               className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
-            <div className="text-xs mt-1 space-y-1">
-              <p className="text-gray-500">Lower numbers = higher priority. Default is 100.</p>
+            <div className="text-xs mt-2 space-y-2">
+              <p className="text-gray-500">Lower numbers = higher priority.</p>
+              {/* Priority tier guide */}
+              <div className="flex flex-wrap gap-2">
+                <span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full" title="Priority 1-9: Core system skills (Admin only)">
+                  1-9 Core
+                </span>
+                <span className="px-2 py-0.5 bg-red-100 text-red-700 rounded-full" title="Priority 10-99: High priority skills (Admin only)">
+                  10-99 High
+                </span>
+                <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full" title="Priority 100-499: Medium priority skills (Superuser)">
+                  100-499 Medium
+                </span>
+                <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full" title="Priority 500+: Low priority skills (Superuser)">
+                  500+ Low
+                </span>
+              </div>
               {isSuperuser ? (
                 <p className="text-amber-600">
-                  Priority 1-{PRIORITY_ADMIN_RESERVED_MAX} is reserved for admin global/core skills.
+                  Priority 1-{PRIORITY_ADMIN_MAX} is reserved for admin skills.
                   Superusers must use priority {PRIORITY_SUPERUSER_MIN} or higher.
                 </p>
               ) : (
                 <p className="text-blue-600">
-                  Priority 1-{PRIORITY_ADMIN_RESERVED_MAX} is reserved for core/always skills.
-                  Use {PRIORITY_SUPERUSER_MIN}+ for category/keyword skills.
+                  1-29 (Core/High) reserved for global skills. Superusers can only use 100+.
                 </p>
               )}
             </div>
