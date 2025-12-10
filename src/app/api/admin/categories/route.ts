@@ -6,7 +6,7 @@
  */
 
 import { NextResponse } from 'next/server';
-import { requireAdmin } from '@/lib/auth';
+import { requireAdmin, requireElevated } from '@/lib/auth';
 import {
   getAllCategoriesWithStats,
   createCategory,
@@ -15,7 +15,8 @@ import {
 
 export async function GET() {
   try {
-    await requireAdmin();
+    // Allow both admin and superuser to read categories (needed for skills management)
+    await requireElevated();
 
     const categories = getAllCategoriesWithStats();
 
@@ -24,8 +25,8 @@ export async function GET() {
     if (error instanceof Error && error.message === 'Unauthorized') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    if (error instanceof Error && error.message === 'Admin access required') {
-      return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+    if (error instanceof Error && error.message === 'Elevated access required') {
+      return NextResponse.json({ error: 'Elevated access required' }, { status: 403 });
     }
 
     console.error('Error fetching categories:', error);

@@ -1282,7 +1282,7 @@ export default function SuperUserPage() {
 
         {/* Skills Section */}
         {activeTab === 'skills' && (
-          <SkillsTab />
+          <SkillsTab isSuperuser />
         )}
       </main>
 

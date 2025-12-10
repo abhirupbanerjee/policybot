@@ -85,7 +85,16 @@ const initialFormData: SkillFormData = {
   category_ids: [],
 };
 
-export default function SkillsTab() {
+// Priority ranges
+const PRIORITY_ADMIN_RESERVED_MAX = 9; // 1-9 reserved for admin always/core skills
+const PRIORITY_SUPERUSER_MIN = 10; // Superusers must use 10+
+
+interface SkillsTabProps {
+  /** If true, restricts to superuser permissions (no 'always' trigger, priority >= 10) */
+  isSuperuser?: boolean;
+}
+
+export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
   // State
   const [skills, setSkills] = useState<Skill[]>([]);
   const [settings, setSettings] = useState<SkillsSettings>({
@@ -386,58 +395,60 @@ export default function SkillsTab() {
         </div>
       )}
 
-      {/* Settings Panel */}
-      <div className="bg-white rounded-lg border shadow-sm">
-        <div className="px-6 py-4 border-b flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Settings className="text-gray-600" size={20} />
-            <div>
-              <h2 className="font-semibold text-gray-900">Skills Settings</h2>
-              <p className="text-sm text-gray-500">Configure the modular skills system</p>
+      {/* Settings Panel - Admin only */}
+      {!isSuperuser && (
+        <div className="bg-white rounded-lg border shadow-sm">
+          <div className="px-6 py-4 border-b flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Settings className="text-gray-600" size={20} />
+              <div>
+                <h2 className="font-semibold text-gray-900">Skills Settings</h2>
+                <p className="text-sm text-gray-500">Configure the modular skills system</p>
+              </div>
             </div>
+            <Button onClick={handleSaveSettings} disabled={saving}>
+              {saving ? <Spinner size="sm" className="mr-2" /> : <Save size={16} className="mr-2" />}
+              Save Settings
+            </Button>
           </div>
-          <Button onClick={handleSaveSettings} disabled={saving}>
-            {saving ? <Spinner size="sm" className="mr-2" /> : <Save size={16} className="mr-2" />}
-            Save Settings
-          </Button>
-        </div>
-        <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
-          <label className="flex items-center gap-3">
-            <input
-              type="checkbox"
-              checked={settings.enabled}
-              onChange={(e) => setSettings({ ...settings, enabled: e.target.checked })}
-              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-            />
+          <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+            <label className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                checked={settings.enabled}
+                onChange={(e) => setSettings({ ...settings, enabled: e.target.checked })}
+                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <div>
+                <span className="font-medium">Enable Skills</span>
+                <p className="text-sm text-gray-500">Activate the modular skills system</p>
+              </div>
+            </label>
             <div>
-              <span className="font-medium">Enable Skills</span>
-              <p className="text-sm text-gray-500">Activate the modular skills system</p>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Max Total Tokens</label>
+              <input
+                type="number"
+                value={settings.maxTotalTokens}
+                onChange={(e) => setSettings({ ...settings, maxTotalTokens: parseInt(e.target.value) || 3000 })}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+              <p className="text-xs text-gray-500 mt-1">Maximum combined tokens for all activated skills</p>
             </div>
-          </label>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Max Total Tokens</label>
-            <input
-              type="number"
-              value={settings.maxTotalTokens}
-              onChange={(e) => setSettings({ ...settings, maxTotalTokens: parseInt(e.target.value) || 3000 })}
-              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-            />
-            <p className="text-xs text-gray-500 mt-1">Maximum combined tokens for all activated skills</p>
+            <label className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                checked={settings.debugMode}
+                onChange={(e) => setSettings({ ...settings, debugMode: e.target.checked })}
+                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <div>
+                <span className="font-medium">Debug Mode</span>
+                <p className="text-sm text-gray-500">Log skill activation details</p>
+              </div>
+            </label>
           </div>
-          <label className="flex items-center gap-3">
-            <input
-              type="checkbox"
-              checked={settings.debugMode}
-              onChange={(e) => setSettings({ ...settings, debugMode: e.target.checked })}
-              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-            />
-            <div>
-              <span className="font-medium">Debug Mode</span>
-              <p className="text-sm text-gray-500">Log skill activation details</p>
-            </div>
-          </label>
         </div>
-      </div>
+      )}
 
       {/* Skills List */}
       <div className="bg-white rounded-lg border shadow-sm">
@@ -450,15 +461,24 @@ export default function SkillsTab() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="secondary" onClick={() => setShowRestoreModal(true)} title="Restore core skills to config defaults">
-              <RotateCcw size={16} className="mr-2" />
-              Restore Defaults
-            </Button>
+            {!isSuperuser && (
+              <Button variant="secondary" onClick={() => setShowRestoreModal(true)} title="Restore core skills to config defaults">
+                <RotateCcw size={16} className="mr-2" />
+                Restore Defaults
+              </Button>
+            )}
             <Button variant="secondary" onClick={() => setShowPreviewModal(true)}>
               <Eye size={16} className="mr-2" />
               Preview
             </Button>
-            <Button onClick={() => { setFormData(initialFormData); setShowCreateModal(true); }}>
+            <Button onClick={() => {
+              setFormData({
+                ...initialFormData,
+                trigger_type: isSuperuser ? 'keyword' : 'keyword',
+                priority: isSuperuser ? PRIORITY_SUPERUSER_MIN : 100,
+              });
+              setShowCreateModal(true);
+            }}>
               <Plus size={16} className="mr-2" />
               Add Skill
             </Button>
@@ -638,10 +658,17 @@ export default function SkillsTab() {
               onChange={(e) => setFormData({ ...formData, trigger_type: e.target.value as 'always' | 'category' | 'keyword' })}
               className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             >
-              <option value="always">Always (runs on every query)</option>
+              {!isSuperuser && (
+                <option value="always">Always (runs on every query)</option>
+              )}
               <option value="category">Category (runs for specific categories)</option>
               <option value="keyword">Keyword (runs when keywords match)</option>
             </select>
+            {isSuperuser && (
+              <p className="text-xs text-amber-600 mt-1">
+                Note: &quot;Always&quot; trigger type is reserved for admin-defined global skills.
+              </p>
+            )}
           </div>
 
           {formData.trigger_type === 'keyword' && (
@@ -714,10 +741,29 @@ export default function SkillsTab() {
             <input
               type="number"
               value={formData.priority}
-              onChange={(e) => setFormData({ ...formData, priority: parseInt(e.target.value) || 100 })}
+              min={isSuperuser ? PRIORITY_SUPERUSER_MIN : 1}
+              onChange={(e) => {
+                const value = parseInt(e.target.value) || 100;
+                // Enforce minimum for superusers
+                const minValue = isSuperuser ? PRIORITY_SUPERUSER_MIN : 1;
+                setFormData({ ...formData, priority: Math.max(value, minValue) });
+              }}
               className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             />
-            <p className="text-xs text-gray-500 mt-1">Lower numbers = higher priority. Default is 100.</p>
+            <div className="text-xs mt-1 space-y-1">
+              <p className="text-gray-500">Lower numbers = higher priority. Default is 100.</p>
+              {isSuperuser ? (
+                <p className="text-amber-600">
+                  Priority 1-{PRIORITY_ADMIN_RESERVED_MAX} is reserved for admin global/core skills.
+                  Superusers must use priority {PRIORITY_SUPERUSER_MIN} or higher.
+                </p>
+              ) : (
+                <p className="text-blue-600">
+                  Priority 1-{PRIORITY_ADMIN_RESERVED_MAX} is reserved for core/always skills.
+                  Use {PRIORITY_SUPERUSER_MIN}+ for category/keyword skills.
+                </p>
+              )}
+            </div>
           </div>
 
           <div>
