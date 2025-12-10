@@ -66,6 +66,61 @@ CREATE TABLE IF NOT EXISTS category_prompts (
   FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
 );
 
+-- ============ Skills ============
+
+-- Skills table: stores modular prompt definitions
+CREATE TABLE IF NOT EXISTS skills (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+  -- Identity
+  name TEXT UNIQUE NOT NULL,
+  description TEXT,
+
+  -- Content
+  prompt_content TEXT NOT NULL,
+
+  -- Trigger configuration
+  trigger_type TEXT NOT NULL CHECK (trigger_type IN ('always', 'category', 'keyword')),
+  trigger_value TEXT,  -- Keywords (comma-separated) for keyword triggers
+
+  -- Category restriction (for keyword skills)
+  category_restricted INTEGER DEFAULT 0,
+
+  -- Skill classification
+  is_index INTEGER DEFAULT 0,  -- 1 = Index skill (one per category)
+
+  -- Ordering & Status
+  priority INTEGER DEFAULT 100,
+  is_active INTEGER DEFAULT 1,
+  is_core INTEGER DEFAULT 0,  -- Core skills cannot be deleted
+
+  -- Permissions
+  created_by_role TEXT NOT NULL CHECK (created_by_role IN ('admin', 'superuser')),
+
+  -- Metadata
+  token_estimate INTEGER,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  created_by TEXT NOT NULL,
+  updated_by TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_skills_trigger ON skills(trigger_type, is_active);
+CREATE INDEX IF NOT EXISTS idx_skills_priority ON skills(priority);
+CREATE INDEX IF NOT EXISTS idx_skills_core ON skills(is_core);
+
+-- Links skills to categories (many-to-many)
+CREATE TABLE IF NOT EXISTS category_skills (
+  category_id INTEGER NOT NULL,
+  skill_id INTEGER NOT NULL,
+  PRIMARY KEY (category_id, skill_id),
+  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
+  FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_category_skills_category ON category_skills(category_id);
+CREATE INDEX IF NOT EXISTS idx_category_skills_skill ON category_skills(skill_id);
+
 -- ============ Documents ============
 
 -- Document metadata

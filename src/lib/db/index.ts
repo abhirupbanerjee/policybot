@@ -11,6 +11,7 @@ import Database from 'better-sqlite3';
 import * as fs from 'fs';
 import * as path from 'path';
 import { validateLiteLLMOnStartup } from '../litellm-validator';
+import { seedCoreSkills } from '../skills/seed';
 
 // Database file path
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data');
@@ -43,6 +44,9 @@ export function getDatabase(): Database.Database {
 
   // Initialize default settings
   initializeDefaultSettings(db);
+
+  // Seed core skills (idempotent)
+  seedCoreSkills();
 
   // Validate LiteLLM config (fail fast if default model missing)
   validateLiteLLMOnStartup();
@@ -102,6 +106,48 @@ function runMigrations(database: Database.Database): void {
 
   if (!messageColumnNames.includes('token_count')) {
     database.exec('ALTER TABLE messages ADD COLUMN token_count INTEGER');
+  }
+
+  // Check if skills table exists, create if not (for existing databases)
+  const skillsTableExists = database.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='skills'"
+  ).get();
+
+  if (!skillsTableExists) {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS skills (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE NOT NULL,
+        description TEXT,
+        prompt_content TEXT NOT NULL,
+        trigger_type TEXT NOT NULL CHECK (trigger_type IN ('always', 'category', 'keyword')),
+        trigger_value TEXT,
+        category_restricted INTEGER DEFAULT 0,
+        is_index INTEGER DEFAULT 0,
+        priority INTEGER DEFAULT 100,
+        is_active INTEGER DEFAULT 1,
+        is_core INTEGER DEFAULT 0,
+        created_by_role TEXT NOT NULL CHECK (created_by_role IN ('admin', 'superuser')),
+        token_estimate INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        created_by TEXT NOT NULL,
+        updated_by TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_skills_trigger ON skills(trigger_type, is_active);
+      CREATE INDEX IF NOT EXISTS idx_skills_priority ON skills(priority);
+      CREATE INDEX IF NOT EXISTS idx_skills_core ON skills(is_core);
+
+      CREATE TABLE IF NOT EXISTS category_skills (
+        category_id INTEGER NOT NULL,
+        skill_id INTEGER NOT NULL,
+        PRIMARY KEY (category_id, skill_id),
+        FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
+        FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_category_skills_category ON category_skills(category_id);
+      CREATE INDEX IF NOT EXISTS idx_category_skills_skill ON category_skills(skill_id);
+    `);
   }
 }
 
@@ -371,6 +417,11 @@ function initializeDefaultSettings(database: Database.Database): void {
       keepRecentMessages: 10,
       summaryMaxTokens: 2000,
       archiveOriginalMessages: true,
+    },
+    'skills-settings': {
+      enabled: false,
+      maxTotalTokens: 3000,
+      debugMode: false,
     },
   };
 

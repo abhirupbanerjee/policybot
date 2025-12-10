@@ -96,6 +96,12 @@ export interface SummarizationSettings {
   archiveOriginalMessages: boolean; // Keep original messages for audit/recovery
 }
 
+export interface SkillsSettings {
+  enabled: boolean;               // Enable/disable skills system (uses legacy prompt if false)
+  maxTotalTokens: number;         // Token budget warning threshold
+  debugMode: boolean;             // Log skill activation details
+}
+
 // Available icon options for branding
 export const BRANDING_ICONS = [
   { key: 'government', label: 'Government', lucideIcon: 'Landmark' },
@@ -194,7 +200,8 @@ export type SettingKey =
   | 'embedding-settings'
   | 'reranker-settings'
   | 'memory-settings'
-  | 'summarization-settings';
+  | 'summarization-settings'
+  | 'skills-settings';
 
 // ============ Generic Operations ============
 
@@ -452,6 +459,21 @@ export function getSummarizationSettings(): SummarizationSettings {
   };
 }
 
+/**
+ * Get skills settings
+ * Priority: SQLite > hardcoded defaults
+ */
+export function getSkillsSettings(): SkillsSettings {
+  const dbSettings = getSetting<SkillsSettings>('skills-settings');
+  if (dbSettings) return dbSettings;
+
+  return {
+    enabled: false,
+    maxTotalTokens: 3000,
+    debugMode: false,
+  };
+}
+
 // ============ Typed Setters ============
 
 /**
@@ -570,6 +592,16 @@ export function setSummarizationSettings(settings: Partial<SummarizationSettings
   return updated;
 }
 
+/**
+ * Update skills settings
+ */
+export function setSkillsSettings(settings: Partial<SkillsSettings>, updatedBy?: string): SkillsSettings {
+  const current = getSkillsSettings();
+  const updated = { ...current, ...settings };
+  setSetting('skills-settings', updated, updatedBy);
+  return updated;
+}
+
 // ============ Default System Prompt ============
 
 /**
@@ -598,6 +630,7 @@ export function getAllSettings(): {
   reranker: RerankerSettings;
   memory: MemorySettings;
   summarization: SummarizationSettings;
+  skills: SkillsSettings;
 } {
   return {
     rag: getRagSettings(),
@@ -612,5 +645,6 @@ export function getAllSettings(): {
     reranker: getRerankerSettings(),
     memory: getMemorySettings(),
     summarization: getSummarizationSettings(),
+    skills: getSkillsSettings(),
   };
 }

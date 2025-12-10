@@ -14,6 +14,7 @@ import { readFileBuffer } from './storage';
 import { getRagSettings, getAcronymMappings } from './db/config';
 import { getResolvedSystemPrompt } from './db/category-prompts';
 import { getCategoryIdsBySlugs } from './db/categories';
+import { resolveSkills } from './skills/resolver';
 import { rerankChunks } from './reranker';
 import type { Message, Source, RetrievedChunk, RAGResponse } from '@/types';
 
@@ -310,12 +311,18 @@ export async function ragQuery(
 
   // Get category-aware system prompt
   // If categories are specified, use the first category's prompt addendum (if any)
-  let categoryId: number | undefined;
+  let categoryIds: number[] = [];
   if (categorySlugs && categorySlugs.length > 0) {
-    const categoryIds = getCategoryIdsBySlugs(categorySlugs);
-    categoryId = categoryIds[0]; // Use first category for prompt resolution
+    categoryIds = getCategoryIdsBySlugs(categorySlugs);
   }
+  const categoryId = categoryIds[0]; // Use first category for prompt resolution
   let systemPrompt = getResolvedSystemPrompt(categoryId);
+
+  // Resolve and inject skills prompts (if skills feature is enabled)
+  const resolvedSkills = resolveSkills(categoryIds, userMessage);
+  if (resolvedSkills.combinedPrompt) {
+    systemPrompt = `${systemPrompt}\n\n${resolvedSkills.combinedPrompt}`;
+  }
 
   // Inject memory context if available
   if (memoryContext && memoryContext.trim()) {

@@ -51,3 +51,12 @@ export async function requireAdmin(): Promise<User> {
   }
   return user;
 }
+
+export async function requireElevated(): Promise<User & { role: 'admin' | 'superuser' }> {
+  const user = await requireAuth();
+  const role = await getUserRole(user.email);
+  if (role !== 'admin' && role !== 'superuser') {
+    throw new Error('Elevated access required');
+  }
+  return { ...user, role };
+}
