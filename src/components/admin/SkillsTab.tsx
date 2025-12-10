@@ -17,6 +17,7 @@ import {
   Save,
   Play,
   Eye,
+  RotateCcw,
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
@@ -103,6 +104,7 @@ export default function SkillsTab() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [showRestoreModal, setShowRestoreModal] = useState(false);
   const [selectedSkill, setSelectedSkill] = useState<Skill | null>(null);
   const [formData, setFormData] = useState<SkillFormData>(initialFormData);
 
@@ -150,11 +152,11 @@ export default function SkillsTab() {
     setSaving(true);
     try {
       const response = await fetch('/api/admin/settings', {
-        method: 'PATCH',
+        method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          key: 'skills-settings',
-          value: settings,
+          type: 'skills',
+          settings: settings,
         }),
       });
 
@@ -294,6 +296,31 @@ export default function SkillsTab() {
     }
   };
 
+  // Restore core skills to config defaults
+  const handleRestoreDefaults = async () => {
+    setSaving(true);
+    try {
+      const response = await fetch('/api/admin/skills', {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to restore skills');
+      }
+
+      const data = await response.json();
+      setShowRestoreModal(false);
+      setSuccess(data.message || 'Core skills restored to defaults');
+      setTimeout(() => setSuccess(null), 3000);
+      fetchData();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to restore skills');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // Open edit modal
   const openEditModal = (skill: Skill) => {
     setSelectedSkill(skill);
@@ -423,6 +450,10 @@ export default function SkillsTab() {
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <Button variant="secondary" onClick={() => setShowRestoreModal(true)} title="Restore core skills to config defaults">
+              <RotateCcw size={16} className="mr-2" />
+              Restore Defaults
+            </Button>
             <Button variant="secondary" onClick={() => setShowPreviewModal(true)}>
               <Eye size={16} className="mr-2" />
               Preview
@@ -811,6 +842,35 @@ export default function SkillsTab() {
               )}
             </div>
           )}
+        </div>
+      </Modal>
+
+      {/* Restore Defaults Confirmation Modal */}
+      <Modal
+        isOpen={showRestoreModal}
+        onClose={() => setShowRestoreModal(false)}
+        title="Restore Core Skills to Defaults"
+      >
+        <div className="space-y-4">
+          <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+            <p className="text-amber-800">
+              This will delete all core skills and reload them from the config files
+              (<code className="text-xs bg-amber-100 px-1 rounded">config/skills.json</code> and
+              <code className="text-xs bg-amber-100 px-1 rounded">config/skills/*.md</code>).
+            </p>
+          </div>
+          <p className="text-gray-600">
+            Custom skills (non-core) will <strong>not</strong> be affected.
+          </p>
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => setShowRestoreModal(false)}>
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={handleRestoreDefaults} disabled={saving}>
+              {saving ? <Spinner size="sm" className="mr-2" /> : <RotateCcw size={16} className="mr-2" />}
+              Restore Defaults
+            </Button>
+          </div>
         </div>
       </Modal>
     </div>

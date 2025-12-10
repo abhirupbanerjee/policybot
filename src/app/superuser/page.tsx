@@ -2,11 +2,12 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Users, User, FolderOpen, Tag, Plus, FileText, Upload, Trash2, X, ChevronUp, ChevronDown, ChevronsUpDown, Search, Edit2, Save, RefreshCw, MessageSquare, LayoutDashboard, Database, CheckCircle, AlertCircle, Clock, Wand2 } from 'lucide-react';
+import { ArrowLeft, Users, User, FolderOpen, Tag, Plus, FileText, Upload, Trash2, X, ChevronUp, ChevronDown, ChevronsUpDown, Search, Edit2, Save, RefreshCw, MessageSquare, LayoutDashboard, Database, CheckCircle, AlertCircle, Clock, Wand2, Layers } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import Spinner from '@/components/ui/Spinner';
 import { type SortDirection } from '@/components/ui/SortableTable';
+import SkillsTab from '@/components/admin/SkillsTab';
 
 interface AssignedCategory {
   categoryId: number;
@@ -117,7 +118,7 @@ export default function SuperUserPage() {
   const [docSortDirection, setDocSortDirection] = useState<SortDirection>(null);
 
   // Active tab state
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'users' | 'documents' | 'prompts'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'users' | 'documents' | 'prompts' | 'skills'>('dashboard');
 
   // Stats state
   const [stats, setStats] = useState<SuperUserStats | null>(null);
@@ -720,6 +721,17 @@ export default function SuperUserPage() {
             <MessageSquare size={16} className="inline mr-2" />
             Prompts
           </button>
+          <button
+            onClick={() => setActiveTab('skills')}
+            className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
+              activeTab === 'skills'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Layers size={16} className="inline mr-2" />
+            Skills
+          </button>
         </div>
 
         {/* Dashboard Section */}
@@ -1266,6 +1278,11 @@ export default function SuperUserPage() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Skills Section */}
+        {activeTab === 'skills' && (
+          <SkillsTab />
         )}
       </main>
 

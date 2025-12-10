@@ -338,6 +338,18 @@ export function toggleSkillActive(id: number, updatedBy: string): boolean {
   return newStatus === 1;
 }
 
+// ============ Restore Operations ============
+
+/**
+ * Reset all core skills to their config file defaults
+ * Deletes existing core skills - caller should re-run seedCoreSkills() after
+ */
+export function resetCoreSkillsToDefaults(): number {
+  // Delete all existing core skills
+  const deleteResult = execute('DELETE FROM skills WHERE is_core = 1');
+  return deleteResult.changes;
+}
+
 // ============ Seed Operations ============
 
 /**

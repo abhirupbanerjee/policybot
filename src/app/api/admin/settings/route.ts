@@ -23,6 +23,7 @@ import {
   setMemorySettings,
   getSummarizationSettings,
   setSummarizationSettings,
+  setSkillsSettings,
   getSettingMetadata,
   deleteSetting,
   MODEL_PRESETS,
@@ -751,6 +752,45 @@ export async function PUT(request: NextRequest) {
         break;
       }
 
+      case 'skills': {
+        const {
+          enabled,
+          maxTotalTokens,
+          debugMode,
+        } = settings;
+
+        // Validate enabled flag
+        if (typeof enabled !== 'boolean') {
+          return NextResponse.json<ApiError>(
+            { error: 'Enabled must be a boolean', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Validate maxTotalTokens
+        if (typeof maxTotalTokens !== 'number' || maxTotalTokens < 500 || maxTotalTokens > 20000) {
+          return NextResponse.json<ApiError>(
+            { error: 'Max total tokens must be between 500 and 20,000', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Validate debugMode
+        if (typeof debugMode !== 'boolean') {
+          return NextResponse.json<ApiError>(
+            { error: 'Debug mode must be a boolean', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        result = setSkillsSettings({
+          enabled,
+          maxTotalTokens,
+          debugMode,
+        }, user.email);
+        break;
+      }
+
       case 'restoreAllDefaults': {
         // Delete all settings from SQLite to fall back to JSON config defaults
         const settingKeys = [
@@ -766,6 +806,7 @@ export async function PUT(request: NextRequest) {
           'reranker-settings',
           'memory-settings',
           'summarization-settings',
+          'skills-settings',
         ] as const;
 
         for (const key of settingKeys) {

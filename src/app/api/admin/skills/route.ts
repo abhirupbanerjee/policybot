@@ -10,8 +10,11 @@ import { requireElevated } from '@/lib/auth';
 import {
   getAllSkillsWithCategories,
   createSkill,
+  resetCoreSkillsToDefaults,
 } from '@/lib/db/skills';
 import { getSkillsSettings } from '@/lib/db/config';
+import { seedCoreSkills } from '@/lib/skills/seed';
+import { clearConfigCache } from '@/lib/config-loader';
 import type { CreateSkillInput, TriggerType } from '@/lib/skills/types';
 
 export async function GET() {
@@ -128,6 +131,49 @@ export async function POST(request: NextRequest) {
     console.error('Error creating skill:', error);
     return NextResponse.json(
       { error: 'Failed to create skill' },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * DELETE /api/admin/skills - Restore core skills to config defaults
+ * Deletes all core skills and re-seeds from config files
+ */
+export async function DELETE() {
+  try {
+    await requireElevated();
+
+    // Clear config cache to reload fresh from files
+    clearConfigCache();
+
+    // Delete existing core skills
+    const deleted = resetCoreSkillsToDefaults();
+
+    // Re-seed from config files
+    seedCoreSkills();
+
+    // Get updated skills list
+    const skills = getAllSkillsWithCategories();
+    const coreSkillsCount = skills.filter(s => s.is_core).length;
+
+    return NextResponse.json({
+      success: true,
+      message: `Restored ${coreSkillsCount} core skills from config`,
+      deleted,
+      created: coreSkillsCount,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Unauthorized') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (error instanceof Error && error.message === 'Elevated access required') {
+      return NextResponse.json({ error: 'Elevated access required' }, { status: 403 });
+    }
+
+    console.error('Error restoring skills:', error);
+    return NextResponse.json(
+      { error: 'Failed to restore skills to defaults' },
       { status: 500 }
     );
   }

@@ -134,16 +134,41 @@ export interface AppConfig {
   acronyms: Record<string, string>;
 }
 
+// ============ Skill Config Types ============
+
+export interface SkillConfigEntry {
+  id: string;
+  name: string;
+  description: string;
+  file: string;
+  triggerType: 'always' | 'category' | 'keyword';
+  triggerValue: string | null;
+  priority: number;
+}
+
+export interface SkillsManifest {
+  version: string;
+  skills: SkillConfigEntry[];
+}
+
+export interface LoadedSkill extends SkillConfigEntry {
+  promptContent: string;
+}
+
 // ============ Cache ============
 
 let cachedConfig: AppConfig | null = null;
 let cachedSystemPrompt: string | null = null;
+let cachedSkillsManifest: SkillsManifest | null = null;
+let cachedLoadedSkills: LoadedSkill[] | null = null;
 
 // ============ Paths ============
 
 const CONFIG_DIR = process.env.CONFIG_DIR || path.join(process.cwd(), 'config');
 const CONFIG_FILE = path.join(CONFIG_DIR, 'defaults.json');
 const PROMPT_FILE = path.join(CONFIG_DIR, 'system-prompt.md');
+const SKILLS_FILE = path.join(CONFIG_DIR, 'skills.json');
+const SKILLS_DIR = path.join(CONFIG_DIR, 'skills');
 
 // ============ Hardcoded Defaults ============
 
@@ -459,6 +484,76 @@ export function loadSystemPrompt(): string {
 }
 
 /**
+ * Load skills manifest from config/skills.json
+ * Returns null if file not found
+ */
+export function loadSkillsManifest(): SkillsManifest | null {
+  if (cachedSkillsManifest) return cachedSkillsManifest;
+
+  try {
+    if (fs.existsSync(SKILLS_FILE)) {
+      const content = fs.readFileSync(SKILLS_FILE, 'utf-8');
+      cachedSkillsManifest = JSON.parse(content) as SkillsManifest;
+      console.log(`[Config] Loaded skills manifest from ${SKILLS_FILE}`);
+      return cachedSkillsManifest;
+    }
+  } catch (error) {
+    console.warn(`[Config] Failed to load ${SKILLS_FILE}:`, error instanceof Error ? error.message : error);
+  }
+
+  console.log('[Config] No skills manifest found');
+  return null;
+}
+
+/**
+ * Load a single skill's prompt content from its markdown file
+ */
+function loadSkillPrompt(skillFile: string): string | null {
+  const skillPath = path.join(SKILLS_DIR, skillFile);
+  try {
+    if (fs.existsSync(skillPath)) {
+      return fs.readFileSync(skillPath, 'utf-8');
+    }
+  } catch (error) {
+    console.warn(`[Config] Failed to load skill file ${skillFile}:`, error instanceof Error ? error.message : error);
+  }
+  return null;
+}
+
+/**
+ * Load all skills from config files
+ * Combines manifest metadata with prompt content from individual files
+ */
+export function loadSkillsFromConfig(): LoadedSkill[] {
+  if (cachedLoadedSkills) return cachedLoadedSkills;
+
+  const manifest = loadSkillsManifest();
+  if (!manifest) {
+    console.log('[Config] No skills to load');
+    return [];
+  }
+
+  const loadedSkills: LoadedSkill[] = [];
+
+  for (const skill of manifest.skills) {
+    const promptContent = loadSkillPrompt(skill.file);
+    if (promptContent) {
+      loadedSkills.push({
+        ...skill,
+        promptContent,
+      });
+      console.log(`[Config] Loaded skill: ${skill.name}`);
+    } else {
+      console.warn(`[Config] Skipping skill ${skill.name}: no prompt content found`);
+    }
+  }
+
+  cachedLoadedSkills = loadedSkills;
+  console.log(`[Config] Loaded ${loadedSkills.length} skills from config`);
+  return loadedSkills;
+}
+
+/**
  * Get a config value by dot-path
  * Example: getConfigValue('limits.embeddingBatchSize', 100)
  */
@@ -484,6 +579,8 @@ export function getConfigValue<T>(dotPath: string, fallback: T): T {
 export function clearConfigCache(): void {
   cachedConfig = null;
   cachedSystemPrompt = null;
+  cachedSkillsManifest = null;
+  cachedLoadedSkills = null;
 }
 
 /**

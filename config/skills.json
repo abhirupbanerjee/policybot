@@ -1,0 +1,50 @@
+{
+  "version": "1.0",
+  "skills": [
+    {
+      "id": "interpretation-layer",
+      "name": "Interpretation Layer",
+      "description": "Adds 'What the question is asking' section to every response",
+      "file": "interpretation-layer.md",
+      "triggerType": "always",
+      "triggerValue": null,
+      "priority": 1
+    },
+    {
+      "id": "response-structure",
+      "name": "Response Structure",
+      "description": "Standard response format with headings, indicators, and closing",
+      "file": "response-structure.md",
+      "triggerType": "always",
+      "triggerValue": null,
+      "priority": 2
+    },
+    {
+      "id": "ascii-diagram-rules",
+      "name": "ASCII Diagram Rules",
+      "description": "Strict ASCII diagram formatting when diagrams are requested",
+      "file": "ascii-diagram-rules.md",
+      "triggerType": "keyword",
+      "triggerValue": "diagram,flowchart,chart,structure,visualize,hierarchy,flow,process map",
+      "priority": 10
+    },
+    {
+      "id": "table-formatting",
+      "name": "Table Formatting",
+      "description": "Guidelines for creating comparison tables",
+      "file": "table-formatting.md",
+      "triggerType": "keyword",
+      "triggerValue": "table,compare,comparison,matrix,versus,vs,side by side,differences between",
+      "priority": 11
+    },
+    {
+      "id": "web-search-guidance",
+      "name": "Web Search Guidance",
+      "description": "Instructions for handling web search results",
+      "file": "web-search-guidance.md",
+      "triggerType": "keyword",
+      "triggerValue": "search,latest,current,recent,news,update,2024,2025,today,this week,this month",
+      "priority": 12
+    }
+  ]
+}
