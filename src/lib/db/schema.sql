@@ -61,6 +61,7 @@ CREATE INDEX IF NOT EXISTS idx_user_subscriptions_category ON user_subscriptions
 CREATE TABLE IF NOT EXISTS category_prompts (
   category_id INTEGER PRIMARY KEY,
   prompt_addendum TEXT NOT NULL,
+  starter_prompts TEXT DEFAULT NULL,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_by TEXT NOT NULL,
   FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE

@@ -9,6 +9,7 @@ import Spinner from '@/components/ui/Spinner';
 import { type SortDirection } from '@/components/ui/SortableTable';
 import BackupTab from '@/components/admin/BackupTab';
 import SkillsTab from '@/components/admin/SkillsTab';
+import StarterPromptsEditor from '@/components/admin/StarterPromptsEditor';
 import type { GlobalDocument } from '@/types';
 
 interface AllowedUser {
@@ -175,10 +176,16 @@ interface SummarizationSettings {
   updatedBy?: string;
 }
 
+interface StarterPrompt {
+  label: string;
+  prompt: string;
+}
+
 interface CategoryPromptData {
   category: { id: number; name: string; slug: string };
   globalPrompt: string;
   categoryAddendum: string;
+  starterPrompts: StarterPrompt[];
   combinedPrompt: string;
   charInfo: {
     globalLength: number;
@@ -325,8 +332,10 @@ export default function AdminPage() {
   const [categoryPromptData, setCategoryPromptData] = useState<CategoryPromptData | null>(null);
   const [categoryPromptLoading, setCategoryPromptLoading] = useState(false);
   const [editedCategoryAddendum, setEditedCategoryAddendum] = useState('');
+  const [editedStarterPrompts, setEditedStarterPrompts] = useState<StarterPrompt[]>([]);
   const [savingCategoryPrompt, setSavingCategoryPrompt] = useState(false);
   const [categoryPromptModified, setCategoryPromptModified] = useState(false);
+  const [starterPromptsModified, setStarterPromptsModified] = useState(false);
 
   // Prompt optimization state
   const [optimizing, setOptimizing] = useState(false);
@@ -1212,7 +1221,9 @@ export default function AdminPage() {
       const data = await response.json();
       setCategoryPromptData(data);
       setEditedCategoryAddendum(data.categoryAddendum || '');
+      setEditedStarterPrompts(data.starterPrompts || []);
       setCategoryPromptModified(false);
+      setStarterPromptsModified(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load category prompt');
     } finally {
@@ -1237,6 +1248,12 @@ export default function AdminPage() {
     setCategoryPromptModified(value !== (categoryPromptData?.categoryAddendum || ''));
   };
 
+  const handleStarterPromptsChange = (starters: StarterPrompt[]) => {
+    setEditedStarterPrompts(starters);
+    const original = categoryPromptData?.starterPrompts || [];
+    setStarterPromptsModified(JSON.stringify(starters) !== JSON.stringify(original));
+  };
+
   const handleSaveCategoryPrompt = async () => {
     if (!editingCategoryPrompt) return;
 
@@ -1247,7 +1264,10 @@ export default function AdminPage() {
       const response = await fetch(`/api/categories/${editingCategoryPrompt}/prompt`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ promptAddendum: editedCategoryAddendum }),
+        body: JSON.stringify({
+          promptAddendum: editedCategoryAddendum,
+          starterPrompts: editedStarterPrompts.length > 0 ? editedStarterPrompts : null,
+        }),
       });
 
       if (!response.ok) {
@@ -1259,11 +1279,13 @@ export default function AdminPage() {
       setCategoryPromptData(prev => prev ? {
         ...prev,
         categoryAddendum: data.categoryAddendum || '',
+        starterPrompts: data.starterPrompts || [],
         combinedPrompt: data.combinedPrompt,
         charInfo: data.charInfo,
         metadata: data.metadata,
       } : null);
       setCategoryPromptModified(false);
+      setStarterPromptsModified(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save category prompt');
     } finally {
@@ -5391,6 +5413,15 @@ export default function AdminPage() {
               </p>
             </div>
 
+            {/* Starter Prompts */}
+            <div className="border-t pt-4">
+              <StarterPromptsEditor
+                starters={editedStarterPrompts}
+                onChange={handleStarterPromptsChange}
+                disabled={savingCategoryPrompt}
+              />
+            </div>
+
             {/* Combined Preview (Read-only) */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -5453,7 +5484,7 @@ export default function AdminPage() {
                 <Button
                   onClick={handleSaveCategoryPrompt}
                   disabled={
-                    !categoryPromptModified ||
+                    (!categoryPromptModified && !starterPromptsModified) ||
                     savingCategoryPrompt ||
                     optimizing ||
                     editedCategoryAddendum.length > categoryPromptData.charInfo.availableForCategory

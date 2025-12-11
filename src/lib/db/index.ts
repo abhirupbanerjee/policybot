@@ -113,6 +113,14 @@ function runMigrations(database: Database.Database): void {
     "SELECT name FROM sqlite_master WHERE type='table' AND name='skills'"
   ).get();
 
+  // Check and add starter_prompts column to category_prompts
+  const categoryPromptsColumns = database.pragma('table_info(category_prompts)') as { name: string }[];
+  const categoryPromptsColumnNames = categoryPromptsColumns.map((c) => c.name);
+
+  if (!categoryPromptsColumnNames.includes('starter_prompts')) {
+    database.exec('ALTER TABLE category_prompts ADD COLUMN starter_prompts TEXT DEFAULT NULL');
+  }
+
   if (!skillsTableExists) {
     database.exec(`
       CREATE TABLE IF NOT EXISTS skills (

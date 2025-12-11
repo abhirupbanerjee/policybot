@@ -6,6 +6,7 @@ import type { Message, Thread, UserSubscription } from '@/types';
 import MessageBubble from './MessageBubble';
 import MessageInput from './MessageInput';
 import Spinner from '@/components/ui/Spinner';
+import StarterButtons, { StarterPrompt } from './StarterButtons';
 
 interface ChatWindowProps {
   activeThread?: Thread | null;
@@ -25,6 +26,8 @@ export default function ChatWindow({ activeThread, onThreadCreated, userSubscrip
   const [uploads, setUploads] = useState<string[]>([]);
   const [showSummaryDetails, setShowSummaryDetails] = useState(false);
   const [summaryData, setSummaryData] = useState<ThreadSummary | null>(null);
+  const [starterPrompts, setStarterPrompts] = useState<StarterPrompt[]>([]);
+  const [loadingStarters, setLoadingStarters] = useState(false);
 
   // Compute dynamic header based on subscriptions
   const getHeaderInfo = () => {
@@ -76,6 +79,45 @@ export default function ChatWindow({ activeThread, onThreadCreated, userSubscrip
       setSummaryData(null);
     }
   }, [activeThread]);
+
+  // Load starter prompts for single-category threads with no messages
+  useEffect(() => {
+    const loadStarters = async () => {
+      // Only load starters for threads with exactly one category and no messages
+      if (!activeThread || messages.length > 0) {
+        setStarterPrompts([]);
+        return;
+      }
+
+      const categories = activeThread.categories || [];
+      if (categories.length !== 1) {
+        setStarterPrompts([]);
+        return;
+      }
+
+      setLoadingStarters(true);
+      try {
+        const response = await fetch(`/api/categories/${categories[0].id}/prompt`);
+        if (response.ok) {
+          const data = await response.json();
+          setStarterPrompts(data.starterPrompts || []);
+        }
+      } catch (err) {
+        console.error('Failed to load starter prompts:', err);
+      } finally {
+        setLoadingStarters(false);
+      }
+    };
+
+    loadStarters();
+  }, [activeThread, messages.length]);
+
+  // Clear starters when messages are sent
+  useEffect(() => {
+    if (messages.length > 0) {
+      setStarterPrompts([]);
+    }
+  }, [messages.length]);
 
   const loadSummaryData = async (id: string) => {
     try {
@@ -204,6 +246,10 @@ export default function ChatWindow({ activeThread, onThreadCreated, userSubscrip
     setError(null);
   };
 
+  const handleStarterSelect = (prompt: string) => {
+    sendMessage(prompt);
+  };
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -250,13 +296,26 @@ export default function ChatWindow({ activeThread, onThreadCreated, userSubscrip
       <div className="flex-1 overflow-y-auto p-4">
         {messages.length === 0 && !loading && (
           <div className="flex flex-col items-center justify-center h-full text-center">
+            {/* Starter Prompts - only show for single-category threads */}
+            {starterPrompts.length > 0 && (
+              <div className="max-w-2xl w-full mb-6">
+                <StarterButtons
+                  starters={starterPrompts}
+                  onSelect={handleStarterSelect}
+                  disabled={loading || loadingStarters}
+                />
+              </div>
+            )}
+
             <MessageSquare className="w-12 h-12 text-gray-300 mb-4" />
             <h2 className="text-lg font-medium text-gray-900 mb-2">
               Welcome to {headerInfo.title}
             </h2>
             <p className="text-gray-500 max-w-md">
-              {headerInfo.subtitle} or upload a document to check
-              for compliance. Start by typing a question below.
+              {starterPrompts.length > 0
+                ? 'Click a quick start button above or type your own question below.'
+                : `${headerInfo.subtitle} or upload a document to check for compliance. Start by typing a question below.`
+              }
             </p>
           </div>
         )}

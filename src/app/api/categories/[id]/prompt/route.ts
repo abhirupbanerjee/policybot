@@ -20,8 +20,11 @@ import {
   deleteCategoryPrompt,
   getPromptCharacterInfo,
   validatePromptAddendum,
+  validateStarterPrompts,
+  setCategoryStarterPrompts,
   getResolvedSystemPrompt,
   MAX_COMBINED_PROMPT_LENGTH,
+  StarterPrompt,
 } from '@/lib/db/category-prompts';
 import { invalidateCategoryCache } from '@/lib/redis';
 
@@ -111,6 +114,7 @@ export async function GET(request: Request, { params }: RouteParams) {
       },
       globalPrompt,
       categoryAddendum: categoryPrompt?.promptAddendum || '',
+      starterPrompts: categoryPrompt?.starterPrompts || [],
       combinedPrompt,
       charInfo: {
         globalLength: charInfo.globalLength,
@@ -173,7 +177,62 @@ export async function PUT(request: Request, { params }: RouteParams) {
     const { user } = await checkCategoryAccess(categoryId);
 
     const body = await request.json();
-    const { promptAddendum } = body;
+    const { promptAddendum, starterPrompts } = body;
+
+    // Handle starterPrompts if provided (can be independent of promptAddendum)
+    if (starterPrompts !== undefined) {
+      if (starterPrompts === null || (Array.isArray(starterPrompts) && starterPrompts.length === 0)) {
+        // Clear starters
+        setCategoryStarterPrompts(categoryId, null, user.email);
+      } else if (Array.isArray(starterPrompts)) {
+        // Validate and save
+        const starterErrors = validateStarterPrompts(starterPrompts as StarterPrompt[]);
+        if (starterErrors.length > 0) {
+          return NextResponse.json(
+            { error: 'Starter prompts validation failed', details: starterErrors },
+            { status: 400 }
+          );
+        }
+        setCategoryStarterPrompts(categoryId, starterPrompts as StarterPrompt[], user.email);
+      } else {
+        return NextResponse.json(
+          { error: 'starterPrompts must be an array or null' },
+          { status: 400 }
+        );
+      }
+    }
+
+    // If only starterPrompts was provided (no promptAddendum), return updated data
+    if (promptAddendum === undefined) {
+      const updatedPrompt = getCategoryPrompt(categoryId);
+      const charInfo = getPromptCharacterInfo(categoryId);
+
+      // Invalidate cache
+      const [slug] = getCategorySlugsByIds([categoryId]);
+      if (slug) {
+        await invalidateCategoryCache(slug);
+      }
+
+      return NextResponse.json({
+        success: true,
+        categoryAddendum: updatedPrompt?.promptAddendum || '',
+        starterPrompts: updatedPrompt?.starterPrompts || [],
+        combinedPrompt: getResolvedSystemPrompt(categoryId),
+        charInfo: {
+          globalLength: charInfo.globalLength,
+          categoryLength: charInfo.categoryLength,
+          combinedLength: charInfo.combinedLength,
+          availableForCategory: charInfo.availableForCategory,
+          maxCombined: MAX_COMBINED_PROMPT_LENGTH,
+        },
+        metadata: updatedPrompt
+          ? {
+              updatedAt: updatedPrompt.updatedAt,
+              updatedBy: updatedPrompt.updatedBy,
+            }
+          : null,
+      });
+    }
 
     if (typeof promptAddendum !== 'string') {
       return NextResponse.json(
@@ -223,6 +282,7 @@ export async function PUT(request: Request, { params }: RouteParams) {
     return NextResponse.json({
       success: true,
       categoryAddendum: saved.promptAddendum,
+      starterPrompts: saved.starterPrompts || [],
       combinedPrompt: getResolvedSystemPrompt(categoryId),
       charInfo: {
         globalLength: charInfo.globalLength,

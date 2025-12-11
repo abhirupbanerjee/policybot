@@ -11,9 +11,15 @@ import { getCategoryById } from './categories';
 
 // ============ Types ============
 
+export interface StarterPrompt {
+  label: string;   // Button text (max 30 chars)
+  prompt: string;  // Full message to send (max 500 chars)
+}
+
 export interface CategoryPrompt {
   categoryId: number;
   promptAddendum: string;
+  starterPrompts: StarterPrompt[] | null;
   updatedAt: string;
   updatedBy: string;
 }
@@ -21,6 +27,7 @@ export interface CategoryPrompt {
 export interface CategoryPromptRow {
   category_id: number;
   prompt_addendum: string;
+  starter_prompts: string | null;
   updated_at: string;
   updated_by: string;
 }
@@ -28,7 +35,25 @@ export interface CategoryPromptRow {
 // Maximum combined prompt length (global + category)
 export const MAX_COMBINED_PROMPT_LENGTH = 8000;
 
+// Starter prompts validation constants
+export const MAX_STARTER_PROMPTS = 6;
+export const MAX_STARTER_LABEL_LENGTH = 30;
+export const MAX_STARTER_PROMPT_LENGTH = 500;
+
 // ============ Read Operations ============
+
+/**
+ * Parse starter prompts JSON safely
+ */
+function parseStarterPrompts(json: string | null): StarterPrompt[] | null {
+  if (!json) return null;
+  try {
+    const parsed = JSON.parse(json) as StarterPrompt[];
+    return parsed.length > 0 ? parsed : null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Get category prompt addendum by category ID
@@ -36,7 +61,7 @@ export const MAX_COMBINED_PROMPT_LENGTH = 8000;
  */
 export function getCategoryPrompt(categoryId: number): CategoryPrompt | undefined {
   const row = queryOne<CategoryPromptRow>(
-    'SELECT category_id, prompt_addendum, updated_at, updated_by FROM category_prompts WHERE category_id = ?',
+    'SELECT category_id, prompt_addendum, starter_prompts, updated_at, updated_by FROM category_prompts WHERE category_id = ?',
     [categoryId]
   );
 
@@ -45,6 +70,7 @@ export function getCategoryPrompt(categoryId: number): CategoryPrompt | undefine
   return {
     categoryId: row.category_id,
     promptAddendum: row.prompt_addendum,
+    starterPrompts: parseStarterPrompts(row.starter_prompts),
     updatedAt: row.updated_at,
     updatedBy: row.updated_by,
   };
@@ -55,12 +81,13 @@ export function getCategoryPrompt(categoryId: number): CategoryPrompt | undefine
  */
 export function getAllCategoryPrompts(): CategoryPrompt[] {
   const rows = queryAll<CategoryPromptRow>(
-    'SELECT category_id, prompt_addendum, updated_at, updated_by FROM category_prompts ORDER BY category_id'
+    'SELECT category_id, prompt_addendum, starter_prompts, updated_at, updated_by FROM category_prompts ORDER BY category_id'
   );
 
   return rows.map(row => ({
     categoryId: row.category_id,
     promptAddendum: row.prompt_addendum,
+    starterPrompts: parseStarterPrompts(row.starter_prompts),
     updatedAt: row.updated_at,
     updatedBy: row.updated_by,
   }));
@@ -233,6 +260,83 @@ export function validatePromptAddendum(content: string): string[] {
   return errors;
 }
 
+/**
+ * Validate starter prompts array
+ * Returns array of validation errors (empty if valid)
+ */
+export function validateStarterPrompts(starters: StarterPrompt[]): string[] {
+  const errors: string[] = [];
+
+  if (starters.length > MAX_STARTER_PROMPTS) {
+    errors.push(`Maximum ${MAX_STARTER_PROMPTS} starter prompts allowed`);
+  }
+
+  starters.forEach((starter, index) => {
+    if (!starter.label || starter.label.trim().length === 0) {
+      errors.push(`Starter ${index + 1}: Label is required`);
+    } else if (starter.label.length > MAX_STARTER_LABEL_LENGTH) {
+      errors.push(`Starter ${index + 1}: Label exceeds ${MAX_STARTER_LABEL_LENGTH} characters`);
+    }
+
+    if (!starter.prompt || starter.prompt.trim().length === 0) {
+      errors.push(`Starter ${index + 1}: Prompt is required`);
+    } else if (starter.prompt.length > MAX_STARTER_PROMPT_LENGTH) {
+      errors.push(`Starter ${index + 1}: Prompt exceeds ${MAX_STARTER_PROMPT_LENGTH} characters`);
+    }
+  });
+
+  return errors;
+}
+
+/**
+ * Set starter prompts for a category
+ * Pass null or empty array to clear starters
+ */
+export function setCategoryStarterPrompts(
+  categoryId: number,
+  starters: StarterPrompt[] | null,
+  updatedBy: string
+): void {
+  // Validate category exists
+  const category = getCategoryById(categoryId);
+  if (!category) {
+    throw new Error(`Category with ID ${categoryId} does not exist`);
+  }
+
+  // Validate starters
+  if (starters && starters.length > 0) {
+    const errors = validateStarterPrompts(starters);
+    if (errors.length > 0) {
+      throw new Error(`Validation failed: ${errors.join(', ')}`);
+    }
+  }
+
+  const startersJson = starters && starters.length > 0
+    ? JSON.stringify(starters)
+    : null;
+
+  // Check if row exists
+  const existing = queryOne<{ category_id: number }>(
+    'SELECT category_id FROM category_prompts WHERE category_id = ?',
+    [categoryId]
+  );
+
+  if (existing) {
+    execute(
+      `UPDATE category_prompts
+       SET starter_prompts = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE category_id = ?`,
+      [startersJson, updatedBy, categoryId]
+    );
+  } else {
+    execute(
+      `INSERT INTO category_prompts (category_id, prompt_addendum, starter_prompts, updated_by, updated_at)
+       VALUES (?, '', ?, ?, CURRENT_TIMESTAMP)`,
+      [categoryId, startersJson, updatedBy]
+    );
+  }
+}
+
 // ============ Bulk Operations ============
 
 /**
@@ -243,7 +347,7 @@ export function getCategoryPromptsForCategories(categoryIds: number[]): Map<numb
 
   const placeholders = categoryIds.map(() => '?').join(', ');
   const rows = queryAll<CategoryPromptRow>(
-    `SELECT category_id, prompt_addendum, updated_at, updated_by
+    `SELECT category_id, prompt_addendum, starter_prompts, updated_at, updated_by
      FROM category_prompts
      WHERE category_id IN (${placeholders})`,
     categoryIds
@@ -254,6 +358,7 @@ export function getCategoryPromptsForCategories(categoryIds: number[]): Map<numb
     result.set(row.category_id, {
       categoryId: row.category_id,
       promptAddendum: row.prompt_addendum,
+      starterPrompts: parseStarterPrompts(row.starter_prompts),
       updatedAt: row.updated_at,
       updatedBy: row.updated_by,
     });
