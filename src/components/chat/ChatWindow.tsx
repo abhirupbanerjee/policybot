@@ -296,9 +296,20 @@ export default function ChatWindow({ activeThread, onThreadCreated, userSubscrip
       <div className="flex-1 overflow-y-auto p-4">
         {messages.length === 0 && !loading && (
           <div className="flex flex-col items-center justify-center h-full text-center">
+            <MessageSquare className="w-12 h-12 text-gray-300 mb-4" />
+            <h2 className="text-lg font-medium text-gray-900 mb-2">
+              Welcome to {headerInfo.title}
+            </h2>
+            <p className="text-gray-500 max-w-md mb-6">
+              {starterPrompts.length > 0
+                ? 'Click a quick start button below or type your own question.'
+                : `${headerInfo.subtitle} or upload a document to check for compliance. Start by typing a question below.`
+              }
+            </p>
+
             {/* Starter Prompts - only show for single-category threads */}
             {starterPrompts.length > 0 && (
-              <div className="max-w-2xl w-full mb-6">
+              <div className="max-w-2xl w-full">
                 <StarterButtons
                   starters={starterPrompts}
                   onSelect={handleStarterSelect}
@@ -306,17 +317,6 @@ export default function ChatWindow({ activeThread, onThreadCreated, userSubscrip
                 />
               </div>
             )}
-
-            <MessageSquare className="w-12 h-12 text-gray-300 mb-4" />
-            <h2 className="text-lg font-medium text-gray-900 mb-2">
-              Welcome to {headerInfo.title}
-            </h2>
-            <p className="text-gray-500 max-w-md">
-              {starterPrompts.length > 0
-                ? 'Click a quick start button above or type your own question below.'
-                : `${headerInfo.subtitle} or upload a document to check for compliance. Start by typing a question below.`
-              }
-            </p>
           </div>
         )}
 

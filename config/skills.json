@@ -20,22 +20,85 @@
       "priority": 2
     },
     {
+      "id": "flowchart-process",
+      "name": "Flowchart & Process Diagrams",
+      "description": "Rules for creating flowcharts and process diagrams in ASCII",
+      "file": "flowchart-process.md",
+      "triggerType": "keyword",
+      "triggerValue": "flowchart,process diagram,process flow,workflow,process map,business process,sequence diagram",
+      "priority": 10
+    },
+    {
+      "id": "ui-wireframes",
+      "name": "UI Wireframes",
+      "description": "Rules for creating UI wireframes and screen layouts in ASCII",
+      "file": "ui-wireframes.md",
+      "triggerType": "keyword",
+      "triggerValue": "wireframe,screen layout,ui design,user interface,mockup,prototype,screen design,page layout",
+      "priority": 11
+    },
+    {
+      "id": "architecture-diagrams",
+      "name": "Architecture Diagrams",
+      "description": "Rules for conceptual, logical, technical, and implementation architecture diagrams",
+      "file": "architecture-diagrams.md",
+      "triggerType": "keyword",
+      "triggerValue": "architecture diagram,conceptual diagram,logical diagram,technical diagram,implementation diagram,system architecture,solution architecture,enterprise architecture,component diagram",
+      "priority": 12
+    },
+    {
+      "id": "implementation-plan",
+      "name": "Implementation Plan & Gantt",
+      "description": "Rules for implementation plans and Gantt-style schedules",
+      "file": "implementation-plan.md",
+      "triggerType": "keyword",
+      "triggerValue": "implementation plan,gantt chart,project plan,project schedule,timeline,roadmap,milestones,project phases,delivery plan",
+      "priority": 13
+    },
+    {
+      "id": "raid-plan",
+      "name": "RAID Log",
+      "description": "Rules for RAID logs (Risks, Assumptions, Issues, Dependencies)",
+      "file": "raid-plan.md",
+      "triggerType": "keyword",
+      "triggerValue": "raid log,raid plan,risks assumptions issues dependencies,project raid,raid register,raid analysis",
+      "priority": 14
+    },
+    {
+      "id": "risk-register",
+      "name": "Risk Management Register",
+      "description": "Rules for risk registers and risk assessments",
+      "file": "risk-register.md",
+      "triggerType": "keyword",
+      "triggerValue": "risk register,risk assessment,risk matrix,risk management,risk analysis,risk log,risk evaluation,risk scoring",
+      "priority": 15
+    },
+    {
+      "id": "raci-matrix",
+      "name": "RACI Matrix",
+      "description": "Rules for RACI responsibility assignment matrices",
+      "file": "raci-matrix.md",
+      "triggerType": "keyword",
+      "triggerValue": "raci,raci matrix,responsibility matrix,responsibility assignment,roles and responsibilities,accountable responsible consulted informed",
+      "priority": 16
+    },
+    {
       "id": "ascii-diagram-rules",
       "name": "ASCII Diagram Rules",
-      "description": "Strict ASCII diagram formatting when diagrams are requested",
+      "description": "General ASCII diagram formatting for hierarchies and structures",
       "file": "ascii-diagram-rules.md",
       "triggerType": "keyword",
-      "triggerValue": "diagram,flowchart,chart,structure,visualize,hierarchy,flow,process map",
-      "priority": 10
+      "triggerValue": "diagram,chart,structure,visualize,hierarchy,org chart,organization chart",
+      "priority": 20
     },
     {
       "id": "table-formatting",
       "name": "Table Formatting",
-      "description": "Guidelines for creating comparison tables",
+      "description": "Guidelines for creating comparison tables with width limits",
       "file": "table-formatting.md",
       "triggerType": "keyword",
       "triggerValue": "table,compare,comparison,matrix,versus,vs,side by side,differences between",
-      "priority": 11
+      "priority": 21
     },
     {
       "id": "web-search-guidance",
@@ -44,7 +107,7 @@
       "file": "web-search-guidance.md",
       "triggerType": "keyword",
       "triggerValue": "search,latest,current,recent,news,update,2024,2025,today,this week,this month",
-      "priority": 12
+      "priority": 30
     }
   ]
 }
