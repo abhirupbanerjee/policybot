@@ -22,11 +22,11 @@ export default function StarterButtons({
 
   return (
     <div className="mb-4">
-      <div className="flex items-center gap-2 mb-3 text-sm text-gray-500">
+      <div className="flex items-center justify-center gap-2 mb-3 text-sm text-gray-500">
         <Sparkles size={16} className="text-blue-500" />
         <span>Quick start</span>
       </div>
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap justify-center gap-2">
         {starters.map((starter, index) => (
           <button
             key={index}
