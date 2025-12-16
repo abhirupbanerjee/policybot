@@ -258,7 +258,7 @@ export const documentGenerationTool: ToolDefinition = {
     try {
       // Get context from AsyncLocalStorage (set by chat API route)
       const context = getRequestContext();
-      const { threadId, messageId, categoryId } = context;
+      const { threadId, categoryId } = context;
 
       // Validate we have required context
       if (!threadId) {
@@ -311,13 +311,15 @@ export const documentGenerationTool: ToolDefinition = {
       const generator = createDocumentGenerator(docGenConfig, categoryBranding);
 
       // Generate document
+      // Note: messageId is NOT passed because the assistant message hasn't been saved yet
+      // (it's saved after ragQuery returns). The document is linked to the thread instead.
       console.log(`[DocGen] Generating ${format} document: "${args.title}"`);
       const result = await generator.generate({
         title: args.title,
         content: args.content,
         format,
         threadId,
-        messageId,
+        messageId: undefined, // Message not yet saved - avoid FK constraint error
         categoryId,
       });
 
