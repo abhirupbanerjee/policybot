@@ -153,8 +153,11 @@ export class PdfBuilder {
     // Render title
     this.renderTitle(title);
 
-    // Render content
-    this.renderContent(content);
+    // Add page break so content starts on page 2
+    this.doc.addPage();
+
+    // Render content (pass title to skip duplicate heading)
+    this.renderContent(content, title);
 
     // Add headers and footers to all pages
     this.addHeadersAndFooters();
@@ -192,8 +195,10 @@ export class PdfBuilder {
 
   /**
    * Render markdown-like content
+   * @param content - The markdown content to render
+   * @param documentTitle - Optional document title to skip if found as first heading
    */
-  private renderContent(content: string): void {
+  private renderContent(content: string, documentTitle?: string): void {
     const { doc } = this;
     const lines = content.split('\n');
     let inCodeBlock = false;
@@ -202,6 +207,7 @@ export class PdfBuilder {
     let tableRows: string[][] = [];
     let inAsciiDiagram = false;
     let asciiDiagramLines: string[] = [];
+    let skipFirstH1 = !!documentTitle; // Flag to skip first matching H1 heading
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
@@ -299,7 +305,13 @@ export class PdfBuilder {
       } else if (line.startsWith('## ')) {
         this.renderHeading(line.substring(3), 2);
       } else if (line.startsWith('# ')) {
-        this.renderHeading(line.substring(2), 1);
+        const headingText = line.substring(2).trim();
+        // Skip first H1 if it matches the document title (already rendered on page 1)
+        if (skipFirstH1 && documentTitle && headingText.toLowerCase() === documentTitle.toLowerCase()) {
+          skipFirstH1 = false;
+          continue;
+        }
+        this.renderHeading(headingText, 1);
       }
       // Bullet points
       else if (line.startsWith('- ') || line.startsWith('* ')) {
@@ -712,31 +724,34 @@ export class PdfBuilder {
    * Add headers and footers to all pages
    */
   private addHeadersAndFooters(): void {
-    const pages = (this.doc as unknown as { _pageBuffer: unknown[] })._pageBuffer || [];
+    const { doc } = this;
+    const pages = (doc as unknown as { _pageBuffer: unknown[] })._pageBuffer || [];
     const totalPages = pages.length || this.pageCount;
 
     for (let i = 0; i < totalPages; i++) {
-      this.doc.switchToPage(i);
+      doc.switchToPage(i);
 
+      // Use save/restore to completely isolate header/footer rendering
+      // This prevents any cursor movement from affecting the document state
       if (this.branding.header?.enabled) {
-        this.renderHeader(i + 1);
+        doc.save();
+        this.renderHeaderDirect(i + 1);
+        doc.restore();
       }
 
       if (this.branding.footer?.enabled) {
-        this.renderFooter(i + 1, totalPages);
+        doc.save();
+        this.renderFooterDirect(i + 1, totalPages);
+        doc.restore();
       }
     }
   }
 
   /**
-   * Render page header
+   * Render header directly (called within save/restore context)
    */
-  private renderHeader(pageNumber: number): void {
+  private renderHeaderDirect(pageNumber: number): void {
     const { doc, branding, logo, primaryColor } = this;
-
-    // Save current position to restore after header rendering
-    const savedX = doc.x;
-    const savedY = doc.y;
 
     const headerY = 20;
     const headerContent = processTemplateContent(branding.header?.content || '', {
@@ -768,28 +783,20 @@ export class PdfBuilder {
       doc
         .font(FONTS.bold)
         .fontSize(10)
-        .fillColor([primaryColor.r, primaryColor.g, primaryColor.b])
-        .text(displayText, textX, headerY + 15, {
-          width: PAGE.width - textX - PAGE.margin.right,
-          align: logo ? 'left' : 'center',
-          lineBreak: false,
-        });
-    }
+        .fillColor([primaryColor.r, primaryColor.g, primaryColor.b]);
 
-    // Restore position to prevent affecting content flow
-    doc.x = savedX;
-    doc.y = savedY;
+      // Use _fragment to render text without affecting cursor
+      const textWidth = doc.widthOfString(displayText);
+      const xPos = logo ? textX : (PAGE.width - textWidth) / 2;
+      doc.text(displayText, xPos, headerY + 15, { lineBreak: false });
+    }
   }
 
   /**
-   * Render page footer
+   * Render footer directly (called within save/restore context)
    */
-  private renderFooter(pageNumber: number, totalPages: number): void {
+  private renderFooterDirect(pageNumber: number, totalPages: number): void {
     const { doc, branding, primaryColor } = this;
-
-    // Save current position to restore after footer rendering
-    const savedX = doc.x;
-    const savedY = doc.y;
 
     const footerY = PAGE.height - PAGE.margin.bottom + 10;
     const footerContent = processTemplateContent(branding.footer?.content || '', {
@@ -806,36 +813,30 @@ export class PdfBuilder {
       .lineWidth(1)
       .stroke();
 
-    // Draw footer content (use lineBreak: false to prevent page overflow)
+    // Draw footer content centered
     if (footerContent) {
       doc
         .font(FONTS.regular)
         .fontSize(9)
-        .fillColor('#666666')
-        .text(footerContent, PAGE.margin.left, footerY + 5, {
-          width: PAGE.width - PAGE.margin.left - PAGE.margin.right,
-          align: 'center',
-          lineBreak: false,
-        });
+        .fillColor('#666666');
+
+      const textWidth = doc.widthOfString(footerContent);
+      const xPos = (PAGE.width - textWidth) / 2;
+      doc.text(footerContent, xPos, footerY + 5, { lineBreak: false });
     }
 
-    // Draw page number
+    // Draw page number on the right
     if (branding.footer?.includePageNumber) {
       const pageText = `Page ${pageNumber} of ${totalPages}`;
       doc
         .font(FONTS.regular)
         .fontSize(9)
-        .fillColor('#666666')
-        .text(pageText, PAGE.margin.left, footerY + 20, {
-          width: PAGE.width - PAGE.margin.left - PAGE.margin.right,
-          align: 'right',
-          lineBreak: false,
-        });
-    }
+        .fillColor('#666666');
 
-    // Restore position to prevent affecting content flow
-    doc.x = savedX;
-    doc.y = savedY;
+      const textWidth = doc.widthOfString(pageText);
+      const xPos = PAGE.width - PAGE.margin.right - textWidth;
+      doc.text(pageText, xPos, footerY + 15, { lineBreak: false });
+    }
   }
 
   /**

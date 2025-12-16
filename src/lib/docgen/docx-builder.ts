@@ -112,12 +112,15 @@ export class DocxBuilder {
   async generate(): Promise<DocxResult> {
     await this.initialize();
 
-    const sections = this.parseContent(this.options.content);
+    const sections = this.parseContent(this.options.content, this.options.title);
     const children: (Paragraph | Table)[] = [];
 
     // Add title
     children.push(this.createTitle(this.options.title));
     children.push(new Paragraph({ spacing: { after: 400 } }));
+
+    // Add page break so content starts on page 2
+    children.push(new Paragraph({ pageBreakBefore: true }));
 
     // Add table of contents if requested
     if (this.options.includeToc) {
@@ -482,8 +485,10 @@ export class DocxBuilder {
 
   /**
    * Parse content into sections
+   * @param content - The markdown content to parse
+   * @param documentTitle - Optional document title to skip if found as first heading
    */
-  private parseContent(content: string): ContentSection[] {
+  private parseContent(content: string, documentTitle?: string): ContentSection[] {
     const sections: ContentSection[] = [];
     const lines = content.split('\n');
     let currentSection: ContentSection = { type: 'paragraph', content: [] };
@@ -493,6 +498,7 @@ export class DocxBuilder {
     let tableRows: string[][] = [];
     let inAsciiDiagram = false;
     let asciiDiagramLines: string[] = [];
+    let skipFirstH1 = !!documentTitle; // Flag to skip first matching H1 heading
 
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
@@ -607,11 +613,17 @@ export class DocxBuilder {
         }
         sections.push({ type: 'heading2', content: line.substring(3) });
       } else if (line.startsWith('# ')) {
+        const headingText = line.substring(2).trim();
+        // Skip first H1 if it matches the document title (already rendered on page 1)
+        if (skipFirstH1 && documentTitle && headingText.toLowerCase() === documentTitle.toLowerCase()) {
+          skipFirstH1 = false;
+          continue;
+        }
         if (currentSection.content.length > 0) {
           sections.push(currentSection);
           currentSection = { type: 'paragraph', content: [] };
         }
-        sections.push({ type: 'heading1', content: line.substring(2) });
+        sections.push({ type: 'heading1', content: headingText });
       }
       // Bullet points
       else if (line.startsWith('- ') || line.startsWith('* ')) {
