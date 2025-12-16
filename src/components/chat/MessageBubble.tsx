@@ -6,6 +6,7 @@ import remarkGfm from 'remark-gfm';
 import { ChevronDown, ChevronRight, Copy, Check } from 'lucide-react';
 import type { Message } from '@/types';
 import SourceCard from './SourceCard';
+import DocumentResultCard from './DocumentResultCard';
 import { MarkdownComponents } from '@/components/markdown/MarkdownRenderers';
 
 const MAX_SOURCES_DISPLAYED = 5;
@@ -67,6 +68,15 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
             {message.content}
           </ReactMarkdown>
         </div>
+
+        {/* Generated Documents */}
+        {message.generatedDocuments && message.generatedDocuments.length > 0 && (
+          <div className="mt-2">
+            {message.generatedDocuments.map((doc) => (
+              <DocumentResultCard key={doc.id} document={doc} />
+            ))}
+          </div>
+        )}
 
         {sortedSources.length > 0 && (
           <div className={`mt-3 pt-3 border-t ${isUser ? 'border-blue-500' : 'border-gray-300'}`}>

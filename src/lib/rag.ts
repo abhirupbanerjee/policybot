@@ -16,7 +16,7 @@ import { getResolvedSystemPrompt } from './db/category-prompts';
 import { getCategoryIdsBySlugs } from './db/categories';
 import { resolveSkills } from './skills/resolver';
 import { rerankChunks } from './reranker';
-import type { Message, Source, RetrievedChunk, RAGResponse } from '@/types';
+import type { Message, Source, RetrievedChunk, RAGResponse, GeneratedDocumentInfo } from '@/types';
 
 /**
  * Generate expanded queries to improve retrieval coverage
@@ -350,7 +350,10 @@ export async function ragQuery(
   const webSources = extractWebSourcesFromHistory(fullHistory);
   sources.push(...webSources);
 
-  const response: RAGResponse = { answer, sources };
+  // Extract generated documents from tool call results
+  const generatedDocuments = extractGeneratedDocumentsFromHistory(fullHistory);
+
+  const response: RAGResponse = { answer, sources, generatedDocuments };
 
   // Cache response (only for queries without user documents and if caching is enabled)
   if (cacheEnabled && userDocPaths.length === 0) {
@@ -393,4 +396,40 @@ function extractWebSourcesFromHistory(
   }
 
   return webSources;
+}
+
+/**
+ * Extract generated documents from tool call history (doc_gen tool)
+ */
+function extractGeneratedDocumentsFromHistory(
+  history: OpenAI.Chat.ChatCompletionMessageParam[]
+): GeneratedDocumentInfo[] {
+  const documents: GeneratedDocumentInfo[] = [];
+
+  for (const msg of history) {
+    if (msg.role === 'tool') {
+      try {
+        const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+        const toolResult = JSON.parse(content);
+
+        // Check if this is a successful doc_gen result
+        if (toolResult.success && toolResult.document) {
+          const doc = toolResult.document;
+          documents.push({
+            id: doc.id,
+            filename: doc.filename,
+            fileType: doc.fileType,
+            fileSize: doc.fileSize,
+            fileSizeFormatted: doc.fileSizeFormatted,
+            downloadUrl: doc.downloadUrl,
+            expiresAt: doc.expiresAt,
+          });
+        }
+      } catch {
+        // Ignore JSON parse errors - not a doc_gen result
+      }
+    }
+  }
+
+  return documents;
 }

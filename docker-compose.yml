@@ -37,6 +37,9 @@ services:
       - CONFIG_DIR=/app/config
       # Point to LiteLLM proxy for multi-provider LLM support
       - OPENAI_BASE_URL=http://litellm:4000/v1
+      # Fix transformers cache permission (reranker model caching)
+      - TRANSFORMERS_CACHE=/tmp/transformers_cache
+      - XDG_CACHE_HOME=/tmp/cache
     env_file:
       - .env
     labels:

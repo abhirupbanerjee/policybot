@@ -17,6 +17,7 @@ import {
   formatSummaryForContext,
 } from '@/lib/summarization';
 import { getMemorySettings, getSummarizationSettings } from '@/lib/db/config';
+import { runWithContextAsync } from '@/lib/request-context';
 import type { Message, ChatRequest, ChatResponse, ApiError } from '@/types';
 
 export async function POST(request: NextRequest) {
@@ -102,22 +103,36 @@ export async function POST(request: NextRequest) {
     // Get user uploaded documents
     const uploadPaths = await getUploadPaths(user.id, threadId);
 
-    // Run RAG query with category context, memory, and summary
-    const { answer, sources } = await ragQuery(
-      message,
-      conversationHistory.slice(0, -1), // Exclude the message we just added
-      uploadPaths,
-      categorySlugs.length > 0 ? categorySlugs : undefined,
-      memoryContext,
-      summaryContext
+    // Create message ID for context (used by autonomous tools)
+    const assistantMessageId = uuidv4();
+
+    // Run RAG query with context for autonomous tools
+    // Context allows tools like doc_gen to know the threadId/categoryId
+    const { answer, sources, generatedDocuments } = await runWithContextAsync(
+      {
+        threadId,
+        messageId: assistantMessageId,
+        categoryId: categoryIds[0],
+        userId: user.id,
+      },
+      () =>
+        ragQuery(
+          message,
+          conversationHistory.slice(0, -1), // Exclude the message we just added
+          uploadPaths,
+          categorySlugs.length > 0 ? categorySlugs : undefined,
+          memoryContext,
+          summaryContext
+        )
     );
 
     // Create assistant message
     const assistantMessage: Message = {
-      id: uuidv4(),
+      id: assistantMessageId,
       role: 'assistant',
       content: answer,
       sources,
+      generatedDocuments,
       timestamp: new Date(),
     };
 

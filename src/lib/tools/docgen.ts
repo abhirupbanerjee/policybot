@@ -1,9 +1,9 @@
 /**
  * Document Generation Tool Definition
  *
- * Processor tool for generating branded PDF and Word documents
- * from chat content. This is a post-response processor tool,
- * not an autonomous LLM-triggered tool.
+ * Autonomous tool for generating branded PDF and Word documents
+ * from chat content. LLM-triggered via OpenAI function calling
+ * when users request document exports.
  */
 
 import type { ToolDefinition, ValidationResult } from '../tools';
@@ -15,6 +15,7 @@ import {
   type GeneratedDocument,
   type DocGenConfig,
 } from '../docgen/document-generator';
+import { getRequestContext } from '../request-context';
 
 // ============ Config Schema ============
 
@@ -199,11 +200,39 @@ function validateDocGenConfig(config: Record<string, unknown>): ValidationResult
 export const documentGenerationTool: ToolDefinition = {
   name: 'doc_gen',
   displayName: 'Document Generation',
-  description: 'Export chat responses as branded PDF or Word documents',
-  category: 'processor',
+  description: 'Generate branded PDF, Word, or Markdown documents from content',
+  category: 'autonomous',
 
-  // No OpenAI function definition - this is a processor tool, not autonomous
-  definition: undefined,
+  // OpenAI function definition for autonomous tool calling
+  definition: {
+    type: 'function' as const,
+    function: {
+      name: 'doc_gen',
+      description:
+        'Generate a formatted document (PDF, Word, or Markdown) from content. Use this tool when the user explicitly asks to create, export, download, or save a document, report, summary, or policy. Do NOT use for regular responses - only when explicitly requested.',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: {
+            type: 'string',
+            description: 'Document title (appears as the main heading)',
+          },
+          content: {
+            type: 'string',
+            description:
+              'Document content in markdown format. Include all relevant information the user wants in the document.',
+          },
+          format: {
+            type: 'string',
+            enum: ['pdf', 'docx', 'md'],
+            description:
+              'Output format: pdf (recommended for professional documents), docx (Word, for editable documents), or md (Markdown, for plain text)',
+          },
+        },
+        required: ['title', 'content', 'format'],
+      },
+    },
+  },
 
   validateConfig: validateDocGenConfig,
 
@@ -212,25 +241,34 @@ export const documentGenerationTool: ToolDefinition = {
   configSchema: docGenConfigSchema,
 
   /**
-   * Execute document generation
+   * Execute document generation (autonomous mode)
    *
-   * Args expected:
+   * Args from LLM function call:
    * - title: string - Document title
    * - content: string - Markdown content to convert
-   * - format: 'pdf' | 'docx' - Output format
-   * - threadId?: string - Associated thread ID
-   * - messageId?: string - Associated message ID
-   * - categoryId?: number - Category for branding resolution
+   * - format: 'pdf' | 'docx' | 'md' - Output format
+   *
+   * Context (threadId, messageId, categoryId) comes from request context
    */
   execute: async (args: {
     title: string;
     content: string;
-    format?: DocumentFormat;
-    threadId?: string;
-    messageId?: string;
-    categoryId?: number;
+    format: DocumentFormat;
   }): Promise<string> => {
     try {
+      // Get context from AsyncLocalStorage (set by chat API route)
+      const context = getRequestContext();
+      const { threadId, messageId, categoryId } = context;
+
+      // Validate we have required context
+      if (!threadId) {
+        console.warn('[DocGen] No thread context available');
+        return JSON.stringify({
+          error: 'Document generation requires an active chat thread',
+          errorCode: 'NO_CONTEXT',
+        });
+      }
+
       // Get tool configuration
       const toolConfig = getToolConfig('doc_gen');
       const config = toolConfig?.config || TOOL_DEFAULTS.doc_gen.config;
@@ -239,7 +277,7 @@ export const documentGenerationTool: ToolDefinition = {
       const docGenConfig: DocGenConfig = {
         enabled: toolConfig?.isEnabled ?? TOOL_DEFAULTS.doc_gen.enabled,
         defaultFormat: (config.defaultFormat as DocumentFormat) || 'pdf',
-        enabledFormats: (config.enabledFormats as DocumentFormat[]) || ['pdf', 'docx'],
+        enabledFormats: (config.enabledFormats as DocumentFormat[]) || ['pdf', 'docx', 'md'],
         branding: config.branding as BrandingConfig,
         expirationDays: (config.expirationDays as number) || 30,
         maxDocumentSizeMB: (config.maxDocumentSizeMB as number) || 50,
@@ -253,28 +291,37 @@ export const documentGenerationTool: ToolDefinition = {
         });
       }
 
+      // Validate format is enabled
+      const format = args.format || docGenConfig.defaultFormat;
+      if (!docGenConfig.enabledFormats.includes(format)) {
+        return JSON.stringify({
+          error: `Format '${format}' is not enabled. Available formats: ${docGenConfig.enabledFormats.join(', ')}`,
+          errorCode: 'FORMAT_DISABLED',
+        });
+      }
+
       // Get category branding if applicable
       let categoryBranding: BrandingConfig | null = null;
-      if (args.categoryId) {
-        const effective = getEffectiveToolConfig('doc_gen', args.categoryId);
+      if (categoryId) {
+        const effective = getEffectiveToolConfig('doc_gen', categoryId);
         categoryBranding = effective.branding;
       }
 
       // Create generator
       const generator = createDocumentGenerator(docGenConfig, categoryBranding);
 
-      // Determine format
-      const format = args.format || docGenConfig.defaultFormat;
-
       // Generate document
+      console.log(`[DocGen] Generating ${format} document: "${args.title}"`);
       const result = await generator.generate({
         title: args.title,
         content: args.content,
         format,
-        threadId: args.threadId,
-        messageId: args.messageId,
-        categoryId: args.categoryId,
+        threadId,
+        messageId,
+        categoryId,
       });
+
+      console.log(`[DocGen] Document generated: ${result.filename} (${formatFileSize(result.fileSize)})`);
 
       return JSON.stringify({
         success: true,
