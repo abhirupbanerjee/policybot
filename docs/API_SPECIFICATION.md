@@ -138,6 +138,23 @@ When `AUTH_DISABLED=true` in environment:
 | GET | `/api/superuser/users` | Yes | Superuser | List category users |
 | POST | `/api/superuser/users` | Yes | Superuser | Add subscription |
 | DELETE | `/api/superuser/users` | Yes | Superuser | Remove subscription |
+| GET | `/api/admin/tools` | Yes | Admin | List all tools |
+| POST | `/api/admin/tools` | Yes | Admin | Initialize tools to defaults |
+| GET | `/api/admin/tools/{name}` | Yes | Admin | Get tool config |
+| PATCH | `/api/admin/tools/{name}` | Yes | Admin | Update tool config |
+| POST | `/api/admin/tools/{name}/test` | Yes | Admin | Test tool connectivity |
+| GET | `/api/admin/skills` | Yes | Admin | List all skills |
+| POST | `/api/admin/skills` | Yes | Admin | Create skill |
+| PUT | `/api/admin/skills/{id}` | Yes | Admin | Update skill |
+| DELETE | `/api/admin/skills/{id}` | Yes | Admin | Delete skill |
+| DELETE | `/api/admin/skills` | Yes | Admin | Reset core skills |
+| GET | `/api/admin/skills/preview` | Yes | Admin | Preview skill activation |
+| PATCH | `/api/admin/skills/settings` | Yes | Admin | Update skills settings |
+| GET | `/api/categories/{id}/prompt` | Yes | Admin/Superuser | Get category prompt |
+| PUT | `/api/categories/{id}/prompt` | Yes | Admin/Superuser | Update category prompt |
+| DELETE | `/api/categories/{id}/prompt` | Yes | Admin/Superuser | Reset category prompt |
+| GET | `/api/superuser/tools` | Yes | Superuser | List tools with overrides |
+| POST | `/api/superuser/tools/{name}` | Yes | Superuser | Set category tool override |
 
 ---
 
@@ -2225,7 +2242,541 @@ curl -X DELETE https://policybot.abhirup.app/api/superuser/documents/5 \
 
 ---
 
-### 16. Super User - User Management
+### 16. Admin - Tools Management
+
+Tools extend the AI's capabilities beyond text generation (web search, document generation, etc.).
+
+#### `GET /api/admin/tools`
+
+List all tools with their configurations.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Example Request**:
+
+```bash
+curl -X GET https://policybot.abhirup.app/api/admin/tools \
+  -H "Cookie: next-auth.session-token=abc123..."
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  tools: Array<{
+    name: string;
+    displayName: string;
+    description: string;
+    category: 'autonomous' | 'processor';
+    enabled: boolean;
+    config: Record<string, unknown>;
+    hasDefinition: boolean;
+    updatedAt?: string;
+    updatedBy?: string;
+  }>;
+}
+```
+
+---
+
+#### `POST /api/admin/tools`
+
+Initialize all tools to their default configurations.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Response** `200 OK`:
+
+```typescript
+{
+  message: "All tools initialized";
+  tools: string[];  // Tool names initialized
+}
+```
+
+---
+
+#### `GET /api/admin/tools/{toolName}`
+
+Get specific tool configuration with audit history.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Example Request**:
+
+```bash
+curl -X GET https://policybot.abhirup.app/api/admin/tools/web_search \
+  -H "Cookie: next-auth.session-token=abc123..."
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  tool: {
+    name: string;
+    displayName: string;
+    description: string;
+    category: string;
+    enabled: boolean;
+    config: Record<string, unknown>;
+    configSchema: Record<string, unknown>;
+    defaultConfig: Record<string, unknown>;
+  };
+  auditHistory: Array<{
+    operation: 'create' | 'update' | 'delete';
+    oldConfig?: Record<string, unknown>;
+    newConfig?: Record<string, unknown>;
+    changedBy: string;
+    changedAt: string;
+  }>;
+}
+```
+
+---
+
+#### `PATCH /api/admin/tools/{toolName}`
+
+Update tool configuration.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Request Body**:
+
+```typescript
+{
+  enabled?: boolean;
+  config?: Record<string, unknown>;
+  reset?: boolean;  // Reset to defaults
+}
+```
+
+**Example Request**:
+
+```bash
+curl -X PATCH https://policybot.abhirup.app/api/admin/tools/web_search \
+  -H "Content-Type: application/json" \
+  -H "Cookie: next-auth.session-token=abc123..." \
+  -d '{
+    "enabled": true,
+    "config": {
+      "maxResults": 10,
+      "defaultSearchDepth": "advanced"
+    }
+  }'
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  tool: {
+    name: string;
+    enabled: boolean;
+    config: Record<string, unknown>;
+    updatedAt: string;
+    updatedBy: string;
+  };
+}
+```
+
+---
+
+#### `POST /api/admin/tools/{toolName}/test`
+
+Test tool connectivity and configuration.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Example Request**:
+
+```bash
+curl -X POST https://policybot.abhirup.app/api/admin/tools/web_search/test \
+  -H "Cookie: next-auth.session-token=abc123..."
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  tool: string;
+  success: boolean;
+  message: string;
+  latency?: number;  // For web_search
+  testedAt: string;
+  testedBy: string;
+}
+```
+
+---
+
+### 17. Admin - Skills Management
+
+Skills are modular prompt components that can be dynamically injected into the system prompt.
+
+#### `GET /api/admin/skills`
+
+List all skills.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Response** `200 OK`:
+
+```typescript
+{
+  skills: Array<{
+    id: number;
+    name: string;
+    description: string | null;
+    triggerType: 'always' | 'category' | 'keyword';
+    triggerValue: string | null;
+    categoryRestricted: boolean;
+    isIndex: boolean;
+    priority: number;
+    isActive: boolean;
+    isCore: boolean;
+    tokenEstimate: number;
+    categories: Array<{ id: number; name: string }>;
+  }>;
+  settings: {
+    enabled: boolean;
+    maxTotalTokens: number;
+    debugMode: boolean;
+  };
+}
+```
+
+---
+
+#### `POST /api/admin/skills`
+
+Create a new custom skill.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Request Body**:
+
+```typescript
+{
+  name: string;
+  description?: string;
+  promptContent: string;
+  triggerType: 'always' | 'category' | 'keyword';
+  triggerValue?: string;  // Keywords for keyword type
+  categoryRestricted?: boolean;
+  isIndex?: boolean;
+  priority?: number;
+  categoryIds?: number[];  // Link to categories
+}
+```
+
+**Response** `201 Created`:
+
+```typescript
+{
+  skill: {
+    id: number;
+    name: string;
+    // ... full skill object
+  };
+}
+```
+
+---
+
+#### `PUT /api/admin/skills/{skillId}`
+
+Update a skill.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Request Body**: Same as POST
+
+**Response** `200 OK`:
+
+```typescript
+{
+  skill: { /* updated skill */ };
+}
+```
+
+---
+
+#### `DELETE /api/admin/skills/{skillId}`
+
+Delete a skill. Core skills cannot be deleted.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Response** `200 OK`:
+
+```typescript
+{
+  success: true;
+  deleted: { id: number; name: string };
+}
+```
+
+**Error Response** `400`:
+
+```typescript
+{
+  error: "Cannot delete core skill";
+}
+```
+
+---
+
+#### `DELETE /api/admin/skills`
+
+Reset all core skills to their defaults.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Response** `200 OK`:
+
+```typescript
+{
+  message: "Core skills restored to defaults";
+  restoredCount: number;
+}
+```
+
+---
+
+#### `GET /api/admin/skills/preview`
+
+Preview which skills would activate for a test message.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Query Parameters**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `message` | string | Yes | Test message |
+| `categoryIds` | string | No | Comma-separated category IDs |
+
+**Response** `200 OK`:
+
+```typescript
+{
+  activatedSkills: Array<{
+    id: number;
+    name: string;
+    triggerType: string;
+    triggerReason: string;  // Why it was activated
+  }>;
+  totalTokens: number;
+  budgetRemaining: number;
+}
+```
+
+---
+
+#### `PATCH /api/admin/skills/settings`
+
+Update skills system settings.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Request Body**:
+
+```typescript
+{
+  enabled?: boolean;
+  maxTotalTokens?: number;
+  debugMode?: boolean;
+}
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  settings: {
+    enabled: boolean;
+    maxTotalTokens: number;
+    debugMode: boolean;
+  };
+}
+```
+
+---
+
+### 18. Admin - Category Prompts
+
+Category-specific prompt addendums and starter prompts.
+
+#### `GET /api/categories/{id}/prompt`
+
+Get category prompt configuration.
+
+**Authentication**: Required
+**Role**: Admin or Superuser (for assigned categories)
+
+**Response** `200 OK`:
+
+```typescript
+{
+  categoryId: number;
+  promptAddendum: string;
+  starterPrompts: Array<{
+    label: string;
+    prompt: string;
+  }>;
+  maxCharactersAvailable: number;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+```
+
+---
+
+#### `PUT /api/categories/{id}/prompt`
+
+Update category prompt configuration.
+
+**Authentication**: Required
+**Role**: Admin or Superuser (for assigned categories)
+
+**Request Body**:
+
+```typescript
+{
+  promptAddendum?: string;
+  starterPrompts?: Array<{
+    label: string;   // Max 30 chars
+    prompt: string;  // Max 500 chars
+  }>;
+}
+```
+
+**Constraints**:
+- Max 6 starter prompts per category
+- Combined system prompt + addendum max 8,000 characters
+- Forbidden phrases blocked for security
+
+**Response** `200 OK`:
+
+```typescript
+{
+  categoryId: number;
+  promptAddendum: string;
+  starterPrompts: Array<{ label: string; prompt: string }>;
+  updatedAt: string;
+  updatedBy: string;
+}
+```
+
+---
+
+#### `DELETE /api/categories/{id}/prompt`
+
+Reset category prompt to global system prompt only.
+
+**Authentication**: Required
+**Role**: Admin or Superuser (for assigned categories)
+
+**Response** `200 OK`:
+
+```typescript
+{
+  success: true;
+  categoryId: number;
+}
+```
+
+---
+
+### 19. Superuser - Tools Management
+
+Superusers can configure category-level tool overrides.
+
+#### `GET /api/superuser/tools`
+
+View tools with category-level overrides for assigned categories.
+
+**Authentication**: Required
+**Role**: Superuser only
+
+**Response** `200 OK`:
+
+```typescript
+{
+  tools: Array<{
+    name: string;
+    displayName: string;
+    description: string;
+    category: string;
+    globalEnabled: boolean;
+    categories: Array<{
+      categoryId: number;
+      categoryName: string;
+      isEnabled: boolean | null;  // null = inherit
+      effectiveEnabled: boolean;
+      branding: BrandingConfig | null;
+    }>;
+  }>;
+  assignedCategories: Array<{
+    id: number;
+    name: string;
+    slug: string;
+  }>;
+}
+```
+
+---
+
+#### `POST /api/superuser/tools/{toolName}`
+
+Create or update category-level tool override.
+
+**Authentication**: Required
+**Role**: Superuser only
+
+**Request Body**:
+
+```typescript
+{
+  categoryId: number;
+  isEnabled?: boolean | null;  // null to inherit from global
+  branding?: {
+    enabled: boolean;
+    logoUrl?: string;
+    organizationName?: string;
+    primaryColor?: string;
+  };
+}
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  categoryId: number;
+  toolName: string;
+  isEnabled: boolean | null;
+  branding: BrandingConfig | null;
+  effectiveEnabled: boolean;
+}
+```
+
+---
+
+### 20. Super User - User Management
 
 Super users can manage subscriptions for regular users within their assigned categories.
 

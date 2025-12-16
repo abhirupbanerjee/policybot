@@ -255,6 +255,145 @@ CREATE TABLE IF NOT EXISTS storage_alerts (
 CREATE INDEX IF NOT EXISTS idx_storage_alerts_pending
 ON storage_alerts(acknowledged_at) WHERE acknowledged_at IS NULL;
 
+-- ============ Skills ============
+
+CREATE TABLE IF NOT EXISTS skills (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT UNIQUE NOT NULL,
+  description TEXT,
+  prompt_content TEXT NOT NULL,
+  trigger_type TEXT NOT NULL CHECK (trigger_type IN ('always', 'category', 'keyword')),
+  trigger_value TEXT,
+  category_restricted INTEGER DEFAULT 0,
+  is_index INTEGER DEFAULT 0,
+  priority INTEGER DEFAULT 100,
+  is_active INTEGER DEFAULT 1,
+  is_core INTEGER DEFAULT 0,
+  created_by_role TEXT NOT NULL CHECK (created_by_role IN ('admin', 'superuser')),
+  token_estimate INTEGER,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  created_by TEXT NOT NULL,
+  updated_by TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_skills_trigger_type ON skills(trigger_type);
+CREATE INDEX IF NOT EXISTS idx_skills_is_active ON skills(is_active);
+
+-- Skill to category mapping (many-to-many)
+CREATE TABLE IF NOT EXISTS category_skills (
+  category_id INTEGER NOT NULL,
+  skill_id INTEGER NOT NULL,
+  PRIMARY KEY (category_id, skill_id),
+  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
+  FOREIGN KEY (skill_id) REFERENCES skills(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_category_skills_category ON category_skills(category_id);
+CREATE INDEX IF NOT EXISTS idx_category_skills_skill ON category_skills(skill_id);
+
+-- ============ Category Prompts ============
+
+CREATE TABLE IF NOT EXISTS category_prompts (
+  category_id INTEGER PRIMARY KEY,
+  prompt_addendum TEXT NOT NULL,
+  starter_prompts TEXT DEFAULT NULL,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_by TEXT,
+  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+);
+
+-- ============ Tools Configuration ============
+
+CREATE TABLE IF NOT EXISTS tool_configs (
+  id TEXT PRIMARY KEY,
+  tool_name TEXT UNIQUE NOT NULL,
+  is_enabled INTEGER DEFAULT 0,
+  config_json TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_by TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_tool_configs_name ON tool_configs(tool_name);
+
+-- Tool configuration audit trail
+CREATE TABLE IF NOT EXISTS tool_config_audit (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  tool_name TEXT NOT NULL,
+  operation TEXT NOT NULL CHECK (operation IN ('create', 'update', 'delete')),
+  old_config TEXT,
+  new_config TEXT,
+  changed_by TEXT NOT NULL,
+  changed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_tool_config_audit_tool ON tool_config_audit(tool_name);
+
+-- Category-level tool overrides
+CREATE TABLE IF NOT EXISTS category_tool_configs (
+  id TEXT PRIMARY KEY,
+  category_id INTEGER NOT NULL,
+  tool_name TEXT NOT NULL,
+  is_enabled INTEGER,
+  branding_json TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_by TEXT NOT NULL,
+  UNIQUE(category_id, tool_name),
+  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_category_tool_configs_category ON category_tool_configs(category_id);
+CREATE INDEX IF NOT EXISTS idx_category_tool_configs_tool ON category_tool_configs(tool_name);
+
+-- ============ Memory ============
+
+CREATE TABLE IF NOT EXISTS user_memories (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  category_id INTEGER,
+  facts_json TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_memories_user ON user_memories(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_memories_category ON user_memories(category_id);
+
+-- ============ Thread Summarization ============
+
+CREATE TABLE IF NOT EXISTS thread_summaries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  thread_id TEXT NOT NULL,
+  summary TEXT NOT NULL,
+  messages_summarized INTEGER NOT NULL,
+  tokens_before INTEGER,
+  tokens_after INTEGER,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_thread_summaries_thread ON thread_summaries(thread_id);
+
+CREATE TABLE IF NOT EXISTS archived_messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  thread_id TEXT NOT NULL,
+  role TEXT NOT NULL,
+  content TEXT NOT NULL,
+  sources_json TEXT,
+  created_at DATETIME NOT NULL,
+  archived_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  summary_id INTEGER,
+  FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE,
+  FOREIGN KEY (summary_id) REFERENCES thread_summaries(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_archived_messages_thread ON archived_messages(thread_id);
+CREATE INDEX IF NOT EXISTS idx_archived_messages_summary ON archived_messages(summary_id);
+
 -- ============ Triggers ============
 
 CREATE TRIGGER IF NOT EXISTS update_user_timestamp
@@ -439,7 +578,7 @@ Key-value configuration store.
 |-----|------|-------------|
 | `rag-settings` | RagSettings | RAG retrieval parameters |
 | `llm-settings` | LlmSettings | LLM model and parameters |
-| `tavily-settings` | TavilySettings | Web search configuration |
+| `tavily-settings` | TavilySettings | Web search configuration (legacy) |
 | `upload-limits` | UploadLimits | File upload constraints |
 | `system-prompt` | SystemPrompt | AI system prompt content |
 | `acronym-mappings` | AcronymMappings | Custom acronym expansions |
@@ -447,6 +586,9 @@ Key-value configuration store.
 | `branding-settings` | BrandingSettings | Bot name and icon for sidebar |
 | `embedding-settings` | EmbeddingSettings | Embedding model configuration |
 | `reranker-settings` | RerankerSettings | Chunk reranking configuration |
+| `skills-settings` | SkillsSettings | Skills system configuration |
+| `memory-settings` | MemorySettings | User memory extraction configuration |
+| `summarization-settings` | SummarizationSettings | Thread summarization configuration |
 
 **Settings Interfaces:**
 
@@ -506,6 +648,25 @@ export interface RerankerSettings {
   minRerankerScore: number;  // Minimum rerank score (default: 0.3)
   cacheTTLSeconds: number;   // Cache TTL (default: 3600)
 }
+
+export interface SkillsSettings {
+  enabled: boolean;        // Master enable/disable (default: true)
+  maxTotalTokens: number;  // Budget for all skills combined (default: 3000)
+  debugMode: boolean;      // Log skill activation details (default: false)
+}
+
+export interface MemorySettings {
+  enabled: boolean;           // Enable memory extraction (default: false)
+  maxFactsPerCategory: number; // Max facts to store per category (default: 50)
+  maxFactAge: number;         // Days to keep facts (default: 90)
+}
+
+export interface SummarizationSettings {
+  enabled: boolean;           // Enable auto-summarization (default: false)
+  messageThreshold: number;   // Messages before summarization (default: 20)
+  tokenThreshold: number;     // Token count before summarization (default: 8000)
+  keepRecentMessages: number; // Messages to keep after summary (default: 5)
+}
 ```
 
 ### storage_alerts
@@ -520,6 +681,136 @@ Storage usage alerts for monitoring.
 | alerted_at | DATETIME | Alert timestamp |
 | acknowledged_at | DATETIME | When acknowledged (NULL if pending) |
 | acknowledged_by | TEXT | Admin who acknowledged |
+
+### skills
+
+Modular prompt components that can be dynamically injected into the system prompt.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INTEGER | Auto-increment primary key |
+| name | TEXT | Unique skill name |
+| description | TEXT | Optional description |
+| prompt_content | TEXT | The actual skill prompt text |
+| trigger_type | TEXT | `always`, `category`, or `keyword` |
+| trigger_value | TEXT | Keywords (comma-separated) for keyword-type |
+| category_restricted | INTEGER | 1=only applies to linked categories |
+| is_index | INTEGER | 1=broader domain expertise skill |
+| priority | INTEGER | Lower = higher priority (for sorting) |
+| is_active | INTEGER | 1=enabled, 0=disabled |
+| is_core | INTEGER | 1=core skill (cannot be deleted) |
+| created_by_role | TEXT | `admin` or `superuser` |
+| token_estimate | INTEGER | Estimated token count (~4 chars per token) |
+| created_at | DATETIME | Creation timestamp |
+| updated_at | DATETIME | Last update timestamp |
+| created_by | TEXT | Email of creator |
+| updated_by | TEXT | Email of last updater |
+
+### category_skills
+
+Maps skills to categories (many-to-many).
+
+| Column | Type | Description |
+|--------|------|-------------|
+| category_id | INTEGER | FK to categories.id |
+| skill_id | INTEGER | FK to skills.id |
+
+### category_prompts
+
+Category-specific prompt addendums and starter prompts.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| category_id | INTEGER | FK to categories.id (primary key) |
+| prompt_addendum | TEXT | Category-specific system prompt addition |
+| starter_prompts | TEXT | JSON array of starter prompt objects |
+| updated_at | DATETIME | Last update timestamp |
+| updated_by | TEXT | Email of last updater |
+
+### tool_configs
+
+Global tool configurations.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | TEXT | UUID primary key |
+| tool_name | TEXT | Unique tool identifier (e.g., `web_search`) |
+| is_enabled | INTEGER | 1=enabled, 0=disabled |
+| config_json | TEXT | JSON configuration object |
+| created_at | DATETIME | Creation timestamp |
+| updated_at | DATETIME | Last update timestamp |
+| updated_by | TEXT | Email of last updater |
+
+### tool_config_audit
+
+Audit trail for tool configuration changes.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INTEGER | Auto-increment primary key |
+| tool_name | TEXT | Tool that was changed |
+| operation | TEXT | `create`, `update`, or `delete` |
+| old_config | TEXT | Previous configuration JSON |
+| new_config | TEXT | New configuration JSON |
+| changed_by | TEXT | Email of admin who made change |
+| changed_at | DATETIME | Change timestamp |
+
+### category_tool_configs
+
+Category-level tool configuration overrides.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | TEXT | UUID primary key |
+| category_id | INTEGER | FK to categories.id |
+| tool_name | TEXT | Tool being overridden |
+| is_enabled | INTEGER | NULL=inherit from global, 0/1=override |
+| branding_json | TEXT | Category-specific branding config |
+| created_at | DATETIME | Creation timestamp |
+| updated_at | DATETIME | Last update timestamp |
+| updated_by | TEXT | Email of last updater |
+
+### user_memories
+
+Extracted facts for user memory across sessions.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INTEGER | Auto-increment primary key |
+| user_id | INTEGER | FK to users.id |
+| category_id | INTEGER | FK to categories.id (NULL for global) |
+| facts_json | TEXT | JSON array of extracted facts |
+| created_at | DATETIME | Creation timestamp |
+| updated_at | DATETIME | Last update timestamp |
+
+### thread_summaries
+
+Summary records when threads are summarized to reduce token usage.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INTEGER | Auto-increment primary key |
+| thread_id | TEXT | FK to threads.id |
+| summary | TEXT | Generated summary text |
+| messages_summarized | INTEGER | Number of messages summarized |
+| tokens_before | INTEGER | Token count before summarization |
+| tokens_after | INTEGER | Token count after summarization |
+| created_at | DATETIME | Summarization timestamp |
+
+### archived_messages
+
+Original messages preserved after summarization.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INTEGER | Auto-increment primary key |
+| thread_id | TEXT | FK to threads.id |
+| role | TEXT | Message role (user/assistant) |
+| content | TEXT | Original message content |
+| sources_json | TEXT | Original sources JSON |
+| created_at | DATETIME | Original message timestamp |
+| archived_at | DATETIME | When archived |
+| summary_id | INTEGER | FK to thread_summaries.id |
 
 ---
 

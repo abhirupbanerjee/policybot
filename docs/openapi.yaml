@@ -44,6 +44,14 @@ tags:
     description: Document management for assigned categories
   - name: Super User - Users
     description: User subscription management for assigned categories
+  - name: Admin - Tools
+    description: Tool configuration management (admin only)
+  - name: Admin - Skills
+    description: Skills management (admin only)
+  - name: Category Prompts
+    description: Category-specific prompt configuration
+  - name: Super User - Tools
+    description: Category-level tool overrides (superuser only)
   - name: Branding
     description: Public branding endpoints
 
@@ -319,6 +327,118 @@ components:
         configured:
           type: boolean
         error:
+          type: string
+
+    Tool:
+      type: object
+      properties:
+        name:
+          type: string
+          example: "web_search"
+        displayName:
+          type: string
+          example: "Web Search"
+        description:
+          type: string
+        category:
+          type: string
+          enum: [autonomous, processor]
+        enabled:
+          type: boolean
+        config:
+          type: object
+        hasDefinition:
+          type: boolean
+        updatedAt:
+          type: string
+          format: date-time
+        updatedBy:
+          type: string
+      required:
+        - name
+        - displayName
+        - category
+        - enabled
+
+    Skill:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+          example: "Legal Compliance"
+        description:
+          type: string
+          nullable: true
+        promptContent:
+          type: string
+        triggerType:
+          type: string
+          enum: [always, category, keyword]
+        triggerValue:
+          type: string
+          nullable: true
+        categoryRestricted:
+          type: boolean
+        isIndex:
+          type: boolean
+        priority:
+          type: integer
+        isActive:
+          type: boolean
+        isCore:
+          type: boolean
+        tokenEstimate:
+          type: integer
+        categories:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              name:
+                type: string
+      required:
+        - id
+        - name
+        - triggerType
+        - isActive
+        - isCore
+
+    StarterPrompt:
+      type: object
+      properties:
+        label:
+          type: string
+          maxLength: 30
+          example: "Leave Policy"
+        prompt:
+          type: string
+          maxLength: 500
+          example: "What is the annual leave policy?"
+      required:
+        - label
+        - prompt
+
+    CategoryPrompt:
+      type: object
+      properties:
+        categoryId:
+          type: integer
+        promptAddendum:
+          type: string
+        starterPrompts:
+          type: array
+          items:
+            $ref: '#/components/schemas/StarterPrompt'
+        maxCharactersAvailable:
+          type: integer
+        updatedAt:
+          type: string
+          format: date-time
+        updatedBy:
           type: string
 
   responses:
@@ -2425,6 +2545,750 @@ paths:
                         type: integer
                       categoryId:
                         type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: No access to this category
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/tools:
+    get:
+      tags:
+        - Admin - Tools
+      summary: List all tools
+      description: List all tools with their configurations (admin only)
+      operationId: listTools
+      responses:
+        '200':
+          description: List of tools
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tools:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Tool'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      tags:
+        - Admin - Tools
+      summary: Initialize tools
+      description: Initialize all tools to default configurations (admin only)
+      operationId: initializeTools
+      responses:
+        '200':
+          description: Tools initialized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  tools:
+                    type: array
+                    items:
+                      type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/tools/{toolName}:
+    parameters:
+      - name: toolName
+        in: path
+        required: true
+        schema:
+          type: string
+          example: "web_search"
+
+    get:
+      tags:
+        - Admin - Tools
+      summary: Get tool configuration
+      description: Get specific tool configuration with audit history (admin only)
+      operationId: getToolConfig
+      responses:
+        '200':
+          description: Tool configuration
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tool:
+                    $ref: '#/components/schemas/Tool'
+                  configSchema:
+                    type: object
+                  defaultConfig:
+                    type: object
+                  auditHistory:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        operation:
+                          type: string
+                          enum: [create, update, delete]
+                        oldConfig:
+                          type: object
+                        newConfig:
+                          type: object
+                        changedBy:
+                          type: string
+                        changedAt:
+                          type: string
+                          format: date-time
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      tags:
+        - Admin - Tools
+      summary: Update tool configuration
+      description: Update tool configuration (admin only)
+      operationId: updateToolConfig
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                config:
+                  type: object
+                reset:
+                  type: boolean
+                  description: Reset to defaults
+      responses:
+        '200':
+          description: Tool updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tool:
+                    type: object
+                    properties:
+                      name:
+                        type: string
+                      enabled:
+                        type: boolean
+                      config:
+                        type: object
+                      updatedAt:
+                        type: string
+                        format: date-time
+                      updatedBy:
+                        type: string
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/tools/{toolName}/test:
+    parameters:
+      - name: toolName
+        in: path
+        required: true
+        schema:
+          type: string
+
+    post:
+      tags:
+        - Admin - Tools
+      summary: Test tool
+      description: Test tool connectivity and configuration (admin only)
+      operationId: testTool
+      responses:
+        '200':
+          description: Test result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tool:
+                    type: string
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+                  latency:
+                    type: number
+                  testedAt:
+                    type: string
+                    format: date-time
+                  testedBy:
+                    type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/skills:
+    get:
+      tags:
+        - Admin - Skills
+      summary: List all skills
+      description: List all skills with settings (admin only)
+      operationId: listSkills
+      responses:
+        '200':
+          description: List of skills
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  skills:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Skill'
+                  settings:
+                    type: object
+                    properties:
+                      enabled:
+                        type: boolean
+                      maxTotalTokens:
+                        type: integer
+                      debugMode:
+                        type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      tags:
+        - Admin - Skills
+      summary: Create skill
+      description: Create a new custom skill (admin only)
+      operationId: createSkill
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                promptContent:
+                  type: string
+                triggerType:
+                  type: string
+                  enum: [always, category, keyword]
+                triggerValue:
+                  type: string
+                categoryRestricted:
+                  type: boolean
+                isIndex:
+                  type: boolean
+                priority:
+                  type: integer
+                categoryIds:
+                  type: array
+                  items:
+                    type: integer
+              required:
+                - name
+                - promptContent
+                - triggerType
+      responses:
+        '201':
+          description: Skill created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  skill:
+                    $ref: '#/components/schemas/Skill'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: Skill already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+    delete:
+      tags:
+        - Admin - Skills
+      summary: Reset core skills
+      description: Reset all core skills to their defaults (admin only)
+      operationId: resetCoreSkills
+      responses:
+        '200':
+          description: Core skills reset
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  restoredCount:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/skills/{skillId}:
+    parameters:
+      - name: skillId
+        in: path
+        required: true
+        schema:
+          type: integer
+
+    put:
+      tags:
+        - Admin - Skills
+      summary: Update skill
+      description: Update an existing skill (admin only)
+      operationId: updateSkill
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                promptContent:
+                  type: string
+                triggerType:
+                  type: string
+                  enum: [always, category, keyword]
+                triggerValue:
+                  type: string
+                categoryRestricted:
+                  type: boolean
+                isIndex:
+                  type: boolean
+                priority:
+                  type: integer
+                isActive:
+                  type: boolean
+                categoryIds:
+                  type: array
+                  items:
+                    type: integer
+      responses:
+        '200':
+          description: Skill updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  skill:
+                    $ref: '#/components/schemas/Skill'
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - Admin - Skills
+      summary: Delete skill
+      description: Delete a skill (core skills cannot be deleted) (admin only)
+      operationId: deleteSkill
+      responses:
+        '200':
+          description: Skill deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  deleted:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+        '400':
+          description: Cannot delete core skill
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/skills/preview:
+    get:
+      tags:
+        - Admin - Skills
+      summary: Preview skill activation
+      description: Preview which skills would activate for a test message (admin only)
+      operationId: previewSkillActivation
+      parameters:
+        - name: message
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: categoryIds
+          in: query
+          schema:
+            type: string
+            description: Comma-separated category IDs
+      responses:
+        '200':
+          description: Skill activation preview
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  activatedSkills:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        name:
+                          type: string
+                        triggerType:
+                          type: string
+                        triggerReason:
+                          type: string
+                  totalTokens:
+                    type: integer
+                  budgetRemaining:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /admin/skills/settings:
+    patch:
+      tags:
+        - Admin - Skills
+      summary: Update skills settings
+      description: Update skills system settings (admin only)
+      operationId: updateSkillsSettings
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                maxTotalTokens:
+                  type: integer
+                debugMode:
+                  type: boolean
+      responses:
+        '200':
+          description: Settings updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  settings:
+                    type: object
+                    properties:
+                      enabled:
+                        type: boolean
+                      maxTotalTokens:
+                        type: integer
+                      debugMode:
+                        type: boolean
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /categories/{id}/prompt:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: integer
+
+    get:
+      tags:
+        - Category Prompts
+      summary: Get category prompt
+      description: Get category-specific prompt configuration
+      operationId: getCategoryPrompt
+      responses:
+        '200':
+          description: Category prompt
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryPrompt'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags:
+        - Category Prompts
+      summary: Update category prompt
+      description: Update category-specific prompt configuration
+      operationId: updateCategoryPrompt
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                promptAddendum:
+                  type: string
+                starterPrompts:
+                  type: array
+                  maxItems: 6
+                  items:
+                    $ref: '#/components/schemas/StarterPrompt'
+      responses:
+        '200':
+          description: Category prompt updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CategoryPrompt'
+        '400':
+          description: Validation error (forbidden phrases, length limits)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - Category Prompts
+      summary: Reset category prompt
+      description: Reset category prompt to global system prompt only
+      operationId: resetCategoryPrompt
+      responses:
+        '200':
+          description: Category prompt reset
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  categoryId:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /superuser/tools:
+    get:
+      tags:
+        - Super User - Tools
+      summary: List tools with overrides
+      description: View tools with category-level overrides for assigned categories
+      operationId: getSuperuserTools
+      responses:
+        '200':
+          description: Tools with category overrides
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tools:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        name:
+                          type: string
+                        displayName:
+                          type: string
+                        description:
+                          type: string
+                        category:
+                          type: string
+                        globalEnabled:
+                          type: boolean
+                        categories:
+                          type: array
+                          items:
+                            type: object
+                            properties:
+                              categoryId:
+                                type: integer
+                              categoryName:
+                                type: string
+                              isEnabled:
+                                type: boolean
+                                nullable: true
+                              effectiveEnabled:
+                                type: boolean
+                              branding:
+                                type: object
+                  assignedCategories:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        name:
+                          type: string
+                        slug:
+                          type: string
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Superuser access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /superuser/tools/{toolName}:
+    parameters:
+      - name: toolName
+        in: path
+        required: true
+        schema:
+          type: string
+
+    post:
+      tags:
+        - Super User - Tools
+      summary: Set category tool override
+      description: Create or update category-level tool override
+      operationId: setCategoryToolOverride
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                categoryId:
+                  type: integer
+                isEnabled:
+                  type: boolean
+                  nullable: true
+                  description: null to inherit from global
+                branding:
+                  type: object
+                  properties:
+                    enabled:
+                      type: boolean
+                    logoUrl:
+                      type: string
+                    organizationName:
+                      type: string
+                    primaryColor:
+                      type: string
+              required:
+                - categoryId
+      responses:
+        '200':
+          description: Override set
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  categoryId:
+                    type: integer
+                  toolName:
+                    type: string
+                  isEnabled:
+                    type: boolean
+                    nullable: true
+                  branding:
+                    type: object
+                  effectiveEnabled:
+                    type: boolean
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
         '401':
           $ref: '#/components/responses/Unauthorized'
         '403':
