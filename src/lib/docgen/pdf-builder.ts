@@ -60,20 +60,36 @@ const FONTS = {
 
 // Unicode character substitutions (Helvetica doesn't support these)
 const UNICODE_SUBSTITUTIONS: Record<string, string> = {
-  '\u2713': 'Yes',  // ✓
-  '\u2714': 'Yes',  // ✔
-  '\u2717': 'No',   // ✗
-  '\u2718': 'No',   // ✘
-  '\u2715': 'No',   // ✕
-  '\u00D7': 'x',    // ×
-  '\u2022': '-',    // •
-  '\u2014': '-',    // —
-  '\u2013': '-',    // –
-  '\u201C': '"',    // "
-  '\u201D': '"',    // "
-  '\u2018': "'",    // '
-  '\u2019': "'",    // '
-  '\u2026': '...',  // …
+  // Checkmarks and crosses
+  '\u2713': 'Yes',  // ✓ check mark
+  '\u2714': 'Yes',  // ✔ heavy check mark
+  '\u2705': 'Yes',  // ✅ white heavy check mark (emoji)
+  '\u2611': 'Yes',  // ☑ ballot box with check
+  '\u2717': 'No',   // ✗ ballot x
+  '\u2718': 'No',   // ✘ heavy ballot x
+  '\u2715': 'No',   // ✕ multiplication x
+  '\u274C': 'No',   // ❌ cross mark (emoji)
+  '\u274E': 'No',   // ❎ negative squared cross mark
+  '\u2610': '[ ]',  // ☐ ballot box (empty)
+  '\u00D7': 'x',    // × multiplication sign
+  // Bullets and dashes
+  '\u2022': '-',    // • bullet
+  '\u2014': '-',    // — em dash
+  '\u2013': '-',    // – en dash
+  '\u2212': '-',    // − minus sign
+  // Quotes
+  '\u201C': '"',    // " left double quote
+  '\u201D': '"',    // " right double quote
+  '\u2018': "'",    // ' left single quote
+  '\u2019': "'",    // ' right single quote
+  '\u0027': "'",    // ' apostrophe (straight)
+  // Other
+  '\u2026': '...',  // … ellipsis
+  '\u00A0': ' ',    // non-breaking space
+  '\u2192': '->',   // → right arrow
+  '\u2190': '<-',   // ← left arrow
+  '\u2191': '^',    // ↑ up arrow
+  '\u2193': 'v',    // ↓ down arrow
 };
 
 // ============ PDF Builder Class ============
@@ -397,8 +413,10 @@ export class PdfBuilder {
 
     // Handle inline bold and italic
     const processedText = this.processInlineFormatting(text);
+
+    // Use left alignment to avoid stretching short lines
     doc.text(processedText, {
-      align: 'justify',
+      align: 'left',
       lineGap: 2,
     });
     doc.moveDown(0.5);
@@ -631,7 +649,8 @@ export class PdfBuilder {
       currentY += cellHeight;
     });
 
-    // Move doc position below the table
+    // Move doc position below the table and reset X position
+    doc.x = PAGE.margin.left;
     doc.y = currentY;
     doc.moveDown(1);
   }
@@ -715,6 +734,10 @@ export class PdfBuilder {
   private renderHeader(pageNumber: number): void {
     const { doc, branding, logo, primaryColor } = this;
 
+    // Save current position to restore after header rendering
+    const savedX = doc.x;
+    const savedY = doc.y;
+
     const headerY = 20;
     const headerContent = processTemplateContent(branding.header?.content || '', {
       page: pageNumber.toString(),
@@ -749,8 +772,13 @@ export class PdfBuilder {
         .text(displayText, textX, headerY + 15, {
           width: PAGE.width - textX - PAGE.margin.right,
           align: logo ? 'left' : 'center',
+          lineBreak: false,
         });
     }
+
+    // Restore position to prevent affecting content flow
+    doc.x = savedX;
+    doc.y = savedY;
   }
 
   /**
@@ -758,6 +786,10 @@ export class PdfBuilder {
    */
   private renderFooter(pageNumber: number, totalPages: number): void {
     const { doc, branding, primaryColor } = this;
+
+    // Save current position to restore after footer rendering
+    const savedX = doc.x;
+    const savedY = doc.y;
 
     const footerY = PAGE.height - PAGE.margin.bottom + 10;
     const footerContent = processTemplateContent(branding.footer?.content || '', {
@@ -774,7 +806,7 @@ export class PdfBuilder {
       .lineWidth(1)
       .stroke();
 
-    // Draw footer content
+    // Draw footer content (use lineBreak: false to prevent page overflow)
     if (footerContent) {
       doc
         .font(FONTS.regular)
@@ -783,6 +815,7 @@ export class PdfBuilder {
         .text(footerContent, PAGE.margin.left, footerY + 5, {
           width: PAGE.width - PAGE.margin.left - PAGE.margin.right,
           align: 'center',
+          lineBreak: false,
         });
     }
 
@@ -796,8 +829,13 @@ export class PdfBuilder {
         .text(pageText, PAGE.margin.left, footerY + 20, {
           width: PAGE.width - PAGE.margin.left - PAGE.margin.right,
           align: 'right',
+          lineBreak: false,
         });
     }
+
+    // Restore position to prevent affecting content flow
+    doc.x = savedX;
+    doc.y = savedY;
   }
 
   /**

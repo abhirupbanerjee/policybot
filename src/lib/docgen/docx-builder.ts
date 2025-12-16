@@ -58,7 +58,7 @@ export interface DocxResult {
 
 const STYLES = {
   title: {
-    size: 48, // 24pt in half-points
+    size: 40, // 20pt in half-points (reduced from 24pt to prevent clipping)
     bold: true,
   },
   heading1: {
@@ -373,7 +373,7 @@ export class DocxBuilder {
           size: 16,
         },
       },
-      spacing: { after: 400 },
+      spacing: { before: 200, after: 400 }, // Added before spacing to prevent title clipping
     });
   }
 
