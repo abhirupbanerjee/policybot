@@ -58,6 +58,24 @@ const FONTS = {
   italic: 'Helvetica-Oblique',
 };
 
+// Unicode character substitutions (Helvetica doesn't support these)
+const UNICODE_SUBSTITUTIONS: Record<string, string> = {
+  '\u2713': 'Yes',  // ✓
+  '\u2714': 'Yes',  // ✔
+  '\u2717': 'No',   // ✗
+  '\u2718': 'No',   // ✘
+  '\u2715': 'No',   // ✕
+  '\u00D7': 'x',    // ×
+  '\u2022': '-',    // •
+  '\u2014': '-',    // —
+  '\u2013': '-',    // –
+  '\u201C': '"',    // "
+  '\u201D': '"',    // "
+  '\u2018': "'",    // '
+  '\u2019': "'",    // '
+  '\u2026': '...',  // …
+};
+
 // ============ PDF Builder Class ============
 
 export class PdfBuilder {
@@ -134,12 +152,13 @@ export class PdfBuilder {
    */
   private renderTitle(title: string): void {
     const { doc, primaryColor } = this;
+    const processedTitle = this.substituteUnicode(title);
 
     doc
       .font(FONTS.bold)
       .fontSize(24)
       .fillColor([primaryColor.r, primaryColor.g, primaryColor.b])
-      .text(title, {
+      .text(processedTitle, {
         align: 'center',
       });
 
@@ -163,10 +182,29 @@ export class PdfBuilder {
     const lines = content.split('\n');
     let inCodeBlock = false;
     let codeBlockLines: string[] = [];
+    let inTable = false;
+    let tableRows: string[][] = [];
+    let inAsciiDiagram = false;
+    let asciiDiagramLines: string[] = [];
 
-    for (const line of lines) {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+
       // Check for code block markers
       if (line.startsWith('```')) {
+        // Flush any pending table
+        if (inTable && tableRows.length > 0) {
+          this.renderTable(tableRows);
+          tableRows = [];
+          inTable = false;
+        }
+        // Flush any pending ASCII diagram
+        if (inAsciiDiagram && asciiDiagramLines.length > 0) {
+          this.renderAsciiDiagram(asciiDiagramLines);
+          asciiDiagramLines = [];
+          inAsciiDiagram = false;
+        }
+
         if (inCodeBlock) {
           // End code block
           this.renderCodeBlock(codeBlockLines.join('\n'));
@@ -182,6 +220,61 @@ export class PdfBuilder {
       if (inCodeBlock) {
         codeBlockLines.push(line);
         continue;
+      }
+
+      // ASCII diagram detection (4-space indented with box/arrow chars)
+      if (this.isAsciiDiagramLine(line)) {
+        // Flush any pending table
+        if (inTable && tableRows.length > 0) {
+          this.renderTable(tableRows);
+          tableRows = [];
+          inTable = false;
+        }
+
+        if (!inAsciiDiagram) {
+          inAsciiDiagram = true;
+          asciiDiagramLines = [line];
+        } else {
+          asciiDiagramLines.push(line);
+        }
+        continue;
+      }
+
+      // If we were in ASCII diagram and hit a non-diagram line, render it
+      if (inAsciiDiagram && asciiDiagramLines.length > 0) {
+        this.renderAsciiDiagram(asciiDiagramLines);
+        asciiDiagramLines = [];
+        inAsciiDiagram = false;
+      }
+
+      // Table detection
+      if (this.isTableRow(line)) {
+        // Check if next line is a separator (markdown table header separator)
+        const nextLine = i + 1 < lines.length ? lines[i + 1] : '';
+
+        if (!inTable) {
+          // Starting a new table
+          inTable = true;
+          tableRows = [this.parseTableRow(line)];
+
+          // Skip separator line if present
+          if (this.isTableSeparator(nextLine)) {
+            i++; // Skip the separator
+          }
+        } else {
+          // Continue existing table
+          if (!this.isTableSeparator(line)) {
+            tableRows.push(this.parseTableRow(line));
+          }
+        }
+        continue;
+      }
+
+      // If we were in a table and hit a non-table line, render the table
+      if (inTable && tableRows.length > 0) {
+        this.renderTable(tableRows);
+        tableRows = [];
+        inTable = false;
       }
 
       // Headings
@@ -206,7 +299,7 @@ export class PdfBuilder {
       // Bold text line
       else if (line.startsWith('**') && line.endsWith('**')) {
         doc.font(FONTS.bold).fontSize(12).fillColor('black');
-        doc.text(line.slice(2, -2));
+        doc.text(this.substituteUnicode(line.slice(2, -2)));
         doc.font(FONTS.regular);
         doc.moveDown(0.5);
       }
@@ -222,6 +315,16 @@ export class PdfBuilder {
       // Check if we need a new page
       this.checkPageBreak();
     }
+
+    // Flush any remaining ASCII diagram
+    if (inAsciiDiagram && asciiDiagramLines.length > 0) {
+      this.renderAsciiDiagram(asciiDiagramLines);
+    }
+
+    // Flush any remaining table
+    if (inTable && tableRows.length > 0) {
+      this.renderTable(tableRows);
+    }
   }
 
   /**
@@ -231,13 +334,14 @@ export class PdfBuilder {
     const { doc, primaryColor } = this;
     const sizes = [20, 16, 14];
     const size = sizes[level - 1] || 12;
+    const processedText = this.substituteUnicode(text);
 
     doc.moveDown(0.5);
     doc
       .font(FONTS.bold)
       .fontSize(size)
       .fillColor([primaryColor.r, primaryColor.g, primaryColor.b])
-      .text(text);
+      .text(processedText);
     doc.fillColor('black');
     doc.moveDown(0.5);
   }
@@ -248,6 +352,7 @@ export class PdfBuilder {
   private renderBullet(text: string): void {
     const { doc } = this;
     const bulletIndent = 20;
+    const processedText = this.processInlineFormatting(text);
 
     doc.font(FONTS.regular).fontSize(12).fillColor('black');
 
@@ -256,7 +361,7 @@ export class PdfBuilder {
     doc.circle(PAGE.margin.left + 5, y, 2).fill('black');
 
     // Draw text
-    doc.text(text, PAGE.margin.left + bulletIndent, doc.y, {
+    doc.text(processedText, PAGE.margin.left + bulletIndent, doc.y, {
       width: PAGE.width - PAGE.margin.left - PAGE.margin.right - bulletIndent,
     });
     doc.moveDown(0.3);
@@ -268,6 +373,7 @@ export class PdfBuilder {
   private renderNumberedItem(number: number, text: string): void {
     const { doc } = this;
     const numberIndent = 25;
+    const processedText = this.processInlineFormatting(text);
 
     doc.font(FONTS.regular).fontSize(12).fillColor('black');
 
@@ -275,7 +381,7 @@ export class PdfBuilder {
     doc.text(`${number}.`, PAGE.margin.left, doc.y, { continued: true });
 
     // Draw text
-    doc.text(` ${text}`, {
+    doc.text(` ${processedText}`, {
       width: PAGE.width - PAGE.margin.left - PAGE.margin.right - numberIndent,
     });
     doc.moveDown(0.3);
@@ -303,11 +409,231 @@ export class PdfBuilder {
    */
   private processInlineFormatting(text: string): string {
     // Remove markdown formatting for now (could be enhanced with RichText)
-    return text
+    const processed = text
       .replace(/\*\*([^*]+)\*\*/g, '$1') // Bold
       .replace(/\*([^*]+)\*/g, '$1') // Italic
       .replace(/`([^`]+)`/g, '$1') // Inline code
       .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1'); // Links (show text only)
+
+    // Substitute Unicode characters that Helvetica doesn't support
+    return this.substituteUnicode(processed);
+  }
+
+  /**
+   * Substitute Unicode characters not supported by Helvetica
+   */
+  private substituteUnicode(text: string): string {
+    let result = text;
+    for (const [unicode, replacement] of Object.entries(UNICODE_SUBSTITUTIONS)) {
+      result = result.split(unicode).join(replacement);
+    }
+    return result;
+  }
+
+  /**
+   * Check if a line is a table separator (contains only |, -, :, and spaces)
+   */
+  private isTableSeparator(line: string): boolean {
+    return /^\|?[\s\-:|]+\|?$/.test(line.trim()) && line.includes('-');
+  }
+
+  /**
+   * Check if a line looks like a table row
+   */
+  private isTableRow(line: string): boolean {
+    const trimmed = line.trim();
+    return trimmed.startsWith('|') && trimmed.endsWith('|') && trimmed.split('|').length > 2;
+  }
+
+  /**
+   * Check if a line looks like an ASCII diagram line
+   * Detects 4-space indented lines with box/arrow characters
+   */
+  private isAsciiDiagramLine(line: string): boolean {
+    // Must start with 4+ spaces (diagram indent convention per skills)
+    if (!line.startsWith('    ')) return false;
+
+    const content = line.trim();
+    if (!content) return true; // Empty indented line is part of diagram
+
+    // Check for box borders (+---+, |...|)
+    if (/^\+[-+]+\+$/.test(content)) return true;
+    if (/^\|.*\|$/.test(content)) return true;
+    if (/^[|+]/.test(content) && /[|+]$/.test(content)) return true;
+
+    // Check for arrows and connectors
+    if (/^[|v^<>]+$/.test(content)) return true;
+    if (/^[|+\s]+$/.test(content)) return true;
+    if (/^[-+]+$/.test(content)) return true;
+
+    // Check for decision diamonds
+    if (/^[/\\].*[/\\]$/.test(content)) return true;
+    if (/^[/\\]/.test(content) || /[/\\]$/.test(content)) return true;
+
+    // Check for Gantt bars |====|
+    if (/\|[=]+\|/.test(content)) return true;
+
+    // Check for wireframe elements with box chars
+    if (/[+|]/.test(content) && (/\[.*\]/.test(content) || /\(.*\)/.test(content))) return true;
+
+    // Check for labeled arrows (Yes/No branch labels)
+    if (/^(Yes|No)\s+[|v^]/.test(content) || /[|v^]\s+(Yes|No)$/.test(content)) return true;
+    if (/^\s*(Yes|No)\s*$/.test(content)) return true;
+
+    // Lines with multiple box chars likely part of diagram
+    const boxChars = (content.match(/[+|]/g) || []).length;
+    if (boxChars >= 2) return true;
+
+    return false;
+  }
+
+  /**
+   * Render an ASCII diagram block (monospace, preserved whitespace)
+   */
+  private renderAsciiDiagram(lines: string[]): void {
+    const { doc } = this;
+
+    doc.moveDown(0.5);
+
+    // Calculate width needed
+    const maxLineLength = Math.max(...lines.map(l => l.length));
+    const codeWidth = PAGE.width - PAGE.margin.left - PAGE.margin.right;
+
+    // Use smaller font for wider diagrams
+    let fontSize = 9;
+    if (maxLineLength > 55) fontSize = 8;
+    if (maxLineLength > 65) fontSize = 7;
+
+    const lineHeight = fontSize * 1.3;
+    const textHeight = lines.length * lineHeight;
+
+    // Check if diagram fits on page
+    if (doc.y + textHeight + 20 > PAGE.height - PAGE.margin.bottom - (this.branding.footer?.enabled ? PAGE.footerHeight : 0)) {
+      doc.addPage();
+    }
+
+    const drawY = doc.y;
+
+    // Draw light background
+    doc
+      .rect(PAGE.margin.left, drawY, codeWidth, textHeight + 16)
+      .fillColor('#fafafa')
+      .fill();
+
+    // Draw border
+    doc
+      .rect(PAGE.margin.left, drawY, codeWidth, textHeight + 16)
+      .strokeColor('#e0e0e0')
+      .lineWidth(0.5)
+      .stroke();
+
+    // Render each line separately to preserve exact whitespace
+    doc.font('Courier').fontSize(fontSize).fillColor('#333333');
+
+    let lineY = drawY + 8;
+    for (const line of lines) {
+      const processedLine = this.substituteUnicode(line);
+      doc.text(processedLine, PAGE.margin.left + 8, lineY, {
+        lineBreak: false,
+      });
+      lineY += lineHeight;
+    }
+
+    doc.y = drawY + textHeight + 20;
+    doc.moveDown(0.5);
+    doc.font(FONTS.regular);
+  }
+
+  /**
+   * Parse a table row into cells
+   */
+  private parseTableRow(line: string): string[] {
+    return line
+      .split('|')
+      .slice(1, -1) // Remove empty first and last elements
+      .map(cell => this.substituteUnicode(cell.trim()));
+  }
+
+  /**
+   * Render a markdown table
+   */
+  private renderTable(rows: string[][]): void {
+    if (rows.length === 0) return;
+
+    const { doc, primaryColor } = this;
+    const contentWidth = PAGE.width - PAGE.margin.left - PAGE.margin.right;
+    const numCols = rows[0].length;
+    const colWidth = contentWidth / numCols;
+    const cellPadding = 6;
+    const rowHeight = 24;
+
+    doc.moveDown(0.5);
+
+    // Check if we need a new page for the table
+    const tableHeight = rows.length * rowHeight + 10;
+    if (doc.y + tableHeight > PAGE.height - PAGE.margin.bottom - (this.branding.footer?.enabled ? PAGE.footerHeight : 0)) {
+      doc.addPage();
+    }
+
+    const startX = PAGE.margin.left;
+    let currentY = doc.y;
+
+    rows.forEach((row, rowIndex) => {
+      const isHeader = rowIndex === 0;
+      const cellHeight = rowHeight;
+
+      // Draw row background
+      if (isHeader) {
+        doc
+          .rect(startX, currentY, contentWidth, cellHeight)
+          .fillColor([primaryColor.r, primaryColor.g, primaryColor.b])
+          .fill();
+      } else if (rowIndex % 2 === 0) {
+        doc
+          .rect(startX, currentY, contentWidth, cellHeight)
+          .fillColor('#f5f5f5')
+          .fill();
+      }
+
+      // Draw cell borders
+      doc
+        .rect(startX, currentY, contentWidth, cellHeight)
+        .strokeColor('#cccccc')
+        .lineWidth(0.5)
+        .stroke();
+
+      // Draw vertical cell separators
+      for (let i = 1; i < numCols; i++) {
+        doc
+          .moveTo(startX + i * colWidth, currentY)
+          .lineTo(startX + i * colWidth, currentY + cellHeight)
+          .stroke();
+      }
+
+      // Draw cell text
+      row.forEach((cellText, colIndex) => {
+        const cellX = startX + colIndex * colWidth + cellPadding;
+        const textY = currentY + cellPadding;
+        const maxWidth = colWidth - cellPadding * 2;
+
+        doc
+          .font(isHeader ? FONTS.bold : FONTS.regular)
+          .fontSize(10)
+          .fillColor(isHeader ? 'white' : 'black')
+          .text(cellText, cellX, textY, {
+            width: maxWidth,
+            height: cellHeight - cellPadding,
+            align: 'left',
+            lineBreak: false,
+          });
+      });
+
+      currentY += cellHeight;
+    });
+
+    // Move doc position below the table
+    doc.y = currentY;
+    doc.moveDown(1);
   }
 
   /**
@@ -315,6 +641,7 @@ export class PdfBuilder {
    */
   private renderCodeBlock(code: string): void {
     const { doc } = this;
+    const processedCode = this.substituteUnicode(code);
 
     doc.moveDown(0.5);
 
@@ -326,7 +653,7 @@ export class PdfBuilder {
     doc.font('Courier').fontSize(10);
 
     // Measure text height
-    const textHeight = doc.heightOfString(code, {
+    const textHeight = doc.heightOfString(processedCode, {
       width: codeWidth - 20,
     });
 
@@ -341,7 +668,7 @@ export class PdfBuilder {
       .font('Courier')
       .fontSize(10)
       .fillColor('#333333')
-      .text(code, PAGE.margin.left + 10, startY + 10, {
+      .text(processedCode, PAGE.margin.left + 10, startY + 10, {
         width: codeWidth - 20,
       });
 

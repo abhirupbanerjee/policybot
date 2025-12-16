@@ -378,6 +378,109 @@ export class DocxBuilder {
   }
 
   /**
+   * Check if a line is a table separator
+   */
+  private isTableSeparator(line: string): boolean {
+    return /^\|?[\s\-:|]+\|?$/.test(line.trim()) && line.includes('-');
+  }
+
+  /**
+   * Check if a line looks like a table row
+   */
+  private isTableRow(line: string): boolean {
+    const trimmed = line.trim();
+    return trimmed.startsWith('|') && trimmed.endsWith('|') && trimmed.split('|').length > 2;
+  }
+
+  /**
+   * Parse a table row into cells
+   */
+  private parseTableRow(line: string): string[] {
+    return line
+      .split('|')
+      .slice(1, -1) // Remove empty first and last elements
+      .map(cell => cell.trim());
+  }
+
+  /**
+   * Check if a line looks like an ASCII diagram line
+   * Detects 4-space indented lines with box/arrow characters
+   */
+  private isAsciiDiagramLine(line: string): boolean {
+    // Must start with 4+ spaces (diagram indent convention per skills)
+    if (!line.startsWith('    ')) return false;
+
+    const content = line.trim();
+    if (!content) return true; // Empty indented line is part of diagram
+
+    // Check for box borders (+---+, |...|)
+    if (/^\+[-+]+\+$/.test(content)) return true;
+    if (/^\|.*\|$/.test(content)) return true;
+    if (/^[|+]/.test(content) && /[|+]$/.test(content)) return true;
+
+    // Check for arrows and connectors
+    if (/^[|v^<>]+$/.test(content)) return true;
+    if (/^[|+\s]+$/.test(content)) return true;
+    if (/^[-+]+$/.test(content)) return true;
+
+    // Check for decision diamonds
+    if (/^[/\\].*[/\\]$/.test(content)) return true;
+    if (/^[/\\]/.test(content) || /[/\\]$/.test(content)) return true;
+
+    // Check for Gantt bars |====|
+    if (/\|[=]+\|/.test(content)) return true;
+
+    // Check for wireframe elements with box chars
+    if (/[+|]/.test(content) && (/\[.*\]/.test(content) || /\(.*\)/.test(content))) return true;
+
+    // Check for labeled arrows (Yes/No branch labels)
+    if (/^(Yes|No)\s+[|v^]/.test(content) || /[|v^]\s+(Yes|No)$/.test(content)) return true;
+    if (/^\s*(Yes|No)\s*$/.test(content)) return true;
+
+    // Lines with multiple box chars likely part of diagram
+    const boxChars = (content.match(/[+|]/g) || []).length;
+    if (boxChars >= 2) return true;
+
+    return false;
+  }
+
+  /**
+   * Create an ASCII diagram block (monospace, preserved whitespace)
+   */
+  private createAsciiDiagram(lines: string[]): Table {
+    return new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      rows: [
+        new TableRow({
+          children: [
+            new TableCell({
+              children: lines.map(
+                (line) =>
+                  new Paragraph({
+                    children: [
+                      new TextRun({
+                        text: line || ' ',
+                        font: 'Courier New',
+                        size: 18, // 9pt - slightly smaller for diagrams
+                      }),
+                    ],
+                  })
+              ),
+              shading: { fill: 'fafafa' },
+              margins: {
+                top: 100,
+                bottom: 100,
+                left: 100,
+                right: 100,
+              },
+            }),
+          ],
+        }),
+      ],
+    });
+  }
+
+  /**
    * Parse content into sections
    */
   private parseContent(content: string): ContentSection[] {
@@ -386,10 +489,29 @@ export class DocxBuilder {
     let currentSection: ContentSection = { type: 'paragraph', content: [] };
     let inCodeBlock = false;
     let codeBlockLines: string[] = [];
+    let inTable = false;
+    let tableRows: string[][] = [];
+    let inAsciiDiagram = false;
+    let asciiDiagramLines: string[] = [];
 
-    for (const line of lines) {
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+
       // Code block handling
       if (line.startsWith('```')) {
+        // Flush any pending table
+        if (inTable && tableRows.length > 0) {
+          sections.push({ type: 'table', content: tableRows });
+          tableRows = [];
+          inTable = false;
+        }
+        // Flush any pending ASCII diagram
+        if (inAsciiDiagram && asciiDiagramLines.length > 0) {
+          sections.push({ type: 'diagram', content: asciiDiagramLines });
+          asciiDiagramLines = [];
+          inAsciiDiagram = false;
+        }
+
         if (inCodeBlock) {
           sections.push({ type: 'code', content: codeBlockLines.join('\n') });
           codeBlockLines = [];
@@ -407,6 +529,68 @@ export class DocxBuilder {
       if (inCodeBlock) {
         codeBlockLines.push(line);
         continue;
+      }
+
+      // ASCII diagram detection (4-space indented with box/arrow chars)
+      if (this.isAsciiDiagramLine(line)) {
+        // Flush any pending table
+        if (inTable && tableRows.length > 0) {
+          sections.push({ type: 'table', content: tableRows });
+          tableRows = [];
+          inTable = false;
+        }
+        // Flush current section
+        if (currentSection.content.length > 0) {
+          sections.push(currentSection);
+          currentSection = { type: 'paragraph', content: [] };
+        }
+
+        if (!inAsciiDiagram) {
+          inAsciiDiagram = true;
+          asciiDiagramLines = [line];
+        } else {
+          asciiDiagramLines.push(line);
+        }
+        continue;
+      }
+
+      // If we were in ASCII diagram and hit a non-diagram line, flush it
+      if (inAsciiDiagram && asciiDiagramLines.length > 0) {
+        sections.push({ type: 'diagram', content: asciiDiagramLines });
+        asciiDiagramLines = [];
+        inAsciiDiagram = false;
+      }
+
+      // Table detection
+      if (this.isTableRow(line)) {
+        // Flush current section if not already in table
+        if (!inTable) {
+          if (currentSection.content.length > 0) {
+            sections.push(currentSection);
+            currentSection = { type: 'paragraph', content: [] };
+          }
+          inTable = true;
+          tableRows = [this.parseTableRow(line)];
+
+          // Skip separator line if present
+          const nextLine = i + 1 < lines.length ? lines[i + 1] : '';
+          if (this.isTableSeparator(nextLine)) {
+            i++; // Skip the separator
+          }
+        } else {
+          // Continue existing table
+          if (!this.isTableSeparator(line)) {
+            tableRows.push(this.parseTableRow(line));
+          }
+        }
+        continue;
+      }
+
+      // If we were in a table and hit a non-table line, flush the table
+      if (inTable && tableRows.length > 0) {
+        sections.push({ type: 'table', content: tableRows });
+        tableRows = [];
+        inTable = false;
       }
 
       // Headings
@@ -469,6 +653,16 @@ export class DocxBuilder {
       }
     }
 
+    // Flush any remaining ASCII diagram
+    if (inAsciiDiagram && asciiDiagramLines.length > 0) {
+      sections.push({ type: 'diagram', content: asciiDiagramLines });
+    }
+
+    // Flush any remaining table
+    if (inTable && tableRows.length > 0) {
+      sections.push({ type: 'table', content: tableRows });
+    }
+
     // Push remaining content
     if (currentSection.content.length > 0) {
       sections.push(currentSection);
@@ -527,6 +721,12 @@ export class DocxBuilder {
       case 'code':
         return [this.createCodeBlock(section.content as string)];
 
+      case 'table':
+        return [this.createDataTable(section.content as string[][])];
+
+      case 'diagram':
+        return [this.createAsciiDiagram(section.content as string[])];
+
       case 'paragraph':
       default:
         return (section.content as string[]).map(
@@ -537,6 +737,52 @@ export class DocxBuilder {
             })
         );
     }
+  }
+
+  /**
+   * Create a data table from parsed rows
+   */
+  private createDataTable(rows: string[][]): Table {
+    if (rows.length === 0) {
+      return new Table({ rows: [] });
+    }
+
+    return new Table({
+      width: { size: 100, type: WidthType.PERCENTAGE },
+      rows: rows.map((row, rowIndex) => {
+        const isHeader = rowIndex === 0;
+        return new TableRow({
+          children: row.map(
+            (cellText) =>
+              new TableCell({
+                children: [
+                  new Paragraph({
+                    children: isHeader
+                      ? [
+                          new TextRun({
+                            text: cellText,
+                            bold: true,
+                            color: 'FFFFFF', // White text on colored header
+                            font: this.fontFamily,
+                            size: STYLES.body.size,
+                          }),
+                        ]
+                      : this.parseInlineFormatting(cellText),
+                    alignment: AlignmentType.LEFT,
+                  }),
+                ],
+                shading: isHeader ? { fill: this.primaryColorHex } : undefined,
+                margins: {
+                  top: 50,
+                  bottom: 50,
+                  left: 100,
+                  right: 100,
+                },
+              })
+          ),
+        });
+      }),
+    });
   }
 
   /**
@@ -652,8 +898,8 @@ export class DocxBuilder {
 // ============ Types ============
 
 interface ContentSection {
-  type: 'heading1' | 'heading2' | 'heading3' | 'paragraph' | 'bullet' | 'numbered' | 'code';
-  content: string | string[];
+  type: 'heading1' | 'heading2' | 'heading3' | 'paragraph' | 'bullet' | 'numbered' | 'code' | 'table' | 'diagram';
+  content: string | string[] | string[][];
 }
 
 // ============ Convenience Function ============
