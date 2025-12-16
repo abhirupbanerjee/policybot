@@ -102,6 +102,8 @@ function getToolIcon(toolName: string) {
   switch (toolName) {
     case 'web_search':
       return Globe;
+    case 'doc_gen':
+      return FileText;
     default:
       return Settings;
   }
@@ -255,6 +257,334 @@ function WebSearchConfig({
         <p className="text-xs text-gray-500 mt-1">
           How long to cache search results (3600 = 1 hour)
         </p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * DocGenConfig component - Configuration form for doc_gen tool
+ */
+function DocGenConfig({
+  config,
+  onChange,
+  disabled,
+}: {
+  config: Record<string, unknown>;
+  onChange: (config: Record<string, unknown>) => void;
+  disabled: boolean;
+}) {
+  const handleChange = (key: string, value: unknown) => {
+    onChange({ ...config, [key]: value });
+  };
+
+  const handleBrandingChange = (key: string, value: unknown) => {
+    const branding = (config.branding as Record<string, unknown>) || {};
+    onChange({
+      ...config,
+      branding: { ...branding, [key]: value },
+    });
+  };
+
+  const handleHeaderChange = (key: string, value: unknown) => {
+    const branding = (config.branding as Record<string, unknown>) || {};
+    const header = (branding.header as Record<string, unknown>) || {};
+    onChange({
+      ...config,
+      branding: {
+        ...branding,
+        header: { ...header, [key]: value },
+      },
+    });
+  };
+
+  const handleFooterChange = (key: string, value: unknown) => {
+    const branding = (config.branding as Record<string, unknown>) || {};
+    const footer = (branding.footer as Record<string, unknown>) || {};
+    onChange({
+      ...config,
+      branding: {
+        ...branding,
+        footer: { ...footer, [key]: value },
+      },
+    });
+  };
+
+  const handleFormatToggle = (format: string, checked: boolean) => {
+    const formats = ((config.enabledFormats as string[]) || ['pdf', 'docx']).slice();
+    if (checked && !formats.includes(format)) {
+      formats.push(format);
+    } else if (!checked) {
+      const idx = formats.indexOf(format);
+      if (idx !== -1) formats.splice(idx, 1);
+    }
+    onChange({ ...config, enabledFormats: formats });
+  };
+
+  const branding = (config.branding as Record<string, unknown>) || {};
+  const header = (branding.header as Record<string, unknown>) || {};
+  const footer = (branding.footer as Record<string, unknown>) || {};
+
+  return (
+    <div className="space-y-4">
+      {/* Default Format */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Default Format
+        </label>
+        <select
+          value={(config.defaultFormat as string) || 'pdf'}
+          onChange={(e) => handleChange('defaultFormat', e.target.value)}
+          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          disabled={disabled}
+        >
+          <option value="pdf">PDF</option>
+          <option value="docx">Word Document (DOCX)</option>
+          <option value="md">Markdown (MD)</option>
+        </select>
+      </div>
+
+      {/* Enabled Formats */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Enabled Formats
+        </label>
+        <div className="flex gap-4">
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={((config.enabledFormats as string[]) || ['pdf', 'docx']).includes('pdf')}
+              onChange={(e) => handleFormatToggle('pdf', e.target.checked)}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              disabled={disabled}
+            />
+            <span className="text-sm">PDF</span>
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={((config.enabledFormats as string[]) || ['pdf', 'docx']).includes('docx')}
+              onChange={(e) => handleFormatToggle('docx', e.target.checked)}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              disabled={disabled}
+            />
+            <span className="text-sm">DOCX</span>
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={((config.enabledFormats as string[]) || ['pdf', 'docx', 'md']).includes('md')}
+              onChange={(e) => handleFormatToggle('md', e.target.checked)}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              disabled={disabled}
+            />
+            <span className="text-sm">Markdown</span>
+          </label>
+        </div>
+      </div>
+
+      {/* Expiration Days */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Document Expiration (days)
+        </label>
+        <input
+          type="number"
+          min={0}
+          max={365}
+          value={(config.expirationDays as number) || 30}
+          onChange={(e) => handleChange('expirationDays', parseInt(e.target.value) || 30)}
+          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          disabled={disabled}
+        />
+        <p className="text-xs text-gray-500 mt-1">
+          Days until documents expire (0 = never expire)
+        </p>
+      </div>
+
+      {/* Max Document Size */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Max Document Size (MB)
+        </label>
+        <input
+          type="number"
+          min={1}
+          max={100}
+          value={(config.maxDocumentSizeMB as number) || 50}
+          onChange={(e) => handleChange('maxDocumentSizeMB', parseInt(e.target.value) || 50)}
+          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          disabled={disabled}
+        />
+      </div>
+
+      {/* Branding Section */}
+      <div className="border-t pt-4 mt-4">
+        <h4 className="font-medium text-gray-900 mb-3 flex items-center gap-2">
+          <Palette size={16} />
+          Default Branding
+        </h4>
+
+        {/* Enable Branding */}
+        <div className="flex items-center gap-3 mb-4">
+          <input
+            type="checkbox"
+            id="branding-enabled-admin"
+            checked={!!branding.enabled}
+            onChange={(e) => handleBrandingChange('enabled', e.target.checked)}
+            className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            disabled={disabled}
+          />
+          <label htmlFor="branding-enabled-admin" className="text-sm text-gray-700">
+            Enable branding on documents
+          </label>
+        </div>
+
+        {!!branding.enabled && (
+          <div className="space-y-3 pl-6 border-l-2 border-blue-200">
+            {/* Organization Name */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Organization Name
+              </label>
+              <input
+                type="text"
+                value={(branding.organizationName as string) || ''}
+                onChange={(e) => handleBrandingChange('organizationName', e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                placeholder="Your Organization"
+                disabled={disabled}
+              />
+            </div>
+
+            {/* Logo URL */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Logo URL
+              </label>
+              <input
+                type="text"
+                value={(branding.logoUrl as string) || ''}
+                onChange={(e) => handleBrandingChange('logoUrl', e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                placeholder="https://example.com/logo.png"
+                disabled={disabled}
+              />
+            </div>
+
+            {/* Primary Color */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Primary Color
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="color"
+                  value={(branding.primaryColor as string) || '#003366'}
+                  onChange={(e) => handleBrandingChange('primaryColor', e.target.value)}
+                  className="h-10 w-16 border rounded cursor-pointer"
+                  disabled={disabled}
+                />
+                <input
+                  type="text"
+                  value={(branding.primaryColor as string) || '#003366'}
+                  onChange={(e) => handleBrandingChange('primaryColor', e.target.value)}
+                  className="flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="#003366"
+                  disabled={disabled}
+                />
+              </div>
+            </div>
+
+            {/* Font Family */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Font Family
+              </label>
+              <select
+                value={(branding.fontFamily as string) || 'Calibri'}
+                onChange={(e) => handleBrandingChange('fontFamily', e.target.value)}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                disabled={disabled}
+              >
+                <option value="Calibri">Calibri</option>
+                <option value="Arial">Arial</option>
+                <option value="Times New Roman">Times New Roman</option>
+                <option value="Helvetica">Helvetica</option>
+                <option value="Georgia">Georgia</option>
+              </select>
+            </div>
+
+            {/* Header Settings */}
+            <div className="border rounded-lg p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <input
+                  type="checkbox"
+                  id="header-enabled-admin"
+                  checked={!!header.enabled}
+                  onChange={(e) => handleHeaderChange('enabled', e.target.checked)}
+                  className="rounded border-gray-300 text-blue-600"
+                  disabled={disabled}
+                />
+                <label htmlFor="header-enabled-admin" className="text-sm font-medium text-gray-700">
+                  Custom Header
+                </label>
+              </div>
+              {!!header.enabled && (
+                <input
+                  type="text"
+                  value={(header.content as string) || ''}
+                  onChange={(e) => handleHeaderChange('content', e.target.value)}
+                  className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  placeholder="Header text"
+                  disabled={disabled}
+                />
+              )}
+            </div>
+
+            {/* Footer Settings */}
+            <div className="border rounded-lg p-3">
+              <div className="flex items-center gap-2 mb-2">
+                <input
+                  type="checkbox"
+                  id="footer-enabled-admin"
+                  checked={!!footer.enabled}
+                  onChange={(e) => handleFooterChange('enabled', e.target.checked)}
+                  className="rounded border-gray-300 text-blue-600"
+                  disabled={disabled}
+                />
+                <label htmlFor="footer-enabled-admin" className="text-sm font-medium text-gray-700">
+                  Custom Footer
+                </label>
+              </div>
+              {!!footer.enabled && (
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    value={(footer.content as string) || ''}
+                    onChange={(e) => handleFooterChange('content', e.target.value)}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    placeholder="Footer text"
+                    disabled={disabled}
+                  />
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="footer-page-admin"
+                      checked={footer.includePageNumber !== false}
+                      onChange={(e) => handleFooterChange('includePageNumber', e.target.checked)}
+                      className="rounded border-gray-300 text-blue-600"
+                      disabled={disabled}
+                    />
+                    <label htmlFor="footer-page-admin" className="text-sm text-gray-600">
+                      Include page numbers
+                    </label>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -593,6 +923,14 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false }: Tool
       case 'web_search':
         return (
           <WebSearchConfig
+            config={editedConfig}
+            onChange={setEditedConfig}
+            disabled={saving}
+          />
+        );
+      case 'doc_gen':
+        return (
+          <DocGenConfig
             config={editedConfig}
             onChange={setEditedConfig}
             disabled={saving}

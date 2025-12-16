@@ -214,6 +214,67 @@ function runMigrations(database: Database.Database): void {
       CREATE INDEX IF NOT EXISTS idx_category_tool_configs_tool ON category_tool_configs(tool_name);
     `);
   }
+
+  // Check and add document generation columns to thread_outputs
+  const threadOutputsColumns = database.pragma('table_info(thread_outputs)') as { name: string }[];
+  const threadOutputsColumnNames = threadOutputsColumns.map((c) => c.name);
+
+  if (!threadOutputsColumnNames.includes('generation_config')) {
+    database.exec('ALTER TABLE thread_outputs ADD COLUMN generation_config TEXT');
+  }
+
+  if (!threadOutputsColumnNames.includes('expires_at')) {
+    database.exec('ALTER TABLE thread_outputs ADD COLUMN expires_at DATETIME');
+  }
+
+  if (!threadOutputsColumnNames.includes('download_count')) {
+    database.exec('ALTER TABLE thread_outputs ADD COLUMN download_count INTEGER DEFAULT 0');
+  }
+
+  // Migration: Update file_type CHECK constraint to include 'md' format
+  // SQLite doesn't allow modifying CHECK constraints, so we recreate the table
+  try {
+    // Test if 'md' is allowed by the current constraint
+    database.exec(`
+      INSERT INTO thread_outputs (thread_id, filename, filepath, file_type, file_size)
+      VALUES ('__migration_test__', '__test__', '__test__', 'md', 0)
+    `);
+    // If successful, delete the test row
+    database.exec(`DELETE FROM thread_outputs WHERE thread_id = '__migration_test__'`);
+  } catch {
+    // 'md' is not allowed, need to recreate the table with updated constraint
+    database.exec(`
+      -- Create new table with updated constraint
+      CREATE TABLE thread_outputs_new (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        thread_id TEXT NOT NULL,
+        message_id TEXT,
+        filename TEXT NOT NULL,
+        filepath TEXT NOT NULL,
+        file_type TEXT NOT NULL CHECK (file_type IN ('image', 'pdf', 'docx', 'xlsx', 'pptx', 'md')),
+        file_size INTEGER NOT NULL,
+        generation_config TEXT,
+        expires_at DATETIME,
+        download_count INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE,
+        FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE SET NULL
+      );
+
+      -- Copy existing data
+      INSERT INTO thread_outputs_new (id, thread_id, message_id, filename, filepath, file_type, file_size, generation_config, expires_at, download_count, created_at)
+      SELECT id, thread_id, message_id, filename, filepath, file_type, file_size, generation_config, expires_at, download_count, created_at
+      FROM thread_outputs;
+
+      -- Drop old table and rename new one
+      DROP TABLE thread_outputs;
+      ALTER TABLE thread_outputs_new RENAME TO thread_outputs;
+
+      -- Recreate indexes
+      CREATE INDEX IF NOT EXISTS idx_thread_outputs_thread ON thread_outputs(thread_id);
+      CREATE INDEX IF NOT EXISTS idx_thread_outputs_expires ON thread_outputs(expires_at);
+    `);
+  }
 }
 
 /**
@@ -355,13 +416,17 @@ CREATE TABLE IF NOT EXISTS thread_outputs (
   message_id TEXT,
   filename TEXT NOT NULL,
   filepath TEXT NOT NULL,
-  file_type TEXT NOT NULL CHECK (file_type IN ('image', 'pdf', 'docx', 'xlsx', 'pptx')),
+  file_type TEXT NOT NULL CHECK (file_type IN ('image', 'pdf', 'docx', 'xlsx', 'pptx', 'md')),
   file_size INTEGER NOT NULL,
+  generation_config TEXT,
+  expires_at DATETIME,
+  download_count INTEGER DEFAULT 0,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE,
   FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE SET NULL
 );
 CREATE INDEX IF NOT EXISTS idx_thread_outputs_thread ON thread_outputs(thread_id);
+CREATE INDEX IF NOT EXISTS idx_thread_outputs_expires ON thread_outputs(expires_at);
 
 -- User memory storage (facts per user+category)
 CREATE TABLE IF NOT EXISTS user_memories (

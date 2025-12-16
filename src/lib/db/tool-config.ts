@@ -329,7 +329,7 @@ export const TOOL_DEFAULTS: Record<string, { enabled: boolean; config: Record<st
     enabled: true,
     config: {
       defaultFormat: 'pdf',
-      enabledFormats: ['pdf', 'docx'],
+      enabledFormats: ['pdf', 'docx', 'md'],
       branding: {
         enabled: false,
         logoUrl: '',
