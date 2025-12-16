@@ -75,6 +75,7 @@ export class PdfBuilder {
 
     this.doc = new PDFDocument({
       size: 'LETTER',
+      bufferPages: true, // Keep all pages in memory for header/footer insertion
       margins: {
         top: PAGE.margin.top + (this.branding.header?.enabled ? PAGE.headerHeight : 0),
         bottom: PAGE.margin.bottom + (this.branding.footer?.enabled ? PAGE.footerHeight : 0),

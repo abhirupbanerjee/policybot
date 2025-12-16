@@ -209,7 +209,7 @@ export const documentGenerationTool: ToolDefinition = {
     function: {
       name: 'doc_gen',
       description:
-        'Generate a formatted document (PDF, Word, or Markdown) from content. Use this tool when the user explicitly asks to create, export, download, or save a document, report, summary, or policy. Do NOT use for regular responses - only when explicitly requested.',
+        'Generate a formatted document (PDF, Word, or Markdown) from content. Use this tool when the user explicitly asks to create, export, download, or save a document, report, summary, or policy. Do NOT use for regular responses - only when explicitly requested. IMPORTANT: After successful generation, the tool returns a JSON with document.downloadUrl - you MUST use this exact URL when creating markdown links in your response, e.g., [filename](downloadUrl).',
       parameters: {
         type: 'object',
         properties: {

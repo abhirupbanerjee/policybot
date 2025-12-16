@@ -79,6 +79,7 @@ function toMessage(parsed: ParsedMessage): Message {
     tool_calls: parsed.toolCalls || undefined,
     tool_call_id: parsed.toolCallId || undefined,
     name: parsed.toolName || undefined,
+    generatedDocuments: parsed.generatedDocuments || undefined,
     timestamp: parsed.createdAt,
   };
 }
@@ -274,6 +275,7 @@ export async function addMessage(
     toolCalls: message.tool_calls,
     toolCallId: message.tool_call_id,
     toolName: message.name,
+    generatedDocuments: message.generatedDocuments,
   });
 
   // Update title if this is the first user message and title is default

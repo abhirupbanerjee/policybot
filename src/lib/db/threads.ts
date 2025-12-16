@@ -6,7 +6,7 @@
 
 import { execute, queryAll, queryOne, transaction } from './index';
 import { v4 as uuidv4 } from 'uuid';
-import type { Source, ToolCall } from '@/types';
+import type { Source, ToolCall, GeneratedDocumentInfo } from '@/types';
 
 // ============ Types ============
 
@@ -30,6 +30,7 @@ export interface DbMessage {
   tool_calls_json: string | null;
   tool_call_id: string | null;
   tool_name: string | null;
+  generated_documents_json: string | null;
   created_at: string;
 }
 
@@ -69,6 +70,7 @@ export interface ParsedMessage {
   toolCalls: ToolCall[] | null;
   toolCallId: string | null;
   toolName: string | null;
+  generatedDocuments: GeneratedDocumentInfo[] | null;
   createdAt: Date;
 }
 
@@ -292,13 +294,14 @@ export function addMessage(
     toolCalls?: ToolCall[];
     toolCallId?: string;
     toolName?: string;
+    generatedDocuments?: GeneratedDocumentInfo[];
   }
 ): ParsedMessage {
   const messageId = uuidv4();
 
   execute(`
-    INSERT INTO messages (id, thread_id, role, content, sources_json, attachments_json, tool_calls_json, tool_call_id, tool_name)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO messages (id, thread_id, role, content, sources_json, attachments_json, tool_calls_json, tool_call_id, tool_name, generated_documents_json)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `, [
     messageId,
     threadId,
@@ -309,6 +312,7 @@ export function addMessage(
     options?.toolCalls ? JSON.stringify(options.toolCalls) : null,
     options?.toolCallId || null,
     options?.toolName || null,
+    options?.generatedDocuments ? JSON.stringify(options.generatedDocuments) : null,
   ]);
 
   return getMessageById(messageId)!;
@@ -319,7 +323,7 @@ export function addMessage(
  */
 export function getMessageById(messageId: string): ParsedMessage | undefined {
   const msg = queryOne<DbMessage>(`
-    SELECT id, thread_id, role, content, sources_json, attachments_json, tool_calls_json, tool_call_id, tool_name, created_at
+    SELECT id, thread_id, role, content, sources_json, attachments_json, tool_calls_json, tool_call_id, tool_name, generated_documents_json, created_at
     FROM messages
     WHERE id = ?
   `, [messageId]);
@@ -334,7 +338,7 @@ export function getMessageById(messageId: string): ParsedMessage | undefined {
  */
 export function getMessagesForThread(threadId: string): ParsedMessage[] {
   const messages = queryAll<DbMessage>(`
-    SELECT id, thread_id, role, content, sources_json, attachments_json, tool_calls_json, tool_call_id, tool_name, created_at
+    SELECT id, thread_id, role, content, sources_json, attachments_json, tool_calls_json, tool_call_id, tool_name, generated_documents_json, created_at
     FROM messages
     WHERE thread_id = ?
     ORDER BY created_at ASC
@@ -357,6 +361,7 @@ function parseMessage(msg: DbMessage): ParsedMessage {
     toolCalls: msg.tool_calls_json ? JSON.parse(msg.tool_calls_json) : null,
     toolCallId: msg.tool_call_id,
     toolName: msg.tool_name,
+    generatedDocuments: msg.generated_documents_json ? JSON.parse(msg.generated_documents_json) : null,
     createdAt: new Date(msg.created_at),
   };
 }

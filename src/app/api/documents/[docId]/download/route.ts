@@ -100,6 +100,7 @@ function getContentType(fileType: string): string {
     docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    md: 'text/markdown',
     image: 'image/png',
   };
 
