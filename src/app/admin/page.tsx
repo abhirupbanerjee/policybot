@@ -9,6 +9,7 @@ import Spinner from '@/components/ui/Spinner';
 import { type SortDirection } from '@/components/ui/SortableTable';
 import BackupTab from '@/components/admin/BackupTab';
 import SkillsTab from '@/components/admin/SkillsTab';
+import ToolsTab from '@/components/admin/ToolsTab';
 import StarterPromptsEditor from '@/components/admin/StarterPromptsEditor';
 import type { GlobalDocument } from '@/types';
 
@@ -137,7 +138,7 @@ interface ModelPreset {
   };
 }
 
-type TabType = 'dashboard' | 'documents' | 'categories' | 'users' | 'settings' | 'stats' | 'skills' | 'backup';
+type TabType = 'dashboard' | 'documents' | 'categories' | 'users' | 'settings' | 'stats' | 'skills' | 'tools' | 'backup';
 type SettingsSection = 'prompt' | 'rag' | 'llm' | 'acronyms' | 'tavily' | 'branding' | 'reranker' | 'memory' | 'summarization';
 
 interface BrandingSettings {
@@ -2141,6 +2142,17 @@ export default function AdminPage() {
             >
               <Layers size={16} className="inline mr-2" />
               Skills
+            </button>
+            <button
+              onClick={() => setActiveTab('tools')}
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'tools'
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <Globe size={16} className="inline mr-2" />
+              Tools
             </button>
             <button
               onClick={() => setActiveTab('backup')}
@@ -4384,6 +4396,11 @@ export default function AdminPage() {
         {/* Skills Tab */}
         {activeTab === 'skills' && (
           <SkillsTab />
+        )}
+
+        {/* Tools Tab */}
+        {activeTab === 'tools' && (
+          <ToolsTab />
         )}
 
         {/* Backup Tab */}

@@ -1,0 +1,1230 @@
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
+import {
+  Globe,
+  Settings,
+  Power,
+  PowerOff,
+  AlertCircle,
+  CheckCircle,
+  RefreshCw,
+  Save,
+  TestTube,
+  Info,
+  ChevronDown,
+  ChevronUp,
+  Clock,
+  Palette,
+  Building2,
+  FileText,
+} from 'lucide-react';
+import Button from '@/components/ui/Button';
+import Spinner from '@/components/ui/Spinner';
+import Modal from '@/components/ui/Modal';
+
+// Tool interface matching API response
+interface Tool {
+  name: string;
+  displayName: string;
+  description: string;
+  category: 'autonomous' | 'processor';
+  enabled: boolean;
+  config: Record<string, unknown>;
+  configSchema: Record<string, unknown>;
+  defaultConfig: Record<string, unknown>;
+  metadata: {
+    id: string;
+    createdAt: string;
+    updatedAt: string;
+    updatedBy: string;
+  } | null;
+}
+
+interface AuditEntry {
+  id: number;
+  toolName: string;
+  operation: 'create' | 'update' | 'delete';
+  oldConfig: Record<string, unknown> | null;
+  newConfig: Record<string, unknown> | null;
+  changedBy: string;
+  changedAt: string;
+}
+
+interface TestResult {
+  tool: string;
+  success: boolean;
+  message: string;
+  latency?: number;
+  testedAt: string;
+  testedBy: string;
+}
+
+// Superuser mode interfaces
+interface AssignedCategory {
+  id: number;
+  name: string;
+  slug: string;
+}
+
+interface CategoryToolStatus {
+  categoryId: number;
+  categoryName: string;
+  categorySlug: string;
+  isEnabled: boolean | null; // null = inherit
+  effectiveEnabled: boolean;
+  branding: BrandingConfig | null;
+}
+
+interface SuperuserTool {
+  name: string;
+  displayName: string;
+  description: string;
+  category: string;
+  globalEnabled: boolean;
+  categories: CategoryToolStatus[];
+}
+
+interface BrandingConfig {
+  enabled: boolean;
+  logoUrl: string;
+  organizationName: string;
+  primaryColor: string;
+  fontFamily: string;
+  header: { enabled: boolean; content: string };
+  footer: { enabled: boolean; content: string; includePageNumber: boolean };
+}
+
+/**
+ * Get icon for a tool based on its name
+ */
+function getToolIcon(toolName: string) {
+  switch (toolName) {
+    case 'web_search':
+      return Globe;
+    default:
+      return Settings;
+  }
+}
+
+/**
+ * Format date for display
+ */
+function formatDate(dateStr: string): string {
+  return new Date(dateStr).toLocaleString();
+}
+
+/**
+ * WebSearchConfig component - Configuration form for web_search tool
+ */
+function WebSearchConfig({
+  config,
+  onChange,
+  disabled,
+}: {
+  config: Record<string, unknown>;
+  onChange: (config: Record<string, unknown>) => void;
+  disabled: boolean;
+}) {
+  const handleChange = (key: string, value: unknown) => {
+    onChange({ ...config, [key]: value });
+  };
+
+  const handleArrayChange = (key: string, value: string) => {
+    // Convert comma-separated string to array
+    const arr = value.split(',').map(s => s.trim()).filter(Boolean);
+    onChange({ ...config, [key]: arr });
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* API Key */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Tavily API Key
+        </label>
+        <input
+          type="password"
+          value={(config.apiKey as string) || ''}
+          onChange={(e) => handleChange('apiKey', e.target.value)}
+          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          placeholder="tvly-••••••••"
+          disabled={disabled}
+        />
+        <p className="text-xs text-gray-500 mt-1">
+          Get your API key from <a href="https://tavily.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">tavily.com</a>
+        </p>
+      </div>
+
+      {/* Default Topic */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Default Search Topic
+        </label>
+        <select
+          value={(config.defaultTopic as string) || 'general'}
+          onChange={(e) => handleChange('defaultTopic', e.target.value)}
+          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          disabled={disabled}
+        >
+          <option value="general">General</option>
+          <option value="news">News</option>
+          <option value="finance">Finance</option>
+        </select>
+      </div>
+
+      {/* Search Depth */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Search Depth
+        </label>
+        <select
+          value={(config.defaultSearchDepth as string) || 'basic'}
+          onChange={(e) => handleChange('defaultSearchDepth', e.target.value)}
+          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          disabled={disabled}
+        >
+          <option value="basic">Basic (faster, 3-5 results)</option>
+          <option value="advanced">Advanced (comprehensive, 10+ results)</option>
+        </select>
+      </div>
+
+      {/* Max Results */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Max Results per Query
+        </label>
+        <input
+          type="number"
+          min={1}
+          max={10}
+          value={(config.maxResults as number) || 5}
+          onChange={(e) => handleChange('maxResults', parseInt(e.target.value) || 5)}
+          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          disabled={disabled}
+        />
+        <p className="text-xs text-gray-500 mt-1">Between 1 and 10</p>
+      </div>
+
+      {/* Include Domains */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Include Domains (optional)
+        </label>
+        <input
+          type="text"
+          value={((config.includeDomains as string[]) || []).join(', ')}
+          onChange={(e) => handleArrayChange('includeDomains', e.target.value)}
+          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          placeholder="example.com, news.site.com"
+          disabled={disabled}
+        />
+        <p className="text-xs text-gray-500 mt-1">Comma-separated list of domains to search</p>
+      </div>
+
+      {/* Exclude Domains */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Exclude Domains (optional)
+        </label>
+        <input
+          type="text"
+          value={((config.excludeDomains as string[]) || []).join(', ')}
+          onChange={(e) => handleArrayChange('excludeDomains', e.target.value)}
+          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          placeholder="spam.com, unwanted.site"
+          disabled={disabled}
+        />
+        <p className="text-xs text-gray-500 mt-1">Comma-separated list of domains to exclude</p>
+      </div>
+
+      {/* Cache TTL */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Cache Duration (seconds)
+        </label>
+        <input
+          type="number"
+          min={60}
+          max={2592000}
+          value={(config.cacheTTLSeconds as number) || 3600}
+          onChange={(e) => handleChange('cacheTTLSeconds', parseInt(e.target.value) || 3600)}
+          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          disabled={disabled}
+        />
+        <p className="text-xs text-gray-500 mt-1">
+          How long to cache search results (3600 = 1 hour)
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Generic tool config renderer for tools without custom forms
+ */
+function GenericToolConfig({
+  config,
+  schema,
+  onChange,
+  disabled,
+}: {
+  config: Record<string, unknown>;
+  schema: Record<string, unknown>;
+  onChange: (config: Record<string, unknown>) => void;
+  disabled: boolean;
+}) {
+  const properties = (schema as { properties?: Record<string, { type: string; title?: string; description?: string }> }).properties || {};
+
+  return (
+    <div className="space-y-4">
+      {Object.entries(properties).map(([key, prop]) => (
+        <div key={key}>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            {prop.title || key}
+          </label>
+          {prop.type === 'boolean' ? (
+            <input
+              type="checkbox"
+              checked={!!config[key]}
+              onChange={(e) => onChange({ ...config, [key]: e.target.checked })}
+              disabled={disabled}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+          ) : prop.type === 'number' ? (
+            <input
+              type="number"
+              value={(config[key] as number) || 0}
+              onChange={(e) => onChange({ ...config, [key]: parseInt(e.target.value) })}
+              disabled={disabled}
+              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+            />
+          ) : (
+            <input
+              type="text"
+              value={(config[key] as string) || ''}
+              onChange={(e) => onChange({ ...config, [key]: e.target.value })}
+              disabled={disabled}
+              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+            />
+          )}
+          {prop.description && (
+            <p className="text-xs text-gray-500 mt-1">{prop.description}</p>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+interface ToolsTabProps {
+  /** If true, shows read-only view (for superusers in legacy mode) */
+  readOnly?: boolean;
+  /** If true, shows superuser mode with category selection and per-category config */
+  isSuperuser?: boolean;
+}
+
+/**
+ * ToolsTab - Admin interface for managing tools
+ * @param readOnly - If true, hides all edit controls (for superuser view)
+ * @param isSuperuser - If true, shows superuser mode with category-level config
+ */
+export default function ToolsTab({ readOnly = false, isSuperuser = false }: ToolsTabProps) {
+  // Admin mode state
+  const [tools, setTools] = useState<Tool[]>([]);
+
+  // Superuser mode state
+  const [superuserTools, setSuperuserTools] = useState<SuperuserTool[]>([]);
+  const [assignedCategories, setAssignedCategories] = useState<AssignedCategory[]>([]);
+  const [selectedCategory, setSelectedCategory] = useState<number | null>(null);
+
+  // Common state
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  // Expanded tool state
+  const [expandedTool, setExpandedTool] = useState<string | null>(null);
+  const [editedConfig, setEditedConfig] = useState<Record<string, unknown>>({});
+
+  // Branding editor state (superuser mode)
+  const [editingBranding, setEditingBranding] = useState<string | null>(null); // tool name
+  const [brandingConfig, setBrandingConfig] = useState<BrandingConfig | null>(null);
+
+  // Modal states
+  const [testingTool, setTestingTool] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<TestResult | null>(null);
+  const [showAuditModal, setShowAuditModal] = useState(false);
+  const [auditHistory, setAuditHistory] = useState<AuditEntry[]>([]);
+  const [auditToolName, setAuditToolName] = useState<string>('');
+
+  // Fetch tools for admin mode
+  const fetchTools = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('/api/admin/tools');
+      if (!response.ok) throw new Error('Failed to fetch tools');
+
+      const data = await response.json();
+      setTools(data.tools || []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load tools');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Fetch tools for superuser mode
+  const fetchSuperuserTools = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await fetch('/api/superuser/tools');
+      if (!response.ok) throw new Error('Failed to fetch tools');
+
+      const data = await response.json();
+      setSuperuserTools(data.tools || []);
+      setAssignedCategories(data.assignedCategories || []);
+
+      // Auto-select first category if none selected
+      if (data.assignedCategories?.length > 0) {
+        setSelectedCategory((prev) => prev ?? data.assignedCategories[0].id);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load tools');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // Fetch tools on mount
+  useEffect(() => {
+    if (isSuperuser) {
+      fetchSuperuserTools();
+    } else {
+      fetchTools();
+    }
+  }, [isSuperuser, fetchTools, fetchSuperuserTools]);
+
+  // Toggle category tool enabled state (superuser)
+  const handleToggleCategoryEnabled = async (toolName: string, currentEnabled: boolean | null) => {
+    if (!selectedCategory) return;
+
+    setSaving(true);
+    try {
+      // Toggle logic: null -> true, true -> false, false -> null (inherit)
+      let newEnabled: boolean | null;
+      if (currentEnabled === null) {
+        newEnabled = true;
+      } else if (currentEnabled === true) {
+        newEnabled = false;
+      } else {
+        newEnabled = null; // Reset to inherit
+      }
+
+      const response = await fetch(`/api/superuser/tools/${toolName}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          categoryId: selectedCategory,
+          isEnabled: newEnabled,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to update tool');
+      }
+
+      const statusText = newEnabled === null ? 'reset to inherit' : newEnabled ? 'enabled' : 'disabled';
+      setSuccess(`Tool ${statusText} for this category`);
+      setTimeout(() => setSuccess(null), 3000);
+      fetchSuperuserTools();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update tool');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Save branding config (superuser)
+  const handleSaveBranding = async (toolName: string) => {
+    if (!selectedCategory || !brandingConfig) return;
+
+    setSaving(true);
+    try {
+      const response = await fetch(`/api/superuser/tools/${toolName}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          categoryId: selectedCategory,
+          branding: brandingConfig,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to save branding');
+      }
+
+      setSuccess('Branding configuration saved');
+      setTimeout(() => setSuccess(null), 3000);
+      setEditingBranding(null);
+      setBrandingConfig(null);
+      fetchSuperuserTools();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save branding');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Get category status for a tool
+  const getCategoryStatus = (tool: SuperuserTool): CategoryToolStatus | undefined => {
+    if (!selectedCategory) return undefined;
+    return tool.categories.find(c => c.categoryId === selectedCategory);
+  };
+
+  // Toggle tool enabled state
+  const handleToggleEnabled = async (tool: Tool) => {
+    setSaving(true);
+    try {
+      const response = await fetch(`/api/admin/tools/${tool.name}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isEnabled: !tool.enabled }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to update tool');
+      }
+
+      setSuccess(`${tool.displayName} ${tool.enabled ? 'disabled' : 'enabled'} successfully`);
+      setTimeout(() => setSuccess(null), 3000);
+      fetchTools();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update tool');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Save tool configuration
+  const handleSaveConfig = async (toolName: string) => {
+    setSaving(true);
+    try {
+      const response = await fetch(`/api/admin/tools/${toolName}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ config: editedConfig }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to save configuration');
+      }
+
+      setSuccess('Configuration saved successfully');
+      setTimeout(() => setSuccess(null), 3000);
+      setExpandedTool(null);
+      setEditedConfig({});
+      fetchTools();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save configuration');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Test tool connection
+  const handleTestTool = async (toolName: string) => {
+    setTestingTool(toolName);
+    setTestResult(null);
+    try {
+      const response = await fetch(`/api/admin/tools/${toolName}/test`, {
+        method: 'POST',
+      });
+
+      const data = await response.json();
+      setTestResult(data);
+    } catch (err) {
+      setTestResult({
+        tool: toolName,
+        success: false,
+        message: err instanceof Error ? err.message : 'Test failed',
+        testedAt: new Date().toISOString(),
+        testedBy: 'unknown',
+      });
+    } finally {
+      setTestingTool(null);
+    }
+  };
+
+  // View audit history
+  const handleViewAudit = async (toolName: string) => {
+    setAuditToolName(toolName);
+    try {
+      const response = await fetch(`/api/admin/tools/${toolName}`);
+      if (!response.ok) throw new Error('Failed to fetch audit history');
+
+      const data = await response.json();
+      setAuditHistory(data.auditHistory || []);
+      setShowAuditModal(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load audit history');
+    }
+  };
+
+  // Expand/collapse tool
+  const toggleExpand = (tool: Tool) => {
+    if (expandedTool === tool.name) {
+      setExpandedTool(null);
+      setEditedConfig({});
+    } else {
+      setExpandedTool(tool.name);
+      setEditedConfig(tool.config);
+    }
+  };
+
+  // Render config form based on tool type
+  const renderConfigForm = (tool: Tool) => {
+    switch (tool.name) {
+      case 'web_search':
+        return (
+          <WebSearchConfig
+            config={editedConfig}
+            onChange={setEditedConfig}
+            disabled={saving}
+          />
+        );
+      default:
+        return (
+          <GenericToolConfig
+            config={editedConfig}
+            schema={tool.configSchema}
+            onChange={setEditedConfig}
+            disabled={saving}
+          />
+        );
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Spinner size="lg" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Messages */}
+      {error && (
+        <div className="p-4 bg-red-50 text-red-600 rounded-lg flex items-center gap-3">
+          <AlertCircle size={20} />
+          <span>{error}</span>
+          <button onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-600">&times;</button>
+        </div>
+      )}
+      {success && (
+        <div className="p-4 bg-green-50 text-green-600 rounded-lg flex items-center gap-3">
+          <CheckCircle size={20} />
+          <span>{success}</span>
+        </div>
+      )}
+
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900">
+            {isSuperuser ? 'Category Tools' : readOnly ? 'Available Tools' : 'Tools Management'}
+          </h2>
+          <p className="text-sm text-gray-500">
+            {isSuperuser
+              ? 'Configure tool availability and branding for your categories'
+              : readOnly
+                ? 'View available AI-powered tools and their status'
+                : 'Configure AI-powered tools and integrations'
+            }
+          </p>
+        </div>
+        <div className="flex items-center gap-3">
+          {/* Category Selector (superuser mode) */}
+          {isSuperuser && assignedCategories.length > 0 && (
+            <select
+              value={selectedCategory || ''}
+              onChange={(e) => setSelectedCategory(Number(e.target.value))}
+              className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            >
+              {assignedCategories.map(cat => (
+                <option key={cat.id} value={cat.id}>{cat.name}</option>
+              ))}
+            </select>
+          )}
+          {!readOnly && !isSuperuser && (
+            <Button variant="secondary" onClick={fetchTools} disabled={loading}>
+              <RefreshCw size={16} className={`mr-2 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          )}
+          {isSuperuser && (
+            <Button variant="secondary" onClick={fetchSuperuserTools} disabled={loading}>
+              <RefreshCw size={16} className={`mr-2 ${loading ? 'animate-spin' : ''}`} />
+              Refresh
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Tools List - Superuser Mode */}
+      {isSuperuser && (
+        <div className="space-y-4">
+          {assignedCategories.length === 0 ? (
+            <div className="bg-white rounded-lg border p-8 text-center text-gray-500">
+              No categories assigned. Contact an administrator to get category access.
+            </div>
+          ) : superuserTools.length === 0 ? (
+            <div className="bg-white rounded-lg border p-8 text-center text-gray-500">
+              No tools available. Tools will appear here when configured.
+            </div>
+          ) : (
+            superuserTools.map((tool) => {
+              const Icon = getToolIcon(tool.name);
+              const catStatus = getCategoryStatus(tool);
+              const effectiveEnabled = catStatus?.effectiveEnabled ?? tool.globalEnabled;
+              const isOverridden = catStatus?.isEnabled !== null && catStatus?.isEnabled !== undefined;
+
+              return (
+                <div key={tool.name} className="bg-white rounded-lg border shadow-sm">
+                  {/* Tool Header */}
+                  <div className="px-6 py-4 flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className={`p-2 rounded-lg ${effectiveEnabled ? 'bg-blue-100' : 'bg-gray-100'}`}>
+                        <Icon size={24} className={effectiveEnabled ? 'text-blue-600' : 'text-gray-400'} />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-semibold text-gray-900">{tool.displayName}</h3>
+                          <span className={`px-2 py-0.5 text-xs rounded-full ${
+                            tool.category === 'autonomous'
+                              ? 'bg-purple-100 text-purple-700'
+                              : 'bg-blue-100 text-blue-700'
+                          }`}>
+                            {tool.category}
+                          </span>
+                          {/* Global status indicator */}
+                          <span className={`px-2 py-0.5 text-xs rounded-full ${
+                            tool.globalEnabled ? 'bg-green-50 text-green-600' : 'bg-gray-50 text-gray-500'
+                          }`}>
+                            Global: {tool.globalEnabled ? 'On' : 'Off'}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-500">{tool.description}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {/* Status indicator */}
+                      <div className="flex items-center gap-2 mr-2">
+                        <span className={`px-3 py-1 text-sm rounded-full ${
+                          effectiveEnabled
+                            ? 'bg-green-100 text-green-700'
+                            : 'bg-gray-100 text-gray-500'
+                        }`}>
+                          {isOverridden ? (
+                            catStatus?.isEnabled ? 'Enabled' : 'Disabled'
+                          ) : (
+                            `Inherited (${effectiveEnabled ? 'On' : 'Off'})`
+                          )}
+                        </span>
+                      </div>
+
+                      {/* Enable/Disable Toggle for category */}
+                      <Button
+                        variant={effectiveEnabled ? 'primary' : 'secondary'}
+                        size="sm"
+                        onClick={() => handleToggleCategoryEnabled(tool.name, catStatus?.isEnabled ?? null)}
+                        disabled={saving}
+                        title={
+                          catStatus?.isEnabled === null
+                            ? 'Click to enable for this category'
+                            : catStatus?.isEnabled
+                              ? 'Click to disable'
+                              : 'Click to inherit from global'
+                        }
+                      >
+                        {effectiveEnabled ? <Power size={16} /> : <PowerOff size={16} />}
+                      </Button>
+
+                      {/* Branding button (only for doc_gen tool) */}
+                      {tool.name === 'doc_gen' && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => {
+                            setEditingBranding(tool.name);
+                            setBrandingConfig(catStatus?.branding || {
+                              enabled: false,
+                              logoUrl: '',
+                              organizationName: '',
+                              primaryColor: '#003366',
+                              fontFamily: 'Calibri',
+                              header: { enabled: false, content: '' },
+                              footer: { enabled: true, content: '', includePageNumber: true },
+                            });
+                          }}
+                          title="Configure branding"
+                        >
+                          <Palette size={16} />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Branding indicator */}
+                  {tool.name === 'doc_gen' && catStatus?.branding?.enabled && (
+                    <div className="px-6 py-2 border-t bg-blue-50">
+                      <div className="flex items-center gap-2 text-sm text-blue-700">
+                        <Building2 size={14} />
+                        <span>Custom branding: {catStatus.branding.organizationName || 'Configured'}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+
+      {/* Tools List - Admin/ReadOnly Mode */}
+      {!isSuperuser && (
+        <div className="space-y-4">
+          {tools.length === 0 ? (
+            <div className="bg-white rounded-lg border p-8 text-center text-gray-500">
+              No tools configured. Tools will appear here when available.
+            </div>
+          ) : (
+            tools.map((tool) => {
+              const Icon = getToolIcon(tool.name);
+              const isExpanded = expandedTool === tool.name;
+
+              return (
+                <div key={tool.name} className="bg-white rounded-lg border shadow-sm">
+                  {/* Tool Header */}
+                  <div className="px-6 py-4 flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                      <div className={`p-2 rounded-lg ${tool.enabled ? 'bg-blue-100' : 'bg-gray-100'}`}>
+                        <Icon size={24} className={tool.enabled ? 'text-blue-600' : 'text-gray-400'} />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-semibold text-gray-900">{tool.displayName}</h3>
+                          <span className={`px-2 py-0.5 text-xs rounded-full ${
+                            tool.category === 'autonomous'
+                              ? 'bg-purple-100 text-purple-700'
+                              : 'bg-blue-100 text-blue-700'
+                          }`}>
+                            {tool.category}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-500">{tool.description}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      {/* Status Badge (read-only mode) */}
+                      {readOnly ? (
+                        <span className={`px-3 py-1 text-sm rounded-full ${
+                          tool.enabled
+                            ? 'bg-green-100 text-green-700'
+                            : 'bg-gray-100 text-gray-500'
+                        }`}>
+                          {tool.enabled ? 'Enabled' : 'Disabled'}
+                        </span>
+                      ) : (
+                        <>
+                          {/* Test Button */}
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => handleTestTool(tool.name)}
+                            disabled={testingTool === tool.name}
+                            title="Test connection"
+                          >
+                            {testingTool === tool.name ? (
+                              <Spinner size="sm" />
+                            ) : (
+                              <TestTube size={16} />
+                            )}
+                          </Button>
+
+                          {/* Audit History */}
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => handleViewAudit(tool.name)}
+                            title="View history"
+                          >
+                            <Clock size={16} />
+                          </Button>
+
+                          {/* Enable/Disable Toggle */}
+                          <Button
+                            variant={tool.enabled ? 'primary' : 'secondary'}
+                            size="sm"
+                            onClick={() => handleToggleEnabled(tool)}
+                            disabled={saving}
+                            title={tool.enabled ? 'Disable tool' : 'Enable tool'}
+                          >
+                            {tool.enabled ? <Power size={16} /> : <PowerOff size={16} />}
+                          </Button>
+
+                          {/* Expand/Collapse */}
+                          <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => toggleExpand(tool)}
+                          >
+                            {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                          </Button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Test Result Banner */}
+                  {testResult && testResult.tool === tool.name && (
+                    <div className={`px-6 py-3 border-t ${
+                      testResult.success ? 'bg-green-50' : 'bg-red-50'
+                    }`}>
+                      <div className="flex items-center gap-2">
+                        {testResult.success ? (
+                          <CheckCircle size={16} className="text-green-600" />
+                        ) : (
+                          <AlertCircle size={16} className="text-red-600" />
+                        )}
+                        <span className={testResult.success ? 'text-green-700' : 'text-red-700'}>
+                          {testResult.message}
+                        </span>
+                        {testResult.latency && (
+                          <span className="text-gray-500 text-sm ml-2">
+                            ({testResult.latency}ms)
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Expanded Configuration */}
+                  {isExpanded && (
+                    <div className="px-6 py-4 border-t bg-gray-50">
+                      <div className="max-w-2xl">
+                        {renderConfigForm(tool)}
+
+                        {/* Metadata */}
+                        {tool.metadata && (
+                          <div className="mt-4 pt-4 border-t text-xs text-gray-500">
+                            <div className="flex items-center gap-1">
+                              <Info size={12} />
+                              <span>
+                                Last updated: {formatDate(tool.metadata.updatedAt)} by {tool.metadata.updatedBy}
+                              </span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Save Button */}
+                        <div className="mt-4 flex justify-end gap-2">
+                          <Button
+                            variant="secondary"
+                            onClick={() => {
+                              setExpandedTool(null);
+                              setEditedConfig({});
+                            }}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            onClick={() => handleSaveConfig(tool.name)}
+                            disabled={saving}
+                          >
+                            {saving ? <Spinner size="sm" className="mr-2" /> : <Save size={16} className="mr-2" />}
+                            Save Configuration
+                          </Button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+
+      {/* Audit History Modal */}
+      <Modal
+        isOpen={showAuditModal}
+        onClose={() => {
+          setShowAuditModal(false);
+          setAuditHistory([]);
+        }}
+        title={`Configuration History - ${auditToolName}`}
+      >
+        <div className="space-y-4 max-h-96 overflow-y-auto">
+          {auditHistory.length === 0 ? (
+            <p className="text-gray-500 text-center py-4">No history available</p>
+          ) : (
+            auditHistory.map((entry) => (
+              <div key={entry.id} className="border rounded-lg p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <span className={`px-2 py-0.5 text-xs rounded-full ${
+                    entry.operation === 'create' ? 'bg-green-100 text-green-700' :
+                    entry.operation === 'update' ? 'bg-blue-100 text-blue-700' :
+                    'bg-red-100 text-red-700'
+                  }`}>
+                    {entry.operation}
+                  </span>
+                  <span className="text-xs text-gray-500">{formatDate(entry.changedAt)}</span>
+                </div>
+                <p className="text-sm text-gray-600">Changed by: {entry.changedBy}</p>
+                {entry.operation === 'update' && entry.oldConfig && entry.newConfig && (
+                  <details className="mt-2">
+                    <summary className="text-xs text-blue-600 cursor-pointer">View changes</summary>
+                    <div className="mt-2 text-xs font-mono bg-gray-50 p-2 rounded overflow-x-auto">
+                      <pre>{JSON.stringify({ old: entry.oldConfig, new: entry.newConfig }, null, 2)}</pre>
+                    </div>
+                  </details>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      </Modal>
+
+      {/* Branding Editor Modal (Superuser mode) */}
+      <Modal
+        isOpen={!!editingBranding}
+        onClose={() => {
+          setEditingBranding(null);
+          setBrandingConfig(null);
+        }}
+        title="Document Branding Configuration"
+      >
+        {brandingConfig && (
+          <div className="space-y-4">
+            {/* Enable Branding */}
+            <div className="flex items-center gap-3">
+              <input
+                type="checkbox"
+                id="branding-enabled"
+                checked={brandingConfig.enabled}
+                onChange={(e) => setBrandingConfig({
+                  ...brandingConfig,
+                  enabled: e.target.checked,
+                })}
+                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              <label htmlFor="branding-enabled" className="text-sm font-medium text-gray-700">
+                Enable custom branding for documents
+              </label>
+            </div>
+
+            {brandingConfig.enabled && (
+              <>
+                {/* Organization Name */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <Building2 size={14} className="inline mr-1" />
+                    Organization Name
+                  </label>
+                  <input
+                    type="text"
+                    value={brandingConfig.organizationName}
+                    onChange={(e) => setBrandingConfig({
+                      ...brandingConfig,
+                      organizationName: e.target.value,
+                    })}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    placeholder="Your Organization"
+                  />
+                </div>
+
+                {/* Logo URL */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Logo URL
+                  </label>
+                  <input
+                    type="text"
+                    value={brandingConfig.logoUrl}
+                    onChange={(e) => setBrandingConfig({
+                      ...brandingConfig,
+                      logoUrl: e.target.value,
+                    })}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    placeholder="https://example.com/logo.png"
+                  />
+                  <p className="text-xs text-gray-500 mt-1">URL to your organization logo (PNG, JPG)</p>
+                </div>
+
+                {/* Primary Color */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    <Palette size={14} className="inline mr-1" />
+                    Primary Color
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={brandingConfig.primaryColor}
+                      onChange={(e) => setBrandingConfig({
+                        ...brandingConfig,
+                        primaryColor: e.target.value,
+                      })}
+                      className="h-10 w-16 border rounded cursor-pointer"
+                    />
+                    <input
+                      type="text"
+                      value={brandingConfig.primaryColor}
+                      onChange={(e) => setBrandingConfig({
+                        ...brandingConfig,
+                        primaryColor: e.target.value,
+                      })}
+                      className="flex-1 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                      placeholder="#003366"
+                    />
+                  </div>
+                </div>
+
+                {/* Font Family */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Font Family
+                  </label>
+                  <select
+                    value={brandingConfig.fontFamily}
+                    onChange={(e) => setBrandingConfig({
+                      ...brandingConfig,
+                      fontFamily: e.target.value,
+                    })}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="Calibri">Calibri</option>
+                    <option value="Arial">Arial</option>
+                    <option value="Times New Roman">Times New Roman</option>
+                    <option value="Helvetica">Helvetica</option>
+                    <option value="Georgia">Georgia</option>
+                  </select>
+                </div>
+
+                {/* Header Section */}
+                <div className="border rounded-lg p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <input
+                      type="checkbox"
+                      id="header-enabled"
+                      checked={brandingConfig.header.enabled}
+                      onChange={(e) => setBrandingConfig({
+                        ...brandingConfig,
+                        header: { ...brandingConfig.header, enabled: e.target.checked },
+                      })}
+                      className="rounded border-gray-300 text-blue-600"
+                    />
+                    <label htmlFor="header-enabled" className="text-sm font-medium text-gray-700">
+                      <FileText size={14} className="inline mr-1" />
+                      Custom Header
+                    </label>
+                  </div>
+                  {brandingConfig.header.enabled && (
+                    <input
+                      type="text"
+                      value={brandingConfig.header.content}
+                      onChange={(e) => setBrandingConfig({
+                        ...brandingConfig,
+                        header: { ...brandingConfig.header, content: e.target.value },
+                      })}
+                      className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                      placeholder="Header text for documents"
+                    />
+                  )}
+                </div>
+
+                {/* Footer Section */}
+                <div className="border rounded-lg p-3">
+                  <div className="flex items-center gap-2 mb-2">
+                    <input
+                      type="checkbox"
+                      id="footer-enabled"
+                      checked={brandingConfig.footer.enabled}
+                      onChange={(e) => setBrandingConfig({
+                        ...brandingConfig,
+                        footer: { ...brandingConfig.footer, enabled: e.target.checked },
+                      })}
+                      className="rounded border-gray-300 text-blue-600"
+                    />
+                    <label htmlFor="footer-enabled" className="text-sm font-medium text-gray-700">
+                      Custom Footer
+                    </label>
+                  </div>
+                  {brandingConfig.footer.enabled && (
+                    <div className="space-y-2">
+                      <input
+                        type="text"
+                        value={brandingConfig.footer.content}
+                        onChange={(e) => setBrandingConfig({
+                          ...brandingConfig,
+                          footer: { ...brandingConfig.footer, content: e.target.value },
+                        })}
+                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                        placeholder="Footer text for documents"
+                      />
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          id="footer-page-number"
+                          checked={brandingConfig.footer.includePageNumber}
+                          onChange={(e) => setBrandingConfig({
+                            ...brandingConfig,
+                            footer: { ...brandingConfig.footer, includePageNumber: e.target.checked },
+                          })}
+                          className="rounded border-gray-300 text-blue-600"
+                        />
+                        <label htmlFor="footer-page-number" className="text-sm text-gray-600">
+                          Include page numbers
+                        </label>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            {/* Save/Cancel Buttons */}
+            <div className="flex justify-end gap-2 pt-4 border-t">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setEditingBranding(null);
+                  setBrandingConfig(null);
+                }}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => editingBranding && handleSaveBranding(editingBranding)}
+                disabled={saving}
+              >
+                {saving ? <Spinner size="sm" className="mr-2" /> : <Save size={16} className="mr-2" />}
+                Save Branding
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+}

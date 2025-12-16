@@ -1,0 +1,373 @@
+/**
+ * Tool Configuration Database Operations
+ *
+ * CRUD operations for the tool_configs and tool_config_audit tables.
+ * Supports the unified Tools system with audit trail.
+ */
+
+import { v4 as uuidv4 } from 'uuid';
+import { execute, queryOne, queryAll, transaction } from './index';
+import { getTavilySettings, type TavilySettings } from './config';
+
+// ============ Types ============
+
+export interface ToolConfig {
+  id: string;
+  toolName: string;
+  isEnabled: boolean;
+  config: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+
+export interface ToolConfigAuditEntry {
+  id: number;
+  toolName: string;
+  operation: 'create' | 'update' | 'delete';
+  oldConfig: Record<string, unknown> | null;
+  newConfig: Record<string, unknown> | null;
+  changedBy: string;
+  changedAt: string;
+}
+
+// Database row types
+interface DbToolConfig {
+  id: string;
+  tool_name: string;
+  is_enabled: number;
+  config_json: string;
+  created_at: string;
+  updated_at: string;
+  updated_by: string;
+}
+
+interface DbToolConfigAudit {
+  id: number;
+  tool_name: string;
+  operation: string;
+  old_config: string | null;
+  new_config: string | null;
+  changed_by: string;
+  changed_at: string;
+}
+
+// ============ Mappers ============
+
+function mapDbToToolConfig(row: DbToolConfig): ToolConfig {
+  return {
+    id: row.id,
+    toolName: row.tool_name,
+    isEnabled: row.is_enabled === 1,
+    config: JSON.parse(row.config_json),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    updatedBy: row.updated_by,
+  };
+}
+
+function mapDbToAuditEntry(row: DbToolConfigAudit): ToolConfigAuditEntry {
+  return {
+    id: row.id,
+    toolName: row.tool_name,
+    operation: row.operation as 'create' | 'update' | 'delete',
+    oldConfig: row.old_config ? JSON.parse(row.old_config) : null,
+    newConfig: row.new_config ? JSON.parse(row.new_config) : null,
+    changedBy: row.changed_by,
+    changedAt: row.changed_at,
+  };
+}
+
+// ============ CRUD Operations ============
+
+/**
+ * Get a tool configuration by name
+ */
+export function getToolConfig(toolName: string): ToolConfig | undefined {
+  const row = queryOne<DbToolConfig>(
+    'SELECT * FROM tool_configs WHERE tool_name = ?',
+    [toolName]
+  );
+  return row ? mapDbToToolConfig(row) : undefined;
+}
+
+/**
+ * Get all tool configurations
+ */
+export function getAllToolConfigs(): ToolConfig[] {
+  const rows = queryAll<DbToolConfig>('SELECT * FROM tool_configs ORDER BY tool_name');
+  return rows.map(mapDbToToolConfig);
+}
+
+/**
+ * Check if a tool is enabled
+ */
+export function isToolEnabled(toolName: string): boolean {
+  const config = getToolConfig(toolName);
+  return config?.isEnabled ?? false;
+}
+
+/**
+ * Create a new tool configuration
+ */
+export function createToolConfig(
+  toolName: string,
+  config: Record<string, unknown>,
+  isEnabled: boolean,
+  updatedBy: string
+): ToolConfig {
+  const id = uuidv4();
+  const configJson = JSON.stringify(config);
+
+  return transaction(() => {
+    execute(
+      `INSERT INTO tool_configs (id, tool_name, is_enabled, config_json, updated_by)
+       VALUES (?, ?, ?, ?, ?)`,
+      [id, toolName, isEnabled ? 1 : 0, configJson, updatedBy]
+    );
+
+    // Record audit entry
+    execute(
+      `INSERT INTO tool_config_audit (tool_name, operation, old_config, new_config, changed_by)
+       VALUES (?, 'create', NULL, ?, ?)`,
+      [toolName, configJson, updatedBy]
+    );
+
+    return getToolConfig(toolName)!;
+  });
+}
+
+/**
+ * Update a tool configuration
+ */
+export function updateToolConfig(
+  toolName: string,
+  updates: {
+    isEnabled?: boolean;
+    config?: Record<string, unknown>;
+  },
+  updatedBy: string
+): ToolConfig | undefined {
+  const existing = getToolConfig(toolName);
+  if (!existing) return undefined;
+
+  const newEnabled = updates.isEnabled ?? existing.isEnabled;
+  const newConfig = updates.config ?? existing.config;
+  const newConfigJson = JSON.stringify(newConfig);
+  const oldConfigJson = JSON.stringify(existing.config);
+
+  return transaction(() => {
+    execute(
+      `UPDATE tool_configs
+       SET is_enabled = ?, config_json = ?, updated_at = CURRENT_TIMESTAMP, updated_by = ?
+       WHERE tool_name = ?`,
+      [newEnabled ? 1 : 0, newConfigJson, updatedBy, toolName]
+    );
+
+    // Record audit entry
+    execute(
+      `INSERT INTO tool_config_audit (tool_name, operation, old_config, new_config, changed_by)
+       VALUES (?, 'update', ?, ?, ?)`,
+      [toolName, oldConfigJson, newConfigJson, updatedBy]
+    );
+
+    return getToolConfig(toolName)!;
+  });
+}
+
+/**
+ * Delete a tool configuration
+ */
+export function deleteToolConfig(toolName: string, deletedBy: string): boolean {
+  const existing = getToolConfig(toolName);
+  if (!existing) return false;
+
+  const oldConfigJson = JSON.stringify(existing.config);
+
+  return transaction(() => {
+    execute('DELETE FROM tool_configs WHERE tool_name = ?', [toolName]);
+
+    // Record audit entry
+    execute(
+      `INSERT INTO tool_config_audit (tool_name, operation, old_config, new_config, changed_by)
+       VALUES (?, 'delete', ?, NULL, ?)`,
+      [toolName, oldConfigJson, deletedBy]
+    );
+
+    return true;
+  });
+}
+
+/**
+ * Get audit history for a tool
+ */
+export function getToolConfigAuditHistory(
+  toolName: string,
+  limit: number = 50
+): ToolConfigAuditEntry[] {
+  const rows = queryAll<DbToolConfigAudit>(
+    `SELECT * FROM tool_config_audit
+     WHERE tool_name = ?
+     ORDER BY changed_at DESC
+     LIMIT ?`,
+    [toolName, limit]
+  );
+  return rows.map(mapDbToAuditEntry);
+}
+
+/**
+ * Get all audit entries (for admin overview)
+ */
+export function getAllToolConfigAuditHistory(limit: number = 100): ToolConfigAuditEntry[] {
+  const rows = queryAll<DbToolConfigAudit>(
+    `SELECT * FROM tool_config_audit
+     ORDER BY changed_at DESC
+     LIMIT ?`,
+    [limit]
+  );
+  return rows.map(mapDbToAuditEntry);
+}
+
+// ============ Migration Helpers ============
+
+/**
+ * Migrate existing Tavily settings from the settings table to tool_configs
+ * This is called on first load to seed the web_search tool config
+ */
+export function migrateTavilySettingsIfNeeded(): void {
+  // Check if web_search already exists in tool_configs
+  const existing = getToolConfig('web_search');
+  if (existing) return;
+
+  // Get existing Tavily settings from settings table
+  const tavilySettings = getTavilySettings();
+
+  // Create the tool config from existing settings
+  createToolConfig(
+    'web_search',
+    {
+      apiKey: tavilySettings.apiKey || '',
+      defaultTopic: tavilySettings.defaultTopic,
+      defaultSearchDepth: tavilySettings.defaultSearchDepth,
+      maxResults: tavilySettings.maxResults,
+      includeDomains: tavilySettings.includeDomains,
+      excludeDomains: tavilySettings.excludeDomains,
+      cacheTTLSeconds: tavilySettings.cacheTTLSeconds,
+    },
+    tavilySettings.enabled,
+    'system-migration'
+  );
+
+  console.log('[Tools] Migrated Tavily settings to tool_configs table');
+}
+
+/**
+ * Get web search settings (with backward compatibility)
+ * Tries tool_configs first, falls back to settings table
+ */
+export function getWebSearchConfig(): {
+  enabled: boolean;
+  config: TavilySettings;
+} {
+  const toolConfig = getToolConfig('web_search');
+
+  if (toolConfig) {
+    const config = toolConfig.config as Record<string, unknown>;
+    return {
+      enabled: toolConfig.isEnabled,
+      config: {
+        apiKey: (config.apiKey as string) || undefined,
+        enabled: toolConfig.isEnabled,
+        defaultTopic: (config.defaultTopic as 'general' | 'news' | 'finance') || 'general',
+        defaultSearchDepth: (config.defaultSearchDepth as 'basic' | 'advanced') || 'basic',
+        maxResults: (config.maxResults as number) || 5,
+        includeDomains: (config.includeDomains as string[]) || [],
+        excludeDomains: (config.excludeDomains as string[]) || [],
+        cacheTTLSeconds: (config.cacheTTLSeconds as number) || 3600,
+      },
+    };
+  }
+
+  // Fallback to settings table
+  const tavilySettings = getTavilySettings();
+  return {
+    enabled: tavilySettings.enabled,
+    config: tavilySettings,
+  };
+}
+
+// ============ Tool Definitions Registry ============
+
+/**
+ * Default configurations for each tool type
+ */
+export const TOOL_DEFAULTS: Record<string, { enabled: boolean; config: Record<string, unknown> }> = {
+  web_search: {
+    enabled: false,
+    config: {
+      apiKey: '',
+      defaultTopic: 'general',
+      defaultSearchDepth: 'basic',
+      maxResults: 5,
+      includeDomains: [],
+      excludeDomains: [],
+      cacheTTLSeconds: 3600,
+    },
+  },
+  data_viz: {
+    enabled: true,
+    config: {
+      defaultChartType: 'bar',
+      defaultColors: ['#3b82f6', '#ef4444', '#10b981', '#f59320', '#06b6d5'],
+      enabledChartTypes: ['bar', 'line', 'pie', 'area'],
+      showLegend: true,
+      showTooltip: true,
+      maxDataPoints: 1000,
+    },
+  },
+  doc_gen: {
+    enabled: true,
+    config: {
+      defaultFormat: 'pdf',
+      enabledFormats: ['pdf', 'docx'],
+      branding: {
+        enabled: false,
+        logoUrl: '',
+        organizationName: '',
+        primaryColor: '#003366',
+        fontFamily: 'Calibri',
+      },
+      header: { enabled: true, content: '' },
+      footer: { enabled: true, content: '', includePageNumber: true },
+      expirationDays: 30,
+      maxDocumentSizeMB: 50,
+    },
+  },
+};
+
+/**
+ * Ensure all registered tools have configurations in the database
+ * This is called during initialization to seed missing tool configs
+ */
+export function ensureToolConfigsExist(updatedBy: string = 'system'): void {
+  for (const [toolName, defaults] of Object.entries(TOOL_DEFAULTS)) {
+    const existing = getToolConfig(toolName);
+    if (!existing) {
+      createToolConfig(toolName, defaults.config, defaults.enabled, updatedBy);
+      console.log(`[Tools] Created default config for tool: ${toolName}`);
+    }
+  }
+}
+
+/**
+ * Reset a tool to its default configuration
+ */
+export function resetToolToDefaults(toolName: string, updatedBy: string): ToolConfig | undefined {
+  const defaults = TOOL_DEFAULTS[toolName];
+  if (!defaults) return undefined;
+
+  return updateToolConfig(toolName, {
+    isEnabled: defaults.enabled,
+    config: defaults.config,
+  }, updatedBy);
+}

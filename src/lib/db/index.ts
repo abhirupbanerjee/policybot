@@ -157,6 +157,63 @@ function runMigrations(database: Database.Database): void {
       CREATE INDEX IF NOT EXISTS idx_category_skills_skill ON category_skills(skill_id);
     `);
   }
+
+  // Check and create tool_configs table for Tools system
+  const toolConfigsTableExists = database.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='tool_configs'"
+  ).get();
+
+  if (!toolConfigsTableExists) {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS tool_configs (
+        id TEXT PRIMARY KEY,
+        tool_name TEXT UNIQUE NOT NULL,
+        is_enabled INTEGER DEFAULT 0,
+        config_json TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_by TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS tool_config_audit (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tool_name TEXT NOT NULL,
+        operation TEXT NOT NULL CHECK (operation IN ('create', 'update', 'delete')),
+        old_config TEXT,
+        new_config TEXT,
+        changed_by TEXT NOT NULL,
+        changed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_tool_config_audit_name ON tool_config_audit(tool_name);
+      CREATE INDEX IF NOT EXISTS idx_tool_config_audit_time ON tool_config_audit(changed_at DESC);
+    `);
+  }
+
+  // Check and create category_tool_configs table for per-category tool settings
+  const categoryToolConfigsTableExists = database.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='category_tool_configs'"
+  ).get();
+
+  if (!categoryToolConfigsTableExists) {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS category_tool_configs (
+        id TEXT PRIMARY KEY,
+        category_id INTEGER NOT NULL,
+        tool_name TEXT NOT NULL,
+        is_enabled INTEGER,
+        branding_json TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_by TEXT NOT NULL,
+        UNIQUE(category_id, tool_name),
+        FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_category_tool_configs_category ON category_tool_configs(category_id);
+      CREATE INDEX IF NOT EXISTS idx_category_tool_configs_tool ON category_tool_configs(tool_name);
+    `);
+  }
 }
 
 /**
@@ -368,6 +425,46 @@ CREATE TABLE IF NOT EXISTS storage_alerts (
   acknowledged_by TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_storage_alerts_pending ON storage_alerts(acknowledged_at) WHERE acknowledged_at IS NULL;
+
+-- Tool configurations (Tools system)
+CREATE TABLE IF NOT EXISTS tool_configs (
+  id TEXT PRIMARY KEY,
+  tool_name TEXT UNIQUE NOT NULL,
+  is_enabled INTEGER DEFAULT 0,
+  config_json TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_by TEXT NOT NULL
+);
+
+-- Tool configuration audit trail
+CREATE TABLE IF NOT EXISTS tool_config_audit (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  tool_name TEXT NOT NULL,
+  operation TEXT NOT NULL CHECK (operation IN ('create', 'update', 'delete')),
+  old_config TEXT,
+  new_config TEXT,
+  changed_by TEXT NOT NULL,
+  changed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_tool_config_audit_name ON tool_config_audit(tool_name);
+CREATE INDEX IF NOT EXISTS idx_tool_config_audit_time ON tool_config_audit(changed_at DESC);
+
+-- Category-level tool configurations (superuser overrides)
+CREATE TABLE IF NOT EXISTS category_tool_configs (
+  id TEXT PRIMARY KEY,
+  category_id INTEGER NOT NULL,
+  tool_name TEXT NOT NULL,
+  is_enabled INTEGER,
+  branding_json TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_by TEXT NOT NULL,
+  UNIQUE(category_id, tool_name),
+  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_category_tool_configs_category ON category_tool_configs(category_id);
+CREATE INDEX IF NOT EXISTS idx_category_tool_configs_tool ON category_tool_configs(tool_name);
   `;
 }
 
