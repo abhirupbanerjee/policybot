@@ -108,7 +108,7 @@ export async function POST(request: NextRequest) {
 
     // Run RAG query with context for autonomous tools
     // Context allows tools like doc_gen to know the threadId/categoryId
-    const { answer, sources, generatedDocuments } = await runWithContextAsync(
+    const { answer, sources, generatedDocuments, visualizations } = await runWithContextAsync(
       {
         threadId,
         messageId: assistantMessageId,
@@ -133,6 +133,7 @@ export async function POST(request: NextRequest) {
       content: answer,
       sources,
       generatedDocuments,
+      visualizations,
       timestamp: new Date(),
     };
 

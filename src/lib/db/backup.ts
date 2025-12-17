@@ -84,6 +84,107 @@ export interface SettingRecord {
   updated_by: string | null;
 }
 
+export interface ToolConfigRecord {
+  id: string;
+  tool_name: string;
+  is_enabled: number;
+  config_json: string;
+  created_at: string;
+  updated_at: string;
+  updated_by: string;
+}
+
+export interface CategoryToolConfigRecord {
+  id: string;
+  category_id: number;
+  tool_name: string;
+  is_enabled: number | null;
+  branding_json: string | null;
+  created_at: string;
+  updated_at: string;
+  updated_by: string;
+}
+
+export interface SkillRecord {
+  id: number;
+  name: string;
+  description: string | null;
+  prompt_content: string;
+  trigger_type: string;
+  trigger_value: string | null;
+  category_restricted: number;
+  is_index: number;
+  priority: number;
+  is_active: number;
+  is_core: number;
+  created_by_role: string;
+  token_estimate: number | null;
+  created_at: string;
+  updated_at: string;
+  created_by: string;
+  updated_by: string;
+}
+
+export interface CategorySkillRecord {
+  category_id: number;
+  skill_id: number;
+}
+
+export interface CategoryPromptRecord {
+  category_id: number;
+  prompt_addendum: string;
+  starter_prompts: string | null;
+  updated_at: string;
+  updated_by: string;
+}
+
+export interface DataApiConfigRecord {
+  id: string;
+  name: string;
+  description: string | null;
+  endpoint: string;
+  method: string;
+  response_format: string | null;
+  authentication: string | null;
+  headers: string | null;
+  parameters: string | null;
+  response_structure: string | null;
+  sample_response: string | null;
+  openapi_spec: string | null;
+  config_method: string | null;
+  status: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DataApiCategoryRecord {
+  api_id: string;
+  category_id: number;
+  created_at: string;
+}
+
+export interface DataCsvConfigRecord {
+  id: string;
+  name: string;
+  description: string | null;
+  file_path: string;
+  original_filename: string | null;
+  columns: string | null;
+  sample_data: string | null;
+  row_count: number;
+  file_size: number;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DataCsvCategoryRecord {
+  csv_id: string;
+  category_id: number;
+  created_at: string;
+}
+
 // ============ Export Functions ============
 
 /**
@@ -215,6 +316,112 @@ export function exportSettings(): SettingRecord[] {
     SELECT key, value, updated_at, updated_by
     FROM settings
     ORDER BY key
+  `);
+}
+
+/**
+ * Export all tool configurations
+ */
+export function exportToolConfigs(): ToolConfigRecord[] {
+  return queryAll<ToolConfigRecord>(`
+    SELECT id, tool_name, is_enabled, config_json, created_at, updated_at, updated_by
+    FROM tool_configs
+    ORDER BY tool_name
+  `);
+}
+
+/**
+ * Export category tool configurations
+ */
+export function exportCategoryToolConfigs(): CategoryToolConfigRecord[] {
+  return queryAll<CategoryToolConfigRecord>(`
+    SELECT id, category_id, tool_name, is_enabled, branding_json, created_at, updated_at, updated_by
+    FROM category_tool_configs
+    ORDER BY category_id, tool_name
+  `);
+}
+
+/**
+ * Export all skills
+ */
+export function exportSkills(): SkillRecord[] {
+  return queryAll<SkillRecord>(`
+    SELECT id, name, description, prompt_content, trigger_type, trigger_value,
+           category_restricted, is_index, priority, is_active, is_core,
+           created_by_role, token_estimate, created_at, updated_at, created_by, updated_by
+    FROM skills
+    ORDER BY id
+  `);
+}
+
+/**
+ * Export category-skill relationships
+ */
+export function exportCategorySkills(): CategorySkillRecord[] {
+  return queryAll<CategorySkillRecord>(`
+    SELECT category_id, skill_id
+    FROM category_skills
+    ORDER BY category_id, skill_id
+  `);
+}
+
+/**
+ * Export category prompts (includes starter prompts)
+ */
+export function exportCategoryPrompts(): CategoryPromptRecord[] {
+  return queryAll<CategoryPromptRecord>(`
+    SELECT category_id, prompt_addendum, starter_prompts, updated_at, updated_by
+    FROM category_prompts
+    ORDER BY category_id
+  `);
+}
+
+/**
+ * Export data API configurations
+ */
+export function exportDataApiConfigs(): DataApiConfigRecord[] {
+  return queryAll<DataApiConfigRecord>(`
+    SELECT id, name, description, endpoint, method, response_format,
+           authentication, headers, parameters, response_structure,
+           sample_response, openapi_spec, config_method, status,
+           created_by, created_at, updated_at
+    FROM data_api_configs
+    ORDER BY name
+  `);
+}
+
+/**
+ * Export data API to category mappings
+ */
+export function exportDataApiCategories(): DataApiCategoryRecord[] {
+  return queryAll<DataApiCategoryRecord>(`
+    SELECT api_id, category_id, created_at
+    FROM data_api_categories
+    ORDER BY api_id, category_id
+  `);
+}
+
+/**
+ * Export data CSV configurations
+ */
+export function exportDataCsvConfigs(): DataCsvConfigRecord[] {
+  return queryAll<DataCsvConfigRecord>(`
+    SELECT id, name, description, file_path, original_filename,
+           columns, sample_data, row_count, file_size,
+           created_by, created_at, updated_at
+    FROM data_csv_configs
+    ORDER BY name
+  `);
+}
+
+/**
+ * Export data CSV to category mappings
+ */
+export function exportDataCsvCategories(): DataCsvCategoryRecord[] {
+  return queryAll<DataCsvCategoryRecord>(`
+    SELECT csv_id, category_id, created_at
+    FROM data_csv_categories
+    ORDER BY csv_id, category_id
   `);
 }
 
@@ -475,6 +682,223 @@ export function importSettings(records: SettingRecord[]): void {
   }
 }
 
+/**
+ * Import tool configurations
+ */
+export function importToolConfigs(records: ToolConfigRecord[]): void {
+  const db = getDatabase();
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO tool_configs (id, tool_name, is_enabled, config_json, created_at, updated_at, updated_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  for (const rec of records) {
+    stmt.run(
+      rec.id,
+      rec.tool_name,
+      rec.is_enabled,
+      rec.config_json,
+      rec.created_at,
+      rec.updated_at,
+      rec.updated_by
+    );
+  }
+}
+
+/**
+ * Import category tool configurations
+ */
+export function importCategoryToolConfigs(records: CategoryToolConfigRecord[]): void {
+  const db = getDatabase();
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO category_tool_configs (id, category_id, tool_name, is_enabled, branding_json, created_at, updated_at, updated_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  for (const rec of records) {
+    stmt.run(
+      rec.id,
+      rec.category_id,
+      rec.tool_name,
+      rec.is_enabled,
+      rec.branding_json,
+      rec.created_at,
+      rec.updated_at,
+      rec.updated_by
+    );
+  }
+}
+
+/**
+ * Import skills (preserves IDs)
+ */
+export function importSkills(records: SkillRecord[]): void {
+  const db = getDatabase();
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO skills (
+      id, name, description, prompt_content, trigger_type, trigger_value,
+      category_restricted, is_index, priority, is_active, is_core,
+      created_by_role, token_estimate, created_at, updated_at, created_by, updated_by
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  for (const rec of records) {
+    stmt.run(
+      rec.id,
+      rec.name,
+      rec.description,
+      rec.prompt_content,
+      rec.trigger_type,
+      rec.trigger_value,
+      rec.category_restricted,
+      rec.is_index,
+      rec.priority,
+      rec.is_active,
+      rec.is_core,
+      rec.created_by_role,
+      rec.token_estimate,
+      rec.created_at,
+      rec.updated_at,
+      rec.created_by,
+      rec.updated_by
+    );
+  }
+}
+
+/**
+ * Import category-skill relationships
+ */
+export function importCategorySkills(records: CategorySkillRecord[]): void {
+  const db = getDatabase();
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO category_skills (category_id, skill_id)
+    VALUES (?, ?)
+  `);
+
+  for (const rec of records) {
+    stmt.run(rec.category_id, rec.skill_id);
+  }
+}
+
+/**
+ * Import category prompts (includes starter prompts)
+ */
+export function importCategoryPrompts(records: CategoryPromptRecord[]): void {
+  const db = getDatabase();
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO category_prompts (category_id, prompt_addendum, starter_prompts, updated_at, updated_by)
+    VALUES (?, ?, ?, ?, ?)
+  `);
+
+  for (const rec of records) {
+    stmt.run(
+      rec.category_id,
+      rec.prompt_addendum,
+      rec.starter_prompts,
+      rec.updated_at,
+      rec.updated_by
+    );
+  }
+}
+
+/**
+ * Import data API configurations
+ */
+export function importDataApiConfigs(records: DataApiConfigRecord[]): void {
+  const db = getDatabase();
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO data_api_configs (
+      id, name, description, endpoint, method, response_format,
+      authentication, headers, parameters, response_structure,
+      sample_response, openapi_spec, config_method, status,
+      created_by, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  for (const rec of records) {
+    stmt.run(
+      rec.id,
+      rec.name,
+      rec.description,
+      rec.endpoint,
+      rec.method,
+      rec.response_format,
+      rec.authentication,
+      rec.headers,
+      rec.parameters,
+      rec.response_structure,
+      rec.sample_response,
+      rec.openapi_spec,
+      rec.config_method,
+      rec.status,
+      rec.created_by,
+      rec.created_at,
+      rec.updated_at
+    );
+  }
+}
+
+/**
+ * Import data API to category mappings
+ */
+export function importDataApiCategories(records: DataApiCategoryRecord[]): void {
+  const db = getDatabase();
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO data_api_categories (api_id, category_id, created_at)
+    VALUES (?, ?, ?)
+  `);
+
+  for (const rec of records) {
+    stmt.run(rec.api_id, rec.category_id, rec.created_at);
+  }
+}
+
+/**
+ * Import data CSV configurations
+ */
+export function importDataCsvConfigs(records: DataCsvConfigRecord[]): void {
+  const db = getDatabase();
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO data_csv_configs (
+      id, name, description, file_path, original_filename,
+      columns, sample_data, row_count, file_size,
+      created_by, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  for (const rec of records) {
+    stmt.run(
+      rec.id,
+      rec.name,
+      rec.description,
+      rec.file_path,
+      rec.original_filename,
+      rec.columns,
+      rec.sample_data,
+      rec.row_count,
+      rec.file_size,
+      rec.created_by,
+      rec.created_at,
+      rec.updated_at
+    );
+  }
+}
+
+/**
+ * Import data CSV to category mappings
+ */
+export function importDataCsvCategories(records: DataCsvCategoryRecord[]): void {
+  const db = getDatabase();
+  const stmt = db.prepare(`
+    INSERT OR REPLACE INTO data_csv_categories (csv_id, category_id, created_at)
+    VALUES (?, ?, ?)
+  `);
+
+  for (const rec of records) {
+    stmt.run(rec.csv_id, rec.category_id, rec.created_at);
+  }
+}
+
 // ============ Clear Functions ============
 
 /**
@@ -498,6 +922,19 @@ export function clearAllData(): void {
     execute('DELETE FROM user_subscriptions');
     execute('DELETE FROM super_user_categories');
     execute('DELETE FROM users');
+
+    // Clear tools, skills, and category prompts (depend on categories)
+    execute('DELETE FROM category_tool_configs');
+    execute('DELETE FROM tool_configs');
+    execute('DELETE FROM category_skills');
+    execute('DELETE FROM skills');
+    execute('DELETE FROM category_prompts');
+
+    // Clear data sources (depend on categories)
+    execute('DELETE FROM data_api_categories');
+    execute('DELETE FROM data_api_configs');
+    execute('DELETE FROM data_csv_categories');
+    execute('DELETE FROM data_csv_configs');
 
     // Clear categories
     execute('DELETE FROM categories');

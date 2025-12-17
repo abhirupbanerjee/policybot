@@ -22,6 +22,15 @@ import {
   exportThreadUploads,
   exportThreadOutputs,
   exportSettings,
+  exportToolConfigs,
+  exportCategoryToolConfigs,
+  exportSkills,
+  exportCategorySkills,
+  exportCategoryPrompts,
+  exportDataApiConfigs,
+  exportDataApiCategories,
+  exportDataCsvConfigs,
+  exportDataCsvCategories,
   importDocuments,
   importCategories,
   importDocumentCategories,
@@ -34,6 +43,15 @@ import {
   importThreadUploads,
   importThreadOutputs,
   importSettings,
+  importToolConfigs,
+  importCategoryToolConfigs,
+  importSkills,
+  importCategorySkills,
+  importCategoryPrompts,
+  importDataApiConfigs,
+  importDataApiCategories,
+  importDataCsvConfigs,
+  importDataCsvCategories,
   clearAllData,
 } from './db/backup';
 import { getGlobalDocsDir, getThreadsDir, ensureDir } from './storage';
@@ -48,6 +66,10 @@ export interface BackupOptions {
   includeSettings: boolean;
   includeUsers: boolean;
   includeThreads: boolean;
+  includeTools: boolean;
+  includeSkills: boolean;
+  includeCategoryPrompts: boolean;
+  includeDataSources: boolean;
 }
 
 export interface RestoreOptions {
@@ -58,6 +80,10 @@ export interface RestoreOptions {
   restoreSettings: boolean;
   restoreUsers: boolean;
   restoreThreads: boolean;
+  restoreTools: boolean;
+  restoreSkills: boolean;
+  restoreCategoryPrompts: boolean;
+  restoreDataSources: boolean;
   refreshVectorDb: boolean;
 }
 
@@ -76,10 +102,18 @@ export interface BackupManifest {
     settings: boolean;
     users: boolean;
     threads: boolean;
+    tools: boolean;
+    skills: boolean;
+    categoryPrompts: boolean;
+    dataSources: boolean;
     documentCount: number;
     categoryCount: number;
     userCount: number;
     threadCount: number;
+    toolCount: number;
+    skillCount: number;
+    categoryPromptCount: number;
+    dataSourceCount: number;
     totalFileSize: number;
   };
   warnings: string[];
@@ -95,6 +129,10 @@ export interface RestoreResult {
     threadsRestored: number;
     filesRestored: number;
     settingsRestored: number;
+    toolsRestored: number;
+    skillsRestored: number;
+    categoryPromptsRestored: number;
+    dataSourcesRestored: number;
   };
   warnings: string[];
 }
@@ -153,6 +191,19 @@ export async function createBackup(
     threadOutputs = exportThreadOutputs();
   }
 
+  // Tools, skills, and category prompts data
+  const toolConfigs = options.includeTools ? exportToolConfigs() : [];
+  const categoryToolConfigs = options.includeTools ? exportCategoryToolConfigs() : [];
+  const skills = options.includeSkills ? exportSkills() : [];
+  const categorySkills = options.includeSkills ? exportCategorySkills() : [];
+  const categoryPrompts = options.includeCategoryPrompts ? exportCategoryPrompts() : [];
+
+  // Data sources
+  const dataApiConfigs = options.includeDataSources ? exportDataApiConfigs() : [];
+  const dataApiCategories = options.includeDataSources ? exportDataApiCategories() : [];
+  const dataCsvConfigs = options.includeDataSources ? exportDataCsvConfigs() : [];
+  const dataCsvCategories = options.includeDataSources ? exportDataCsvCategories() : [];
+
   // Create manifest
   const manifest: BackupManifest = {
     version: '1.0.0',
@@ -169,10 +220,18 @@ export async function createBackup(
       settings: options.includeSettings,
       users: options.includeUsers,
       threads: options.includeThreads,
+      tools: options.includeTools,
+      skills: options.includeSkills,
+      categoryPrompts: options.includeCategoryPrompts,
+      dataSources: options.includeDataSources,
       documentCount: documents.length,
       categoryCount: categories.length,
       userCount: users.length,
       threadCount: threads.length,
+      toolCount: toolConfigs.length,
+      skillCount: skills.length,
+      categoryPromptCount: categoryPrompts.length,
+      dataSourceCount: dataApiConfigs.length + dataCsvConfigs.length,
       totalFileSize: 0, // Will be updated
     },
     warnings,
@@ -212,6 +271,31 @@ export async function createBackup(
     archive.append(JSON.stringify({ exportedAt: new Date().toISOString(), count: threadOutputs.length, records: threadOutputs }, null, 2), { name: 'data/thread_outputs.json' });
   }
 
+  // Add tools data
+  if (options.includeTools) {
+    archive.append(JSON.stringify({ exportedAt: new Date().toISOString(), count: toolConfigs.length, records: toolConfigs }, null, 2), { name: 'data/tool_configs.json' });
+    archive.append(JSON.stringify({ exportedAt: new Date().toISOString(), count: categoryToolConfigs.length, records: categoryToolConfigs }, null, 2), { name: 'data/category_tool_configs.json' });
+  }
+
+  // Add skills data
+  if (options.includeSkills) {
+    archive.append(JSON.stringify({ exportedAt: new Date().toISOString(), count: skills.length, records: skills }, null, 2), { name: 'data/skills.json' });
+    archive.append(JSON.stringify({ exportedAt: new Date().toISOString(), count: categorySkills.length, records: categorySkills }, null, 2), { name: 'data/category_skills.json' });
+  }
+
+  // Add category prompts data
+  if (options.includeCategoryPrompts) {
+    archive.append(JSON.stringify({ exportedAt: new Date().toISOString(), count: categoryPrompts.length, records: categoryPrompts }, null, 2), { name: 'data/category_prompts.json' });
+  }
+
+  // Add data sources data
+  if (options.includeDataSources) {
+    archive.append(JSON.stringify({ exportedAt: new Date().toISOString(), count: dataApiConfigs.length, records: dataApiConfigs }, null, 2), { name: 'data/data_api_configs.json' });
+    archive.append(JSON.stringify({ exportedAt: new Date().toISOString(), count: dataApiCategories.length, records: dataApiCategories }, null, 2), { name: 'data/data_api_categories.json' });
+    archive.append(JSON.stringify({ exportedAt: new Date().toISOString(), count: dataCsvConfigs.length, records: dataCsvConfigs }, null, 2), { name: 'data/data_csv_configs.json' });
+    archive.append(JSON.stringify({ exportedAt: new Date().toISOString(), count: dataCsvCategories.length, records: dataCsvCategories }, null, 2), { name: 'data/data_csv_categories.json' });
+  }
+
   // Add document files
   if (options.includeDocumentFiles && options.includeDocuments) {
     const globalDocsDir = getGlobalDocsDir();
@@ -235,6 +319,24 @@ export async function createBackup(
     if (fs.existsSync(threadsDir)) {
       // Add entire threads directory recursively
       archive.directory(threadsDir, 'files/threads');
+    }
+  }
+
+  // Add CSV data source files
+  if (options.includeDataSources && dataCsvConfigs.length > 0) {
+    const dataDir = process.env.DATA_DIR || path.join(process.cwd(), 'data');
+    const csvDir = path.join(dataDir, 'csv-sources');
+    if (fs.existsSync(csvDir)) {
+      for (const csv of dataCsvConfigs) {
+        const filePath = path.join(csvDir, csv.file_path);
+        if (fs.existsSync(filePath)) {
+          const stats = fs.statSync(filePath);
+          totalFileSize += stats.size;
+          archive.file(filePath, { name: `files/csv-sources/${csv.file_path}` });
+        } else {
+          warnings.push(`CSV file not found: ${csv.file_path}`);
+        }
+      }
     }
   }
 
@@ -296,6 +398,10 @@ export async function restoreBackup(
       threadsRestored: 0,
       filesRestored: 0,
       settingsRestored: 0,
+      toolsRestored: 0,
+      skillsRestored: 0,
+      categoryPromptsRestored: 0,
+      dataSourcesRestored: 0,
     },
     warnings: [],
   };
@@ -411,6 +517,70 @@ export async function restoreBackup(
           result.details.settingsRestored = settings.length;
         }
       }
+
+      // Restore tools
+      if (options.restoreTools && manifest.contents.tools) {
+        const toolConfigs = readJsonFromZip<ReturnType<typeof exportToolConfigs>>('data/tool_configs.json');
+        if (toolConfigs && toolConfigs.length > 0) {
+          importToolConfigs(toolConfigs);
+          result.details.toolsRestored = toolConfigs.length;
+        }
+
+        const categoryToolConfigs = readJsonFromZip<ReturnType<typeof exportCategoryToolConfigs>>('data/category_tool_configs.json');
+        if (categoryToolConfigs && categoryToolConfigs.length > 0) {
+          importCategoryToolConfigs(categoryToolConfigs);
+        }
+      }
+
+      // Restore skills
+      if (options.restoreSkills && manifest.contents.skills) {
+        const skills = readJsonFromZip<ReturnType<typeof exportSkills>>('data/skills.json');
+        if (skills && skills.length > 0) {
+          importSkills(skills);
+          result.details.skillsRestored = skills.length;
+        }
+
+        const categorySkills = readJsonFromZip<ReturnType<typeof exportCategorySkills>>('data/category_skills.json');
+        if (categorySkills && categorySkills.length > 0) {
+          importCategorySkills(categorySkills);
+        }
+      }
+
+      // Restore category prompts (includes starter prompts)
+      if (options.restoreCategoryPrompts && manifest.contents.categoryPrompts) {
+        const categoryPrompts = readJsonFromZip<ReturnType<typeof exportCategoryPrompts>>('data/category_prompts.json');
+        if (categoryPrompts && categoryPrompts.length > 0) {
+          importCategoryPrompts(categoryPrompts);
+          result.details.categoryPromptsRestored = categoryPrompts.length;
+        }
+      }
+
+      // Restore data sources
+      if (options.restoreDataSources && manifest.contents.dataSources) {
+        // Restore API configs first, then categories
+        const dataApiConfigs = readJsonFromZip<ReturnType<typeof exportDataApiConfigs>>('data/data_api_configs.json');
+        if (dataApiConfigs && dataApiConfigs.length > 0) {
+          importDataApiConfigs(dataApiConfigs);
+          result.details.dataSourcesRestored += dataApiConfigs.length;
+        }
+
+        const dataApiCategories = readJsonFromZip<ReturnType<typeof exportDataApiCategories>>('data/data_api_categories.json');
+        if (dataApiCategories && dataApiCategories.length > 0) {
+          importDataApiCategories(dataApiCategories);
+        }
+
+        // Restore CSV configs first, then categories
+        const dataCsvConfigs = readJsonFromZip<ReturnType<typeof exportDataCsvConfigs>>('data/data_csv_configs.json');
+        if (dataCsvConfigs && dataCsvConfigs.length > 0) {
+          importDataCsvConfigs(dataCsvConfigs);
+          result.details.dataSourcesRestored += dataCsvConfigs.length;
+        }
+
+        const dataCsvCategories = readJsonFromZip<ReturnType<typeof exportDataCsvCategories>>('data/data_csv_categories.json');
+        if (dataCsvCategories && dataCsvCategories.length > 0) {
+          importDataCsvCategories(dataCsvCategories);
+        }
+      }
     });
 
     // Restore document files (outside transaction - file system ops)
@@ -444,6 +614,28 @@ export async function restoreBackup(
         if (!entry.isDirectory) {
           const relativePath = entry.entryName.replace('files/threads/', '');
           const targetPath = path.join(threadsDir, relativePath);
+
+          // Ensure directory exists
+          await ensureDir(path.dirname(targetPath));
+
+          // Extract file
+          fs.writeFileSync(targetPath, entry.getData());
+          result.details.filesRestored++;
+        }
+      }
+    }
+
+    // Restore CSV data source files
+    if (options.restoreDataSources && manifest.contents.dataSources) {
+      const dataDir = process.env.DATA_DIR || path.join(process.cwd(), 'data');
+      const csvDir = path.join(dataDir, 'csv-sources');
+      await ensureDir(csvDir);
+
+      const fileEntries = zip.getEntries().filter(e => e.entryName.startsWith('files/csv-sources/'));
+      for (const entry of fileEntries) {
+        if (!entry.isDirectory) {
+          const relativePath = entry.entryName.replace('files/csv-sources/', '');
+          const targetPath = path.join(csvDir, relativePath);
 
           // Ensure directory exists
           await ensureDir(path.dirname(targetPath));

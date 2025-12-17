@@ -33,6 +33,10 @@ export async function POST(request: NextRequest) {
       includeSettings: body.includeSettings !== false,
       includeUsers: body.includeUsers !== false,
       includeThreads: body.includeThreads === true, // Default false (can be large)
+      includeTools: body.includeTools !== false, // Default true
+      includeSkills: body.includeSkills !== false, // Default true
+      includeCategoryPrompts: body.includeCategoryPrompts !== false, // Default true
+      includeDataSources: body.includeDataSources !== false, // Default true
     };
 
     // Create backup

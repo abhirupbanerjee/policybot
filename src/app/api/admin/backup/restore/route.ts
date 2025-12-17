@@ -57,6 +57,10 @@ export async function POST(request: NextRequest) {
       restoreSettings: formData.get('restoreSettings') !== 'false',
       restoreUsers: formData.get('restoreUsers') !== 'false',
       restoreThreads: formData.get('restoreThreads') === 'true',
+      restoreTools: formData.get('restoreTools') !== 'false',
+      restoreSkills: formData.get('restoreSkills') !== 'false',
+      restoreCategoryPrompts: formData.get('restoreCategoryPrompts') !== 'false',
+      restoreDataSources: formData.get('restoreDataSources') !== 'false',
       refreshVectorDb: formData.get('refreshVectorDb') === 'true',
     };
 

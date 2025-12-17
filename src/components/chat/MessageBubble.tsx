@@ -7,6 +7,7 @@ import { ChevronDown, ChevronRight, Copy, Check } from 'lucide-react';
 import type { Message } from '@/types';
 import SourceCard from './SourceCard';
 import DocumentResultCard from './DocumentResultCard';
+import DataVisualization from './DataVisualization';
 import { MarkdownComponents } from '@/components/markdown/MarkdownRenderers';
 
 const MAX_SOURCES_DISPLAYED = 5;
@@ -74,6 +75,26 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
           <div className="mt-2">
             {message.generatedDocuments.map((doc) => (
               <DocumentResultCard key={doc.id} document={doc} />
+            ))}
+          </div>
+        )}
+
+        {/* Data Visualizations */}
+        {message.visualizations && message.visualizations.length > 0 && (
+          <div className="mt-4 space-y-4">
+            {message.visualizations.map((viz, index) => (
+              <DataVisualization
+                key={index}
+                chartType={viz.chartType}
+                data={viz.data}
+                xField={viz.xField}
+                yField={viz.yField}
+                groupBy={viz.groupBy}
+                sourceName={viz.sourceName}
+                cached={viz.cached}
+                fields={viz.fields}
+                title={viz.title}
+              />
             ))}
           </div>
         )}

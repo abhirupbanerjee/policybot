@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef } from 'react';
-import { Download, UploadCloud, AlertTriangle, CheckCircle, FileText, Users, FolderOpen, Settings, MessageSquare, FileCode, RefreshCw, AlertCircle } from 'lucide-react';
+import { Download, UploadCloud, AlertTriangle, CheckCircle, FileText, Users, FolderOpen, Settings, MessageSquare, FileCode, RefreshCw, AlertCircle, Wrench, Sparkles, MessageCircle, Database } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
 
@@ -20,10 +20,18 @@ interface BackupManifest {
     settings: boolean;
     users: boolean;
     threads: boolean;
+    tools: boolean;
+    skills: boolean;
+    categoryPrompts: boolean;
+    dataSources: boolean;
     documentCount: number;
     categoryCount: number;
     userCount: number;
     threadCount: number;
+    toolCount: number;
+    skillCount: number;
+    categoryPromptCount: number;
+    dataSourceCount: number;
     totalFileSize: number;
   };
   warnings: string[];
@@ -39,6 +47,10 @@ interface RestoreResult {
     threadsRestored: number;
     filesRestored: number;
     settingsRestored: number;
+    toolsRestored: number;
+    skillsRestored: number;
+    categoryPromptsRestored: number;
+    dataSourcesRestored: number;
   };
   warnings: string[];
 }
@@ -53,6 +65,10 @@ export default function BackupTab() {
     includeSettings: true,
     includeUsers: true,
     includeThreads: false,
+    includeTools: true,
+    includeSkills: true,
+    includeCategoryPrompts: true,
+    includeDataSources: true,
   });
 
   // Restore state
@@ -68,6 +84,10 @@ export default function BackupTab() {
     restoreSettings: true,
     restoreUsers: true,
     restoreThreads: false,
+    restoreTools: true,
+    restoreSkills: true,
+    restoreCategoryPrompts: true,
+    restoreDataSources: true,
     refreshVectorDb: true,
   });
 
@@ -150,6 +170,10 @@ export default function BackupTab() {
           restoreSettings: data.manifest.contents.settings,
           restoreUsers: data.manifest.contents.users,
           restoreThreads: data.manifest.contents.threads,
+          restoreTools: data.manifest.contents.tools ?? false,
+          restoreSkills: data.manifest.contents.skills ?? false,
+          restoreCategoryPrompts: data.manifest.contents.categoryPrompts ?? false,
+          restoreDataSources: data.manifest.contents.dataSources ?? false,
         }));
       }
     } catch (err) {
@@ -306,6 +330,50 @@ export default function BackupTab() {
                 <MessageSquare size={18} className="text-gray-500" />
                 <span className="text-sm">Threads</span>
               </label>
+
+              <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={backupOptions.includeTools}
+                  onChange={(e) => setBackupOptions(prev => ({ ...prev, includeTools: e.target.checked }))}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <Wrench size={18} className="text-gray-500" />
+                <span className="text-sm">Tools</span>
+              </label>
+
+              <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={backupOptions.includeSkills}
+                  onChange={(e) => setBackupOptions(prev => ({ ...prev, includeSkills: e.target.checked }))}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <Sparkles size={18} className="text-gray-500" />
+                <span className="text-sm">Skills</span>
+              </label>
+
+              <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={backupOptions.includeCategoryPrompts}
+                  onChange={(e) => setBackupOptions(prev => ({ ...prev, includeCategoryPrompts: e.target.checked }))}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <MessageCircle size={18} className="text-gray-500" />
+                <span className="text-sm">Prompts & Starters</span>
+              </label>
+
+              <label className="flex items-center gap-3 p-3 border rounded-lg cursor-pointer hover:bg-gray-50 transition-colors">
+                <input
+                  type="checkbox"
+                  checked={backupOptions.includeDataSources}
+                  onChange={(e) => setBackupOptions(prev => ({ ...prev, includeDataSources: e.target.checked }))}
+                  className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                />
+                <Database size={18} className="text-gray-500" />
+                <span className="text-sm">Data Sources</span>
+              </label>
             </div>
 
             <div className="flex justify-end pt-4 border-t mt-4">
@@ -411,6 +479,30 @@ export default function BackupTab() {
                         <span>{restoreManifest.contents.threadCount} Threads</span>
                       </div>
                     )}
+                    {restoreManifest.contents.tools && (
+                      <div className="flex items-center gap-2">
+                        <Wrench size={14} className="text-blue-600" />
+                        <span>{restoreManifest.contents.toolCount} Tools</span>
+                      </div>
+                    )}
+                    {restoreManifest.contents.skills && (
+                      <div className="flex items-center gap-2">
+                        <Sparkles size={14} className="text-blue-600" />
+                        <span>{restoreManifest.contents.skillCount} Skills</span>
+                      </div>
+                    )}
+                    {restoreManifest.contents.categoryPrompts && (
+                      <div className="flex items-center gap-2">
+                        <MessageCircle size={14} className="text-blue-600" />
+                        <span>{restoreManifest.contents.categoryPromptCount} Prompts</span>
+                      </div>
+                    )}
+                    {restoreManifest.contents.dataSources && (
+                      <div className="flex items-center gap-2">
+                        <Database size={14} className="text-blue-600" />
+                        <span>{restoreManifest.contents.dataSourceCount} Data Sources</span>
+                      </div>
+                    )}
                   </div>
                   <div className="mt-2 text-xs text-blue-600">
                     Created: {new Date(restoreManifest.createdAt).toLocaleString()} by {restoreManifest.createdBy}
@@ -486,6 +578,50 @@ export default function BackupTab() {
                       className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                     />
                     <span className="text-sm">Threads</span>
+                  </label>
+
+                  <label className={`flex items-center gap-2 p-2 border rounded cursor-pointer hover:bg-gray-50 ${!restoreManifest?.contents.tools ? 'opacity-50' : ''}`}>
+                    <input
+                      type="checkbox"
+                      checked={restoreOptions.restoreTools}
+                      onChange={(e) => setRestoreOptions(prev => ({ ...prev, restoreTools: e.target.checked }))}
+                      disabled={!restoreManifest?.contents.tools}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="text-sm">Tools</span>
+                  </label>
+
+                  <label className={`flex items-center gap-2 p-2 border rounded cursor-pointer hover:bg-gray-50 ${!restoreManifest?.contents.skills ? 'opacity-50' : ''}`}>
+                    <input
+                      type="checkbox"
+                      checked={restoreOptions.restoreSkills}
+                      onChange={(e) => setRestoreOptions(prev => ({ ...prev, restoreSkills: e.target.checked }))}
+                      disabled={!restoreManifest?.contents.skills}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="text-sm">Skills</span>
+                  </label>
+
+                  <label className={`flex items-center gap-2 p-2 border rounded cursor-pointer hover:bg-gray-50 ${!restoreManifest?.contents.categoryPrompts ? 'opacity-50' : ''}`}>
+                    <input
+                      type="checkbox"
+                      checked={restoreOptions.restoreCategoryPrompts}
+                      onChange={(e) => setRestoreOptions(prev => ({ ...prev, restoreCategoryPrompts: e.target.checked }))}
+                      disabled={!restoreManifest?.contents.categoryPrompts}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="text-sm">Prompts & Starters</span>
+                  </label>
+
+                  <label className={`flex items-center gap-2 p-2 border rounded cursor-pointer hover:bg-gray-50 ${!restoreManifest?.contents.dataSources ? 'opacity-50' : ''}`}>
+                    <input
+                      type="checkbox"
+                      checked={restoreOptions.restoreDataSources}
+                      onChange={(e) => setRestoreOptions(prev => ({ ...prev, restoreDataSources: e.target.checked }))}
+                      disabled={!restoreManifest?.contents.dataSources}
+                      className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="text-sm">Data Sources</span>
                   </label>
                 </div>
 
@@ -576,6 +712,18 @@ export default function BackupTab() {
                   )}
                   {restoreResult.details.settingsRestored > 0 && (
                     <div>Settings: {restoreResult.details.settingsRestored}</div>
+                  )}
+                  {restoreResult.details.toolsRestored > 0 && (
+                    <div>Tools: {restoreResult.details.toolsRestored}</div>
+                  )}
+                  {restoreResult.details.skillsRestored > 0 && (
+                    <div>Skills: {restoreResult.details.skillsRestored}</div>
+                  )}
+                  {restoreResult.details.categoryPromptsRestored > 0 && (
+                    <div>Prompts: {restoreResult.details.categoryPromptsRestored}</div>
+                  )}
+                  {restoreResult.details.dataSourcesRestored > 0 && (
+                    <div>Data Sources: {restoreResult.details.dataSourcesRestored}</div>
                   )}
                 </div>
               )}

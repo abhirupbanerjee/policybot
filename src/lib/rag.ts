@@ -17,7 +17,7 @@ import { getCategoryIdsBySlugs } from './db/categories';
 import { resolveSkills } from './skills/resolver';
 import { rerankChunks } from './reranker';
 import { getAvailableDataSourcesDescription } from './tools/data-source';
-import type { Message, Source, RetrievedChunk, RAGResponse, GeneratedDocumentInfo } from '@/types';
+import type { Message, Source, RetrievedChunk, RAGResponse, GeneratedDocumentInfo, MessageVisualization } from '@/types';
 
 /**
  * Generate expanded queries to improve retrieval coverage
@@ -362,7 +362,10 @@ export async function ragQuery(
   // Extract generated documents from tool call results
   const generatedDocuments = extractGeneratedDocumentsFromHistory(fullHistory);
 
-  const response: RAGResponse = { answer, sources, generatedDocuments };
+  // Extract visualizations from data_source tool results
+  const visualizations = extractVisualizationsFromHistory(fullHistory);
+
+  const response: RAGResponse = { answer, sources, generatedDocuments, visualizations };
 
   // Cache response (only for queries without user documents and if caching is enabled)
   if (cacheEnabled && userDocPaths.length === 0) {
@@ -441,4 +444,43 @@ function extractGeneratedDocumentsFromHistory(
   }
 
   return documents;
+}
+
+/**
+ * Extract visualizations from tool call history (data_source tool)
+ */
+function extractVisualizationsFromHistory(
+  history: OpenAI.Chat.ChatCompletionMessageParam[]
+): MessageVisualization[] {
+  const visualizations: MessageVisualization[] = [];
+
+  for (const msg of history) {
+    if (msg.role === 'tool') {
+      try {
+        const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+        const toolResult = JSON.parse(content);
+
+        // Check if this is a successful data_source result with visualization hint
+        if (toolResult.success && toolResult.data && toolResult.visualizationHint) {
+          const hint = toolResult.visualizationHint;
+          const metadata = toolResult.metadata;
+
+          visualizations.push({
+            chartType: hint.chartType,
+            data: toolResult.data,
+            xField: hint.xField,
+            yField: hint.yField,
+            groupBy: hint.groupBy,
+            sourceName: metadata?.source,
+            cached: metadata?.cached,
+            fields: metadata?.fields,
+          });
+        }
+      } catch {
+        // Ignore JSON parse errors - not a data_source result
+      }
+    }
+  }
+
+  return visualizations;
 }
