@@ -1,0 +1,689 @@
+/**
+ * Data Source Tool
+ *
+ * Provides data querying capabilities from external APIs and CSV files
+ * with category-based access control and visualization support.
+ */
+
+import { getToolConfig } from '../db/tool-config';
+import { getDataSourceByName, getAllDataSourcesForCategories } from '../db/data-sources';
+import { callDataAPI } from '../data-sources/api-caller';
+import { queryCSVData } from '../data-sources/csv-handler';
+import type { ToolDefinition, ValidationResult } from '../tools';
+import type {
+  DataFilter,
+  DataSort,
+  DataQueryResponse,
+  ChartType,
+  VisualizationHint,
+} from '../../types/data-sources';
+
+// ===== Configuration Schema =====
+
+/**
+ * Data source tool configuration schema for admin UI
+ */
+const dataSourceConfigSchema = {
+  type: 'object',
+  properties: {
+    cacheTTLSeconds: {
+      type: 'number',
+      title: 'Cache Duration (seconds)',
+      description: 'How long to cache API responses',
+      minimum: 60,
+      maximum: 86400,
+      default: 3600,
+    },
+    timeout: {
+      type: 'number',
+      title: 'Request Timeout (seconds)',
+      description: 'Maximum time to wait for API responses',
+      minimum: 5,
+      maximum: 120,
+      default: 30,
+    },
+    defaultLimit: {
+      type: 'number',
+      title: 'Default Record Limit',
+      description: 'Default number of records to return',
+      minimum: 1,
+      maximum: 1000,
+      default: 100,
+    },
+    maxLimit: {
+      type: 'number',
+      title: 'Maximum Record Limit',
+      description: 'Maximum number of records allowed per query',
+      minimum: 1,
+      maximum: 10000,
+      default: 1000,
+    },
+    defaultChartType: {
+      type: 'string',
+      title: 'Default Chart Type',
+      description: 'Default visualization type when not specified',
+      enum: ['bar', 'line', 'pie', 'area', 'scatter', 'radar', 'table'],
+      default: 'bar',
+    },
+    enabledChartTypes: {
+      type: 'array',
+      title: 'Enabled Chart Types',
+      description: 'Chart types available for visualization',
+      items: {
+        type: 'string',
+        enum: ['bar', 'line', 'pie', 'area', 'scatter', 'radar', 'table'],
+      },
+      default: ['bar', 'line', 'pie', 'area', 'scatter', 'radar', 'table'],
+    },
+  },
+  required: ['cacheTTLSeconds', 'timeout', 'defaultLimit', 'maxLimit'],
+};
+
+// ===== Validation =====
+
+/**
+ * Validate data source tool configuration
+ */
+function validateDataSourceConfig(config: Record<string, unknown>): ValidationResult {
+  const errors: string[] = [];
+
+  // Validate cacheTTLSeconds
+  if (config.cacheTTLSeconds !== undefined) {
+    const cacheTTL = config.cacheTTLSeconds as number;
+    if (typeof cacheTTL !== 'number' || cacheTTL < 60 || cacheTTL > 86400) {
+      errors.push('cacheTTLSeconds must be a number between 60 and 86400');
+    }
+  }
+
+  // Validate timeout
+  if (config.timeout !== undefined) {
+    const timeout = config.timeout as number;
+    if (typeof timeout !== 'number' || timeout < 5 || timeout > 120) {
+      errors.push('timeout must be a number between 5 and 120');
+    }
+  }
+
+  // Validate defaultLimit
+  if (config.defaultLimit !== undefined) {
+    const defaultLimit = config.defaultLimit as number;
+    if (typeof defaultLimit !== 'number' || defaultLimit < 1 || defaultLimit > 1000) {
+      errors.push('defaultLimit must be a number between 1 and 1000');
+    }
+  }
+
+  // Validate maxLimit
+  if (config.maxLimit !== undefined) {
+    const maxLimit = config.maxLimit as number;
+    if (typeof maxLimit !== 'number' || maxLimit < 1 || maxLimit > 10000) {
+      errors.push('maxLimit must be a number between 1 and 10000');
+    }
+  }
+
+  // Validate defaultChartType
+  const validChartTypes = ['bar', 'line', 'pie', 'area', 'scatter', 'radar', 'table'];
+  if (config.defaultChartType && !validChartTypes.includes(config.defaultChartType as string)) {
+    errors.push(`defaultChartType must be one of: ${validChartTypes.join(', ')}`);
+  }
+
+  // Validate enabledChartTypes
+  if (config.enabledChartTypes) {
+    if (!Array.isArray(config.enabledChartTypes)) {
+      errors.push('enabledChartTypes must be an array');
+    } else {
+      for (const chartType of config.enabledChartTypes as string[]) {
+        if (!validChartTypes.includes(chartType)) {
+          errors.push(`Invalid chart type in enabledChartTypes: ${chartType}`);
+        }
+      }
+    }
+  }
+
+  return { valid: errors.length === 0, errors };
+}
+
+// ===== Helper Functions =====
+
+/**
+ * Get data source tool configuration
+ */
+function getDataSourceToolConfig(): {
+  cacheTTLSeconds: number;
+  timeout: number;
+  defaultLimit: number;
+  maxLimit: number;
+  defaultChartType: ChartType;
+  enabledChartTypes: ChartType[];
+} {
+  const config = getToolConfig('data_source');
+  if (config?.config) {
+    const c = config.config as Record<string, unknown>;
+    return {
+      cacheTTLSeconds: (c.cacheTTLSeconds as number) || 3600,
+      timeout: (c.timeout as number) || 30,
+      defaultLimit: (c.defaultLimit as number) || 100,
+      maxLimit: (c.maxLimit as number) || 1000,
+      defaultChartType: (c.defaultChartType as ChartType) || 'bar',
+      enabledChartTypes: (c.enabledChartTypes as ChartType[]) || ['bar', 'line', 'pie', 'area', 'scatter', 'radar', 'table'],
+    };
+  }
+  return {
+    cacheTTLSeconds: 3600,
+    timeout: 30,
+    defaultLimit: 100,
+    maxLimit: 1000,
+    defaultChartType: 'bar',
+    enabledChartTypes: ['bar', 'line', 'pie', 'area', 'scatter', 'radar', 'table'],
+  };
+}
+
+/**
+ * Parse filter arguments from the LLM
+ */
+function parseFilters(filterArgs?: Array<{
+  field: string;
+  operator: string;
+  value: unknown;
+}>): DataFilter[] | undefined {
+  if (!filterArgs || !Array.isArray(filterArgs) || filterArgs.length === 0) {
+    return undefined;
+  }
+
+  const validOperators = ['eq', 'ne', 'gt', 'lt', 'gte', 'lte', 'contains', 'in'];
+
+  return filterArgs
+    .filter(f => f.field && validOperators.includes(f.operator))
+    .map(f => ({
+      field: f.field,
+      operator: f.operator as DataFilter['operator'],
+      value: f.value,
+    }));
+}
+
+/**
+ * Parse sort argument from the LLM
+ */
+function parseSort(sortArg?: { field: string; direction?: string }): DataSort | undefined {
+  if (!sortArg?.field) return undefined;
+
+  return {
+    field: sortArg.field,
+    direction: sortArg.direction === 'desc' ? 'desc' : 'asc',
+  };
+}
+
+/**
+ * Format the query response for LLM consumption
+ */
+function formatResponseForLLM(
+  response: DataQueryResponse,
+  visualization?: VisualizationHint
+): string {
+  if (!response.success) {
+    return JSON.stringify({
+      success: false,
+      error: response.error,
+      metadata: response.metadata,
+    });
+  }
+
+  const result: Record<string, unknown> = {
+    success: true,
+    metadata: {
+      source: response.metadata.source,
+      sourceType: response.metadata.sourceType,
+      recordCount: response.metadata.recordCount,
+      totalRecords: response.metadata.totalRecords,
+      fields: response.metadata.fields,
+      executionTimeMs: response.metadata.executionTimeMs,
+      cached: response.metadata.cached,
+    },
+    data: response.data,
+  };
+
+  // Include visualization hint if requested
+  if (visualization) {
+    result.visualizationHint = visualization;
+  }
+
+  return JSON.stringify(result, null, 2);
+}
+
+// ===== Tool Arguments Interface =====
+
+interface DataSourceToolArgs {
+  source_name: string;
+  parameters?: Record<string, unknown>;
+  filters?: Array<{
+    field: string;
+    operator: string;
+    value: unknown;
+  }>;
+  sort?: {
+    field: string;
+    direction?: string;
+  };
+  limit?: number;
+  offset?: number;
+  visualization?: {
+    chart_type?: ChartType;
+    x_field?: string;
+    y_field?: string;
+    group_by?: string;
+  };
+  category_ids: number[];
+}
+
+// ===== Tool Definition =====
+
+/**
+ * Data source tool implementation
+ * Provides data querying capabilities from configured external APIs and CSV files
+ */
+export const dataSourceTool: ToolDefinition = {
+  name: 'data_source',
+  displayName: 'Data Source Query',
+  description: 'Query external data sources (APIs and CSV files) configured by administrators. Returns structured data with optional visualization hints.',
+  category: 'autonomous',
+
+  definition: {
+    type: 'function',
+    function: {
+      name: 'data_source',
+      description: `Query external data sources (APIs and CSV files) to retrieve structured data. Use this when users ask about data from external systems, reports, statistics, or when you need to fetch and analyze external data. The available data sources are context-dependent based on the current category.
+
+Important:
+- Only data sources linked to the current category are accessible
+- Use filters to narrow results
+- Request visualization hints when data should be displayed as charts
+- Always provide analysis along with the data`,
+      parameters: {
+        type: 'object',
+        properties: {
+          source_name: {
+            type: 'string',
+            description: 'Name of the data source to query. Must be an available source for the current category.',
+          },
+          parameters: {
+            type: 'object',
+            description: 'Parameters to pass to the data source (for API sources). Use based on source documentation.',
+            additionalProperties: true,
+          },
+          filters: {
+            type: 'array',
+            description: 'Filter conditions to apply to the results',
+            items: {
+              type: 'object',
+              properties: {
+                field: {
+                  type: 'string',
+                  description: 'Field name to filter on',
+                },
+                operator: {
+                  type: 'string',
+                  enum: ['eq', 'ne', 'gt', 'lt', 'gte', 'lte', 'contains', 'in'],
+                  description: 'Comparison operator',
+                },
+                value: {
+                  description: 'Value to compare against',
+                },
+              },
+              required: ['field', 'operator', 'value'],
+            },
+          },
+          sort: {
+            type: 'object',
+            description: 'Sort configuration',
+            properties: {
+              field: {
+                type: 'string',
+                description: 'Field to sort by',
+              },
+              direction: {
+                type: 'string',
+                enum: ['asc', 'desc'],
+                description: 'Sort direction (default: asc)',
+              },
+            },
+            required: ['field'],
+          },
+          limit: {
+            type: 'number',
+            description: 'Maximum number of records to return (default: 100)',
+          },
+          offset: {
+            type: 'number',
+            description: 'Number of records to skip for pagination',
+          },
+          visualization: {
+            type: 'object',
+            description: 'Request visualization of the data. Include this when users want charts or visual representations.',
+            properties: {
+              chart_type: {
+                type: 'string',
+                enum: ['bar', 'line', 'pie', 'area', 'scatter', 'radar', 'table'],
+                description: 'Type of chart to generate',
+              },
+              x_field: {
+                type: 'string',
+                description: 'Field to use for X axis',
+              },
+              y_field: {
+                type: 'string',
+                description: 'Field to use for Y axis',
+              },
+              group_by: {
+                type: 'string',
+                description: 'Field to group data by',
+              },
+            },
+          },
+          category_ids: {
+            type: 'array',
+            items: { type: 'number' },
+            description: 'Category IDs to check for data source access (provided by system context)',
+          },
+        },
+        required: ['source_name', 'category_ids'],
+      },
+    },
+  },
+
+  validateConfig: validateDataSourceConfig,
+
+  defaultConfig: {
+    cacheTTLSeconds: 3600,
+    timeout: 30,
+    defaultLimit: 100,
+    maxLimit: 1000,
+    defaultChartType: 'bar',
+    enabledChartTypes: ['bar', 'line', 'pie', 'area', 'scatter', 'radar', 'table'],
+  },
+
+  configSchema: dataSourceConfigSchema,
+
+  execute: async (args: DataSourceToolArgs) => {
+    const toolConfig = getDataSourceToolConfig();
+
+    // Validate required arguments
+    if (!args.source_name) {
+      return JSON.stringify({
+        success: false,
+        error: {
+          code: 'MISSING_SOURCE_NAME',
+          message: 'source_name is required',
+        },
+      });
+    }
+
+    if (!args.category_ids || !Array.isArray(args.category_ids) || args.category_ids.length === 0) {
+      return JSON.stringify({
+        success: false,
+        error: {
+          code: 'NO_CATEGORIES',
+          message: 'No category context provided. Data sources require category access.',
+        },
+      });
+    }
+
+    try {
+      // Get the data source by name
+      const dataSource = getDataSourceByName(args.source_name);
+
+      if (!dataSource) {
+        // List available sources for this category
+        const availableSources = getAllDataSourcesForCategories(args.category_ids);
+        const sourceNames = availableSources.map(s => s.type === 'api' ? s.config.name : s.config.name);
+
+        return JSON.stringify({
+          success: false,
+          error: {
+            code: 'SOURCE_NOT_FOUND',
+            message: `Data source '${args.source_name}' not found`,
+            availableSources: sourceNames,
+          },
+        });
+      }
+
+      // Check category access
+      const sourceCategoryIds = dataSource.type === 'api'
+        ? dataSource.config.categoryIds
+        : dataSource.config.categoryIds;
+
+      const hasAccess = args.category_ids.some(catId => sourceCategoryIds.includes(catId));
+
+      if (!hasAccess) {
+        return JSON.stringify({
+          success: false,
+          error: {
+            code: 'ACCESS_DENIED',
+            message: `Data source '${args.source_name}' is not available for the current categories`,
+          },
+        });
+      }
+
+      // Apply limit constraints
+      const limit = Math.min(args.limit || toolConfig.defaultLimit, toolConfig.maxLimit);
+      const offset = args.offset || 0;
+
+      // Parse filters and sort
+      const filters = parseFilters(args.filters);
+      const sort = parseSort(args.sort);
+
+      let response: DataQueryResponse;
+
+      if (dataSource.type === 'api') {
+        // Check if API is active
+        if (dataSource.config.status !== 'active') {
+          return JSON.stringify({
+            success: false,
+            error: {
+              code: 'SOURCE_INACTIVE',
+              message: `Data source '${args.source_name}' is currently ${dataSource.config.status}`,
+              lastError: dataSource.config.lastError,
+            },
+          });
+        }
+
+        // Call the external API
+        response = await callDataAPI(dataSource.config, args.parameters || {});
+
+        // Apply filters to API response (if the API doesn't support server-side filtering)
+        if (response.success && response.data && filters && filters.length > 0) {
+          response = applyClientSideFilters(response, filters);
+        }
+
+        // Apply sort to API response
+        if (response.success && response.data && sort) {
+          response = applyClientSideSort(response, sort);
+        }
+
+        // Apply pagination
+        if (response.success && response.data) {
+          const totalRecords = response.data.length;
+          response.data = response.data.slice(offset, offset + limit);
+          response.metadata.totalRecords = totalRecords;
+          response.metadata.recordCount = response.data.length;
+        }
+      } else {
+        // Query CSV data
+        response = queryCSVData(
+          dataSource.config.filePath,
+          filters,
+          sort,
+          limit,
+          offset
+        );
+      }
+
+      // Build visualization hint if requested
+      let visualizationHint: VisualizationHint | undefined;
+      if (args.visualization && response.success) {
+        const chartType = args.visualization.chart_type || toolConfig.defaultChartType;
+
+        // Validate chart type is enabled
+        if (!toolConfig.enabledChartTypes.includes(chartType)) {
+          visualizationHint = {
+            chartType: toolConfig.defaultChartType,
+            xField: args.visualization.x_field,
+            yField: args.visualization.y_field,
+            groupBy: args.visualization.group_by,
+          };
+        } else {
+          visualizationHint = {
+            chartType,
+            xField: args.visualization.x_field,
+            yField: args.visualization.y_field,
+            groupBy: args.visualization.group_by,
+          };
+        }
+      }
+
+      return formatResponseForLLM(response, visualizationHint);
+    } catch (error) {
+      console.error('[DataSource] Query error:', error);
+      return JSON.stringify({
+        success: false,
+        error: {
+          code: 'QUERY_ERROR',
+          message: error instanceof Error ? error.message : 'Unknown error querying data source',
+        },
+      });
+    }
+  },
+};
+
+// ===== Client-side Filtering =====
+
+/**
+ * Apply filters to response data (client-side)
+ */
+function applyClientSideFilters(
+  response: DataQueryResponse,
+  filters: DataFilter[]
+): DataQueryResponse {
+  if (!response.data) return response;
+
+  const filteredData = response.data.filter(record => {
+    return filters.every(filter => {
+      const value = record[filter.field];
+      const filterValue = filter.value;
+
+      switch (filter.operator) {
+        case 'eq':
+          return value === filterValue;
+        case 'ne':
+          return value !== filterValue;
+        case 'gt':
+          return typeof value === 'number' && typeof filterValue === 'number'
+            ? value > filterValue
+            : String(value) > String(filterValue);
+        case 'lt':
+          return typeof value === 'number' && typeof filterValue === 'number'
+            ? value < filterValue
+            : String(value) < String(filterValue);
+        case 'gte':
+          return typeof value === 'number' && typeof filterValue === 'number'
+            ? value >= filterValue
+            : String(value) >= String(filterValue);
+        case 'lte':
+          return typeof value === 'number' && typeof filterValue === 'number'
+            ? value <= filterValue
+            : String(value) <= String(filterValue);
+        case 'contains':
+          return typeof value === 'string' && typeof filterValue === 'string'
+            ? value.toLowerCase().includes(filterValue.toLowerCase())
+            : false;
+        case 'in':
+          return Array.isArray(filterValue) && filterValue.includes(value);
+        default:
+          return true;
+      }
+    });
+  });
+
+  return {
+    ...response,
+    data: filteredData,
+    metadata: {
+      ...response.metadata,
+      recordCount: filteredData.length,
+    },
+  };
+}
+
+/**
+ * Apply sort to response data (client-side)
+ */
+function applyClientSideSort(
+  response: DataQueryResponse,
+  sort: DataSort
+): DataQueryResponse {
+  if (!response.data) return response;
+
+  const sortedData = [...response.data].sort((a, b) => {
+    const aVal = a[sort.field];
+    const bVal = b[sort.field];
+
+    // Handle nulls
+    if (aVal === null || aVal === undefined) return sort.direction === 'asc' ? 1 : -1;
+    if (bVal === null || bVal === undefined) return sort.direction === 'asc' ? -1 : 1;
+
+    // Compare values
+    let comparison: number;
+    if (typeof aVal === 'number' && typeof bVal === 'number') {
+      comparison = aVal - bVal;
+    } else {
+      comparison = String(aVal).localeCompare(String(bVal));
+    }
+
+    return sort.direction === 'asc' ? comparison : -comparison;
+  });
+
+  return {
+    ...response,
+    data: sortedData,
+  };
+}
+
+/**
+ * Get available data sources for categories (for system prompt injection)
+ */
+export function getAvailableDataSourcesDescription(categoryIds: number[]): string {
+  if (!categoryIds || categoryIds.length === 0) {
+    return '';
+  }
+
+  const sources = getAllDataSourcesForCategories(categoryIds);
+  if (sources.length === 0) {
+    return '';
+  }
+
+  const descriptions: string[] = ['Available Data Sources:'];
+
+  for (const source of sources) {
+    if (source.type === 'api') {
+      const api = source.config;
+      if (api.status !== 'active') continue;
+
+      descriptions.push(`\n- ${api.name} (API): ${api.description}`);
+
+      // Add parameter info
+      const requiredParams = api.parameters.filter(p => p.required);
+      if (requiredParams.length > 0) {
+        descriptions.push(`  Required parameters: ${requiredParams.map(p => p.name).join(', ')}`);
+      }
+
+      // Add field info
+      if (api.responseStructure.fields.length > 0) {
+        descriptions.push(`  Available fields: ${api.responseStructure.fields.map(f => f.name).join(', ')}`);
+      }
+    } else {
+      const csv = source.config;
+      descriptions.push(`\n- ${csv.name} (CSV): ${csv.description}`);
+      descriptions.push(`  Rows: ${csv.rowCount}`);
+      descriptions.push(`  Columns: ${csv.columns.map(c => c.name).join(', ')}`);
+    }
+  }
+
+  return descriptions.join('\n');
+}

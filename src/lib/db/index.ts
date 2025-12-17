@@ -236,6 +236,96 @@ function runMigrations(database: Database.Database): void {
     database.exec('ALTER TABLE thread_outputs ADD COLUMN download_count INTEGER DEFAULT 0');
   }
 
+  // Check and create data_api_configs table for Data Sources feature
+  const dataApiConfigsTableExists = database.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='data_api_configs'"
+  ).get();
+
+  if (!dataApiConfigsTableExists) {
+    database.exec(`
+      -- Data API configurations
+      CREATE TABLE IF NOT EXISTS data_api_configs (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        description TEXT,
+        endpoint TEXT NOT NULL,
+        method TEXT NOT NULL DEFAULT 'GET' CHECK(method IN ('GET', 'POST')),
+        response_format TEXT DEFAULT 'json' CHECK(response_format IN ('json', 'csv')),
+        authentication TEXT,
+        headers TEXT,
+        parameters TEXT,
+        response_structure TEXT,
+        sample_response TEXT,
+        openapi_spec TEXT,
+        config_method TEXT DEFAULT 'manual' CHECK(config_method IN ('manual', 'openapi')),
+        status TEXT DEFAULT 'untested' CHECK(status IN ('active', 'inactive', 'error', 'untested')),
+        created_by TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        last_tested DATETIME,
+        last_error TEXT
+      );
+
+      -- API-Category mapping (orphan APIs not accessible)
+      CREATE TABLE IF NOT EXISTS data_api_categories (
+        api_id TEXT NOT NULL,
+        category_id INTEGER NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (api_id) REFERENCES data_api_configs(id) ON DELETE CASCADE,
+        FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
+        PRIMARY KEY (api_id, category_id)
+      );
+
+      -- CSV data sources
+      CREATE TABLE IF NOT EXISTS data_csv_configs (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        description TEXT,
+        file_path TEXT NOT NULL,
+        original_filename TEXT,
+        columns TEXT,
+        sample_data TEXT,
+        row_count INTEGER DEFAULT 0,
+        file_size INTEGER DEFAULT 0,
+        created_by TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- CSV-Category mapping (orphan CSVs not accessible)
+      CREATE TABLE IF NOT EXISTS data_csv_categories (
+        csv_id TEXT NOT NULL,
+        category_id INTEGER NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (csv_id) REFERENCES data_csv_configs(id) ON DELETE CASCADE,
+        FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
+        PRIMARY KEY (csv_id, category_id)
+      );
+
+      -- Audit log for data source changes
+      CREATE TABLE IF NOT EXISTS data_source_audit (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        source_type TEXT NOT NULL CHECK(source_type IN ('api', 'csv')),
+        source_id TEXT NOT NULL,
+        action TEXT NOT NULL CHECK(action IN ('created', 'updated', 'tested', 'deleted')),
+        changed_by TEXT NOT NULL,
+        details TEXT,
+        changed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- Indexes for data sources
+      CREATE INDEX IF NOT EXISTS idx_data_api_status ON data_api_configs(status);
+      CREATE INDEX IF NOT EXISTS idx_data_api_name ON data_api_configs(name);
+      CREATE INDEX IF NOT EXISTS idx_data_api_categories_api ON data_api_categories(api_id);
+      CREATE INDEX IF NOT EXISTS idx_data_api_categories_cat ON data_api_categories(category_id);
+      CREATE INDEX IF NOT EXISTS idx_data_csv_name ON data_csv_configs(name);
+      CREATE INDEX IF NOT EXISTS idx_data_csv_categories_csv ON data_csv_categories(csv_id);
+      CREATE INDEX IF NOT EXISTS idx_data_csv_categories_cat ON data_csv_categories(category_id);
+      CREATE INDEX IF NOT EXISTS idx_data_source_audit_source ON data_source_audit(source_type, source_id);
+      CREATE INDEX IF NOT EXISTS idx_data_source_audit_time ON data_source_audit(changed_at DESC);
+    `);
+  }
+
   // Migration: Update file_type CHECK constraint to include 'md' format
   // SQLite doesn't allow modifying CHECK constraints, so we recreate the table
   try {
@@ -535,6 +625,85 @@ CREATE TABLE IF NOT EXISTS category_tool_configs (
 );
 CREATE INDEX IF NOT EXISTS idx_category_tool_configs_category ON category_tool_configs(category_id);
 CREATE INDEX IF NOT EXISTS idx_category_tool_configs_tool ON category_tool_configs(tool_name);
+
+-- Data API configurations
+CREATE TABLE IF NOT EXISTS data_api_configs (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  description TEXT,
+  endpoint TEXT NOT NULL,
+  method TEXT NOT NULL DEFAULT 'GET' CHECK(method IN ('GET', 'POST')),
+  response_format TEXT DEFAULT 'json' CHECK(response_format IN ('json', 'csv')),
+  authentication TEXT,
+  headers TEXT,
+  parameters TEXT,
+  response_structure TEXT,
+  sample_response TEXT,
+  openapi_spec TEXT,
+  config_method TEXT DEFAULT 'manual' CHECK(config_method IN ('manual', 'openapi')),
+  status TEXT DEFAULT 'untested' CHECK(status IN ('active', 'inactive', 'error', 'untested')),
+  created_by TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  last_tested DATETIME,
+  last_error TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_data_api_status ON data_api_configs(status);
+CREATE INDEX IF NOT EXISTS idx_data_api_name ON data_api_configs(name);
+
+-- API-Category mapping
+CREATE TABLE IF NOT EXISTS data_api_categories (
+  api_id TEXT NOT NULL,
+  category_id INTEGER NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (api_id) REFERENCES data_api_configs(id) ON DELETE CASCADE,
+  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
+  PRIMARY KEY (api_id, category_id)
+);
+CREATE INDEX IF NOT EXISTS idx_data_api_categories_api ON data_api_categories(api_id);
+CREATE INDEX IF NOT EXISTS idx_data_api_categories_cat ON data_api_categories(category_id);
+
+-- CSV data sources
+CREATE TABLE IF NOT EXISTS data_csv_configs (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  description TEXT,
+  file_path TEXT NOT NULL,
+  original_filename TEXT,
+  columns TEXT,
+  sample_data TEXT,
+  row_count INTEGER DEFAULT 0,
+  file_size INTEGER DEFAULT 0,
+  created_by TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_data_csv_name ON data_csv_configs(name);
+
+-- CSV-Category mapping
+CREATE TABLE IF NOT EXISTS data_csv_categories (
+  csv_id TEXT NOT NULL,
+  category_id INTEGER NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (csv_id) REFERENCES data_csv_configs(id) ON DELETE CASCADE,
+  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
+  PRIMARY KEY (csv_id, category_id)
+);
+CREATE INDEX IF NOT EXISTS idx_data_csv_categories_csv ON data_csv_categories(csv_id);
+CREATE INDEX IF NOT EXISTS idx_data_csv_categories_cat ON data_csv_categories(category_id);
+
+-- Data source audit log
+CREATE TABLE IF NOT EXISTS data_source_audit (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_type TEXT NOT NULL CHECK(source_type IN ('api', 'csv')),
+  source_id TEXT NOT NULL,
+  action TEXT NOT NULL CHECK(action IN ('created', 'updated', 'tested', 'deleted')),
+  changed_by TEXT NOT NULL,
+  details TEXT,
+  changed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_data_source_audit_source ON data_source_audit(source_type, source_id);
+CREATE INDEX IF NOT EXISTS idx_data_source_audit_time ON data_source_audit(changed_at DESC);
   `;
 }
 

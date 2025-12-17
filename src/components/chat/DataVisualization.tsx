@@ -1,0 +1,650 @@
+'use client';
+
+import { useState, useMemo } from 'react';
+import {
+  BarChart,
+  Bar,
+  LineChart,
+  Line,
+  PieChart,
+  Pie,
+  AreaChart,
+  Area,
+  ScatterChart,
+  Scatter,
+  RadarChart,
+  Radar,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  Cell,
+} from 'recharts';
+import { BarChart3, LineChart as LineChartIcon, PieChart as PieChartIcon, Table, Download, ChevronDown, ChevronUp, Activity, Radar as RadarIcon } from 'lucide-react';
+import type { ChartType, VisualizationHint } from '@/types/data-sources';
+
+// ===== Types =====
+
+interface DataVisualizationProps {
+  /** Chart type to render */
+  chartType: ChartType;
+  /** Data to visualize */
+  data: Record<string, unknown>[];
+  /** Field for X axis (category axis) */
+  xField?: string;
+  /** Field for Y axis (value axis) */
+  yField?: string;
+  /** Field to group data by */
+  groupBy?: string;
+  /** Source name for attribution */
+  sourceName?: string;
+  /** Whether data was cached */
+  cached?: boolean;
+  /** Available fields for axis selection */
+  fields?: string[];
+  /** Title for the chart */
+  title?: string;
+}
+
+// ===== Constants =====
+
+const CHART_COLORS = [
+  '#3b82f6', // blue
+  '#ef4444', // red
+  '#10b981', // green
+  '#f59e0b', // amber
+  '#8b5cf6', // violet
+  '#ec4899', // pink
+  '#06b6d4', // cyan
+  '#84cc16', // lime
+];
+
+const CHART_ICONS: Record<ChartType, React.ReactNode> = {
+  bar: <BarChart3 size={16} />,
+  line: <LineChartIcon size={16} />,
+  pie: <PieChartIcon size={16} />,
+  area: <Activity size={16} />,
+  scatter: <Activity size={16} />,
+  radar: <RadarIcon size={16} />,
+  table: <Table size={16} />,
+};
+
+// ===== Helper Functions =====
+
+/**
+ * Get numeric fields from data
+ */
+function getNumericFields(data: Record<string, unknown>[]): string[] {
+  if (!data || data.length === 0) return [];
+
+  const firstRow = data[0];
+  return Object.entries(firstRow)
+    .filter(([, value]) => typeof value === 'number')
+    .map(([key]) => key);
+}
+
+/**
+ * Get string fields from data
+ */
+function getStringFields(data: Record<string, unknown>[]): string[] {
+  if (!data || data.length === 0) return [];
+
+  const firstRow = data[0];
+  return Object.entries(firstRow)
+    .filter(([, value]) => typeof value === 'string')
+    .map(([key]) => key);
+}
+
+/**
+ * Aggregate data by a field
+ */
+function aggregateData(
+  data: Record<string, unknown>[],
+  groupField: string,
+  valueField: string
+): Record<string, unknown>[] {
+  const groups: Record<string, number> = {};
+
+  for (const row of data) {
+    const key = String(row[groupField] ?? 'Unknown');
+    const value = Number(row[valueField]) || 0;
+    groups[key] = (groups[key] || 0) + value;
+  }
+
+  return Object.entries(groups).map(([name, value]) => ({
+    name,
+    value,
+  }));
+}
+
+/**
+ * Format number for display
+ */
+function formatNumber(value: number): string {
+  if (Math.abs(value) >= 1000000) {
+    return `${(value / 1000000).toFixed(1)}M`;
+  }
+  if (Math.abs(value) >= 1000) {
+    return `${(value / 1000).toFixed(1)}K`;
+  }
+  return value.toFixed(value % 1 === 0 ? 0 : 2);
+}
+
+// ===== Sub-Components =====
+
+/**
+ * Chart selector buttons
+ */
+function ChartTypeSelector({
+  currentType,
+  onTypeChange,
+  availableTypes,
+}: {
+  currentType: ChartType;
+  onTypeChange: (type: ChartType) => void;
+  availableTypes: ChartType[];
+}) {
+  return (
+    <div className="flex gap-1 flex-wrap">
+      {availableTypes.map(type => (
+        <button
+          key={type}
+          onClick={() => onTypeChange(type)}
+          className={`flex items-center gap-1 px-2 py-1 text-xs rounded transition-colors ${
+            currentType === type
+              ? 'bg-blue-600 text-white'
+              : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+          }`}
+          title={type.charAt(0).toUpperCase() + type.slice(1)}
+        >
+          {CHART_ICONS[type]}
+          <span className="hidden sm:inline capitalize">{type}</span>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Field selector dropdown
+ */
+function FieldSelector({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: string[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="flex items-center gap-2 text-sm">
+      <label className="text-gray-500">{label}:</label>
+      <select
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className="px-2 py-1 border border-gray-200 rounded text-sm bg-white"
+      >
+        {options.map(opt => (
+          <option key={opt} value={opt}>
+            {opt}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+/**
+ * Data table component
+ */
+function DataTable({ data, maxRows = 10 }: { data: Record<string, unknown>[]; maxRows?: number }) {
+  const [showAll, setShowAll] = useState(false);
+
+  if (!data || data.length === 0) {
+    return <p className="text-gray-500 text-sm">No data available</p>;
+  }
+
+  const columns = Object.keys(data[0]);
+  const displayData = showAll ? data : data.slice(0, maxRows);
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="min-w-full text-sm">
+        <thead>
+          <tr className="bg-gray-50">
+            {columns.map(col => (
+              <th key={col} className="px-3 py-2 text-left font-medium text-gray-600 border-b">
+                {col}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {displayData.map((row, idx) => (
+            <tr key={idx} className="hover:bg-gray-50">
+              {columns.map(col => (
+                <td key={col} className="px-3 py-2 border-b text-gray-700">
+                  {formatCellValue(row[col])}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {data.length > maxRows && (
+        <button
+          onClick={() => setShowAll(!showAll)}
+          className="mt-2 flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800"
+        >
+          {showAll ? (
+            <>
+              <ChevronUp size={16} /> Show less
+            </>
+          ) : (
+            <>
+              <ChevronDown size={16} /> Show all {data.length} rows
+            </>
+          )}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function formatCellValue(value: unknown): string {
+  if (value === null || value === undefined) return '-';
+  if (typeof value === 'number') return formatNumber(value);
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}
+
+// ===== Chart Components =====
+
+function BarChartComponent({
+  data,
+  xField,
+  yField,
+}: {
+  data: Record<string, unknown>[];
+  xField: string;
+  yField: string;
+}) {
+  return (
+    <ResponsiveContainer width="100%" height={300}>
+      <BarChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+        <XAxis dataKey={xField} tick={{ fontSize: 12 }} />
+        <YAxis tick={{ fontSize: 12 }} tickFormatter={formatNumber} />
+        <Tooltip formatter={(value) => formatNumber(value as number)} />
+        <Legend />
+        <Bar dataKey={yField} fill={CHART_COLORS[0]} radius={[4, 4, 0, 0]} />
+      </BarChart>
+    </ResponsiveContainer>
+  );
+}
+
+function LineChartComponent({
+  data,
+  xField,
+  yField,
+}: {
+  data: Record<string, unknown>[];
+  xField: string;
+  yField: string;
+}) {
+  return (
+    <ResponsiveContainer width="100%" height={300}>
+      <LineChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+        <XAxis dataKey={xField} tick={{ fontSize: 12 }} />
+        <YAxis tick={{ fontSize: 12 }} tickFormatter={formatNumber} />
+        <Tooltip formatter={(value) => formatNumber(value as number)} />
+        <Legend />
+        <Line
+          type="monotone"
+          dataKey={yField}
+          stroke={CHART_COLORS[0]}
+          strokeWidth={2}
+          dot={{ fill: CHART_COLORS[0] }}
+        />
+      </LineChart>
+    </ResponsiveContainer>
+  );
+}
+
+function AreaChartComponent({
+  data,
+  xField,
+  yField,
+}: {
+  data: Record<string, unknown>[];
+  xField: string;
+  yField: string;
+}) {
+  return (
+    <ResponsiveContainer width="100%" height={300}>
+      <AreaChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+        <XAxis dataKey={xField} tick={{ fontSize: 12 }} />
+        <YAxis tick={{ fontSize: 12 }} tickFormatter={formatNumber} />
+        <Tooltip formatter={(value) => formatNumber(value as number)} />
+        <Legend />
+        <Area
+          type="monotone"
+          dataKey={yField}
+          stroke={CHART_COLORS[0]}
+          fill={`${CHART_COLORS[0]}40`}
+        />
+      </AreaChart>
+    </ResponsiveContainer>
+  );
+}
+
+function PieChartComponent({
+  data,
+  nameField,
+  valueField,
+}: {
+  data: Record<string, unknown>[];
+  nameField: string;
+  valueField: string;
+}) {
+  // Aggregate data for pie chart
+  const pieData = useMemo(() => {
+    return aggregateData(data, nameField, valueField);
+  }, [data, nameField, valueField]);
+
+  return (
+    <ResponsiveContainer width="100%" height={300}>
+      <PieChart>
+        <Pie
+          data={pieData}
+          dataKey="value"
+          nameKey="name"
+          cx="50%"
+          cy="50%"
+          outerRadius={100}
+          label={({ name, percent }) => `${name}: ${((percent ?? 0) * 100).toFixed(0)}%`}
+          labelLine={false}
+        >
+          {pieData.map((_, index) => (
+            <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+          ))}
+        </Pie>
+        <Tooltip formatter={(value) => formatNumber(value as number)} />
+        <Legend />
+      </PieChart>
+    </ResponsiveContainer>
+  );
+}
+
+function ScatterChartComponent({
+  data,
+  xField,
+  yField,
+}: {
+  data: Record<string, unknown>[];
+  xField: string;
+  yField: string;
+}) {
+  return (
+    <ResponsiveContainer width="100%" height={300}>
+      <ScatterChart margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+        <XAxis dataKey={xField} tick={{ fontSize: 12 }} name={xField} />
+        <YAxis dataKey={yField} tick={{ fontSize: 12 }} name={yField} tickFormatter={formatNumber} />
+        <Tooltip cursor={{ strokeDasharray: '3 3' }} />
+        <Legend />
+        <Scatter name="Data" data={data} fill={CHART_COLORS[0]} />
+      </ScatterChart>
+    </ResponsiveContainer>
+  );
+}
+
+function RadarChartComponent({
+  data,
+  nameField,
+  valueField,
+}: {
+  data: Record<string, unknown>[];
+  nameField: string;
+  valueField: string;
+}) {
+  // Aggregate data for radar chart
+  const radarData = useMemo(() => {
+    return aggregateData(data, nameField, valueField);
+  }, [data, nameField, valueField]);
+
+  return (
+    <ResponsiveContainer width="100%" height={300}>
+      <RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}>
+        <PolarGrid />
+        <PolarAngleAxis dataKey="name" tick={{ fontSize: 11 }} />
+        <PolarRadiusAxis tick={{ fontSize: 10 }} tickFormatter={formatNumber} />
+        <Radar
+          name={valueField}
+          dataKey="value"
+          stroke={CHART_COLORS[0]}
+          fill={CHART_COLORS[0]}
+          fillOpacity={0.5}
+        />
+        <Legend />
+        <Tooltip formatter={(value) => formatNumber(value as number)} />
+      </RadarChart>
+    </ResponsiveContainer>
+  );
+}
+
+// ===== Main Component =====
+
+export default function DataVisualization({
+  chartType: initialChartType,
+  data,
+  xField: initialXField,
+  yField: initialYField,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  groupBy, // Reserved for future grouping functionality
+  sourceName,
+  cached,
+  fields,
+  title,
+}: DataVisualizationProps) {
+  const [chartType, setChartType] = useState<ChartType>(initialChartType);
+  const [showRawData, setShowRawData] = useState(false);
+
+  // Derive available fields from data
+  const numericFields = useMemo(() => getNumericFields(data), [data]);
+  const stringFields = useMemo(() => getStringFields(data), [data]);
+  const allFields = useMemo(() => fields || [...stringFields, ...numericFields], [fields, stringFields, numericFields]);
+
+  // Field selections with defaults
+  const [xField, setXField] = useState(initialXField || stringFields[0] || allFields[0] || 'name');
+  const [yField, setYField] = useState(initialYField || numericFields[0] || allFields[1] || 'value');
+
+  // Available chart types
+  const availableTypes: ChartType[] = ['bar', 'line', 'area', 'pie', 'scatter', 'radar', 'table'];
+
+  if (!data || data.length === 0) {
+    return (
+      <div className="bg-gray-50 rounded-lg border border-gray-200 p-4 mt-3">
+        <p className="text-gray-500">No data available for visualization</p>
+      </div>
+    );
+  }
+
+  const handleExportCSV = () => {
+    if (!data || data.length === 0) return;
+
+    const headers = Object.keys(data[0]);
+    const csvContent = [
+      headers.join(','),
+      ...data.map(row =>
+        headers.map(h => {
+          const value = row[h];
+          // Escape values with commas or quotes
+          const strValue = String(value ?? '');
+          if (strValue.includes(',') || strValue.includes('"')) {
+            return `"${strValue.replace(/"/g, '""')}"`;
+          }
+          return strValue;
+        }).join(',')
+      ),
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${sourceName || 'data'}-export.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  return (
+    <div className="bg-blue-50 rounded-lg border border-blue-200 p-4 mt-3">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2">
+          {CHART_ICONS[chartType]}
+          <h4 className="font-medium text-blue-900">
+            {title || `Data from ${sourceName || 'Source'}`}
+          </h4>
+          {cached && (
+            <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-600 rounded">
+              Cached
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleExportCSV}
+            className="flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:bg-blue-100 rounded"
+            title="Export as CSV"
+          >
+            <Download size={14} />
+            <span className="hidden sm:inline">Export</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Controls */}
+      <div className="flex flex-wrap items-center gap-4 mb-4 pb-3 border-b border-blue-200">
+        <ChartTypeSelector
+          currentType={chartType}
+          onTypeChange={setChartType}
+          availableTypes={availableTypes}
+        />
+
+        {chartType !== 'table' && (
+          <>
+            <FieldSelector
+              label="X-Axis"
+              value={xField}
+              options={allFields}
+              onChange={setXField}
+            />
+            <FieldSelector
+              label="Y-Axis"
+              value={yField}
+              options={allFields}
+              onChange={setYField}
+            />
+          </>
+        )}
+      </div>
+
+      {/* Chart */}
+      <div className="bg-white rounded-lg p-4 min-h-[300px]">
+        {chartType === 'bar' && (
+          <BarChartComponent data={data} xField={xField} yField={yField} />
+        )}
+        {chartType === 'line' && (
+          <LineChartComponent data={data} xField={xField} yField={yField} />
+        )}
+        {chartType === 'area' && (
+          <AreaChartComponent data={data} xField={xField} yField={yField} />
+        )}
+        {chartType === 'pie' && (
+          <PieChartComponent data={data} nameField={xField} valueField={yField} />
+        )}
+        {chartType === 'scatter' && (
+          <ScatterChartComponent data={data} xField={xField} yField={yField} />
+        )}
+        {chartType === 'radar' && (
+          <RadarChartComponent data={data} nameField={xField} valueField={yField} />
+        )}
+        {chartType === 'table' && <DataTable data={data} />}
+      </div>
+
+      {/* Raw Data Toggle */}
+      {chartType !== 'table' && (
+        <div className="mt-3">
+          <button
+            onClick={() => setShowRawData(!showRawData)}
+            className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-800"
+          >
+            {showRawData ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            {showRawData ? 'Hide raw data' : `Show raw data (${data.length} records)`}
+          </button>
+          {showRawData && (
+            <div className="mt-2 bg-white rounded-lg p-3 max-h-64 overflow-auto">
+              <DataTable data={data} maxRows={50} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Footer with record count */}
+      <div className="mt-3 text-xs text-blue-600">
+        {data.length} record{data.length !== 1 ? 's' : ''}
+        {sourceName && ` from ${sourceName}`}
+      </div>
+    </div>
+  );
+}
+
+// ===== Utility Export for Parsing Tool Output =====
+
+/**
+ * Parse data source tool output and extract visualization props
+ */
+export function parseDataSourceOutput(output: string): {
+  data: Record<string, unknown>[];
+  visualizationHint?: VisualizationHint;
+  metadata?: {
+    source: string;
+    cached: boolean;
+    fields: string[];
+  };
+} | null {
+  try {
+    const parsed = JSON.parse(output);
+
+    if (!parsed.success || !parsed.data) {
+      return null;
+    }
+
+    return {
+      data: parsed.data as Record<string, unknown>[],
+      visualizationHint: parsed.visualizationHint as VisualizationHint | undefined,
+      metadata: parsed.metadata
+        ? {
+            source: parsed.metadata.source as string,
+            cached: parsed.metadata.cached as boolean,
+            fields: parsed.metadata.fields as string[],
+          }
+        : undefined,
+    };
+  } catch {
+    return null;
+  }
+}

@@ -343,6 +343,17 @@ export const TOOL_DEFAULTS: Record<string, { enabled: boolean; config: Record<st
       maxDocumentSizeMB: 50,
     },
   },
+  data_source: {
+    enabled: true,
+    config: {
+      cacheTTLSeconds: 3600,
+      timeout: 30,
+      defaultLimit: 100,
+      maxLimit: 1000,
+      defaultChartType: 'bar',
+      enabledChartTypes: ['bar', 'line', 'pie', 'area', 'scatter', 'radar', 'table'],
+    },
+  },
 };
 
 /**

@@ -18,10 +18,12 @@ import {
   Palette,
   Building2,
   FileText,
+  Database,
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
 import Modal from '@/components/ui/Modal';
+import DataSourcesTab from './DataSourcesTab';
 
 // Tool interface matching API response
 interface Tool {
@@ -104,6 +106,8 @@ function getToolIcon(toolName: string) {
       return Globe;
     case 'doc_gen':
       return FileText;
+    case 'data_source':
+      return Database;
     default:
       return Settings;
   }
@@ -918,7 +922,7 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false }: Tool
   };
 
   // Render config form based on tool type
-  const renderConfigForm = (tool: Tool) => {
+  const renderConfigForm = (tool: Tool, forSuperuser: boolean = false) => {
     switch (tool.name) {
       case 'web_search':
         return (
@@ -934,6 +938,15 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false }: Tool
             config={editedConfig}
             onChange={setEditedConfig}
             disabled={saving}
+          />
+        );
+      case 'data_source':
+        // Data source has its own management UI
+        // Use superuser API paths if in superuser mode
+        return (
+          <DataSourcesTab
+            apiBasePath={forSuperuser ? '/api/superuser/data-sources' : '/api/admin/data-sources'}
+            categoriesPath={forSuperuser ? '/api/superuser/data-sources' : '/api/admin/categories'}
           />
         );
       default:
@@ -1118,6 +1131,18 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false }: Tool
                           <Palette size={16} />
                         </Button>
                       )}
+
+                      {/* Expand button for data_source tool */}
+                      {tool.name === 'data_source' && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => setExpandedTool(expandedTool === tool.name ? null : tool.name)}
+                          title="Manage data sources"
+                        >
+                          {expandedTool === tool.name ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                        </Button>
+                      )}
                     </div>
                   </div>
 
@@ -1128,6 +1153,13 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false }: Tool
                         <Building2 size={14} />
                         <span>Custom branding: {catStatus.branding.organizationName || 'Configured'}</span>
                       </div>
+                    </div>
+                  )}
+
+                  {/* Expanded data sources panel (superuser mode) */}
+                  {tool.name === 'data_source' && expandedTool === tool.name && (
+                    <div className="px-6 py-4 border-t bg-gray-50">
+                      {renderConfigForm({ name: tool.name } as Tool, true)}
                     </div>
                   )}
                 </div>
@@ -1258,41 +1290,46 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false }: Tool
 
                   {/* Expanded Configuration */}
                   {isExpanded && (
-                    <div className="px-6 py-4 border-t bg-gray-50">
-                      <div className="max-w-2xl">
+                    <div className={`px-6 py-4 border-t bg-gray-50 ${tool.name === 'data_source' ? '' : ''}`}>
+                      <div className={tool.name === 'data_source' ? '' : 'max-w-2xl'}>
                         {renderConfigForm(tool)}
 
-                        {/* Metadata */}
-                        {tool.metadata && (
-                          <div className="mt-4 pt-4 border-t text-xs text-gray-500">
-                            <div className="flex items-center gap-1">
-                              <Info size={12} />
-                              <span>
-                                Last updated: {formatDate(tool.metadata.updatedAt)} by {tool.metadata.updatedBy}
-                              </span>
-                            </div>
-                          </div>
-                        )}
+                        {/* Metadata and Save - not shown for data_source which has its own UI */}
+                        {tool.name !== 'data_source' && (
+                          <>
+                            {/* Metadata */}
+                            {tool.metadata && (
+                              <div className="mt-4 pt-4 border-t text-xs text-gray-500">
+                                <div className="flex items-center gap-1">
+                                  <Info size={12} />
+                                  <span>
+                                    Last updated: {formatDate(tool.metadata.updatedAt)} by {tool.metadata.updatedBy}
+                                  </span>
+                                </div>
+                              </div>
+                            )}
 
-                        {/* Save Button */}
-                        <div className="mt-4 flex justify-end gap-2">
-                          <Button
-                            variant="secondary"
-                            onClick={() => {
-                              setExpandedTool(null);
-                              setEditedConfig({});
-                            }}
-                          >
-                            Cancel
-                          </Button>
-                          <Button
-                            onClick={() => handleSaveConfig(tool.name)}
-                            disabled={saving}
-                          >
-                            {saving ? <Spinner size="sm" className="mr-2" /> : <Save size={16} className="mr-2" />}
-                            Save Configuration
-                          </Button>
-                        </div>
+                            {/* Save Button */}
+                            <div className="mt-4 flex justify-end gap-2">
+                              <Button
+                                variant="secondary"
+                                onClick={() => {
+                                  setExpandedTool(null);
+                                  setEditedConfig({});
+                                }}
+                              >
+                                Cancel
+                              </Button>
+                              <Button
+                                onClick={() => handleSaveConfig(tool.name)}
+                                disabled={saving}
+                              >
+                                {saving ? <Spinner size="sm" className="mr-2" /> : <Save size={16} className="mr-2" />}
+                                Save Configuration
+                              </Button>
+                            </div>
+                          </>
+                        )}
                       </div>
                     </div>
                   )}

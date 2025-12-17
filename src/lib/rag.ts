@@ -16,6 +16,7 @@ import { getResolvedSystemPrompt } from './db/category-prompts';
 import { getCategoryIdsBySlugs } from './db/categories';
 import { resolveSkills } from './skills/resolver';
 import { rerankChunks } from './reranker';
+import { getAvailableDataSourcesDescription } from './tools/data-source';
 import type { Message, Source, RetrievedChunk, RAGResponse, GeneratedDocumentInfo } from '@/types';
 
 /**
@@ -322,6 +323,14 @@ export async function ragQuery(
   const resolvedSkills = resolveSkills(categoryIds, userMessage);
   if (resolvedSkills.combinedPrompt) {
     systemPrompt = `${systemPrompt}\n\n${resolvedSkills.combinedPrompt}`;
+  }
+
+  // Inject data source descriptions (if data sources are available for these categories)
+  if (categoryIds.length > 0) {
+    const dataSourcesDescription = getAvailableDataSourcesDescription(categoryIds);
+    if (dataSourcesDescription) {
+      systemPrompt = `${systemPrompt}\n\n${dataSourcesDescription}`;
+    }
   }
 
   // Inject memory context if available

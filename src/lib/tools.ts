@@ -1,6 +1,7 @@
 import type { OpenAI } from 'openai';
 import { tavilyWebSearch } from './tools/tavily';
 import { documentGenerationTool } from './tools/docgen';
+import { dataSourceTool } from './tools/data-source';
 import { isToolEnabled as isToolEnabledDb, migrateTavilySettingsIfNeeded, ensureToolConfigsExist } from './db/tool-config';
 
 // ============ Types ============
@@ -65,8 +66,7 @@ export interface LegacyToolDefinition {
 export const AVAILABLE_TOOLS: Record<string, ToolDefinition> = {
   web_search: tavilyWebSearch,
   doc_gen: documentGenerationTool,
-  // Future tools will be added here:
-  // data_viz: dataVisualizationTool,  // Phase 3
+  data_source: dataSourceTool,
 };
 
 // ============ Initialization ============
