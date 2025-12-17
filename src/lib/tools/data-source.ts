@@ -9,6 +9,7 @@ import { getToolConfig } from '../db/tool-config';
 import { getDataSourceByName, getAllDataSourcesForCategories } from '../db/data-sources';
 import { callDataAPI } from '../data-sources/api-caller';
 import { queryCSVData } from '../data-sources/csv-handler';
+import { getRequestContext } from '../request-context';
 import type { ToolDefinition, ValidationResult } from '../tools';
 import type {
   DataFilter,
@@ -380,10 +381,10 @@ Important:
           category_ids: {
             type: 'array',
             items: { type: 'number' },
-            description: 'Category IDs to check for data source access (provided by system context)',
+            description: 'Category IDs to check for data source access (automatically resolved from context if not provided)',
           },
         },
-        required: ['source_name', 'category_ids'],
+        required: ['source_name'],
       },
     },
   },
@@ -415,7 +416,17 @@ Important:
       });
     }
 
-    if (!args.category_ids || !Array.isArray(args.category_ids) || args.category_ids.length === 0) {
+    // Get category IDs from args or fallback to request context
+    let categoryIds = args.category_ids;
+    if (!categoryIds || !Array.isArray(categoryIds) || categoryIds.length === 0) {
+      // Try to get from request context (set by chat API route)
+      const context = getRequestContext();
+      if (context.categoryId) {
+        categoryIds = [context.categoryId];
+      }
+    }
+
+    if (!categoryIds || categoryIds.length === 0) {
       return JSON.stringify({
         success: false,
         error: {
@@ -431,7 +442,7 @@ Important:
 
       if (!dataSource) {
         // List available sources for this category
-        const availableSources = getAllDataSourcesForCategories(args.category_ids);
+        const availableSources = getAllDataSourcesForCategories(categoryIds);
         const sourceNames = availableSources.map(s => s.type === 'api' ? s.config.name : s.config.name);
 
         return JSON.stringify({
@@ -449,7 +460,7 @@ Important:
         ? dataSource.config.categoryIds
         : dataSource.config.categoryIds;
 
-      const hasAccess = args.category_ids.some(catId => sourceCategoryIds.includes(catId));
+      const hasAccess = categoryIds.some(catId => sourceCategoryIds.includes(catId));
 
       if (!hasAccess) {
         return JSON.stringify({
