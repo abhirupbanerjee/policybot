@@ -8,7 +8,8 @@
 import { getToolConfig } from '../db/tool-config';
 import { getDataSourceByName, getAllDataSourcesForCategories } from '../db/data-sources';
 import { callDataAPI } from '../data-sources/api-caller';
-import { queryCSVData } from '../data-sources/csv-handler';
+import { queryCSVData, queryCSVDataWithAggregation } from '../data-sources/csv-handler';
+import { aggregateData } from '../data-sources/aggregation';
 import { getRequestContext } from '../request-context';
 import type { ToolDefinition, ValidationResult } from '../tools';
 import type {
@@ -17,6 +18,8 @@ import type {
   DataQueryResponse,
   ChartType,
   VisualizationHint,
+  AggregationConfig,
+  AggregationMetric,
 } from '../../types/data-sources';
 
 // ===== Configuration Schema =====
@@ -46,18 +49,18 @@ const dataSourceConfigSchema = {
     defaultLimit: {
       type: 'number',
       title: 'Default Record Limit',
-      description: 'Default number of records to return',
+      description: 'Default number of records to return (keep low to avoid token limits)',
       minimum: 1,
-      maximum: 1000,
-      default: 100,
+      maximum: 200,
+      default: 30,
     },
     maxLimit: {
       type: 'number',
       title: 'Maximum Record Limit',
-      description: 'Maximum number of records allowed per query',
+      description: 'Maximum number of records allowed per query (keep low to avoid token limits)',
       minimum: 1,
-      maximum: 10000,
-      default: 1000,
+      maximum: 500,
+      default: 200,
     },
     defaultChartType: {
       type: 'string',
@@ -107,16 +110,16 @@ function validateDataSourceConfig(config: Record<string, unknown>): ValidationRe
   // Validate defaultLimit
   if (config.defaultLimit !== undefined) {
     const defaultLimit = config.defaultLimit as number;
-    if (typeof defaultLimit !== 'number' || defaultLimit < 1 || defaultLimit > 1000) {
-      errors.push('defaultLimit must be a number between 1 and 1000');
+    if (typeof defaultLimit !== 'number' || defaultLimit < 1 || defaultLimit > 200) {
+      errors.push('defaultLimit must be a number between 1 and 200');
     }
   }
 
   // Validate maxLimit
   if (config.maxLimit !== undefined) {
     const maxLimit = config.maxLimit as number;
-    if (typeof maxLimit !== 'number' || maxLimit < 1 || maxLimit > 10000) {
-      errors.push('maxLimit must be a number between 1 and 10000');
+    if (typeof maxLimit !== 'number' || maxLimit < 1 || maxLimit > 500) {
+      errors.push('maxLimit must be a number between 1 and 500');
     }
   }
 
@@ -161,8 +164,8 @@ function getDataSourceToolConfig(): {
     return {
       cacheTTLSeconds: (c.cacheTTLSeconds as number) || 3600,
       timeout: (c.timeout as number) || 30,
-      defaultLimit: (c.defaultLimit as number) || 100,
-      maxLimit: (c.maxLimit as number) || 1000,
+      defaultLimit: (c.defaultLimit as number) || 30,
+      maxLimit: (c.maxLimit as number) || 200,
       defaultChartType: (c.defaultChartType as ChartType) || 'bar',
       enabledChartTypes: (c.enabledChartTypes as ChartType[]) || ['bar', 'line', 'pie', 'area', 'scatter', 'radar', 'table'],
     };
@@ -170,8 +173,8 @@ function getDataSourceToolConfig(): {
   return {
     cacheTTLSeconds: 3600,
     timeout: 30,
-    defaultLimit: 100,
-    maxLimit: 1000,
+    defaultLimit: 30,
+    maxLimit: 200,
     defaultChartType: 'bar',
     enabledChartTypes: ['bar', 'line', 'pie', 'area', 'scatter', 'radar', 'table'],
   };
@@ -271,6 +274,13 @@ interface DataSourceToolArgs {
     y_field?: string;
     group_by?: string;
   };
+  aggregation?: {
+    group_by: string;
+    metrics?: Array<{
+      field: string;
+      operation: string;
+    }>;
+  };
   category_ids: number[];
 }
 
@@ -300,7 +310,14 @@ CRITICAL RULES:
 - JUST describe the data insights in plain text - the interactive chart will appear automatically
 - Only data sources linked to the current category are accessible
 - Use filters to narrow results
-- Always provide analysis along with the data`,
+- Always provide analysis along with the data
+
+IMPORTANT FOR LARGE DATASETS:
+- For analysis questions (counts, averages, distributions), use the 'aggregation' parameter
+- aggregation.group_by: field to group results by (e.g., "response", "category", "status")
+- aggregation.metrics: [{field, operation}] where operation is count/sum/avg/min/max
+- This returns compact summaries instead of raw records, enabling analysis of 5000+ row datasets
+- Only request raw records (without aggregation) when you need specific individual records`,
       parameters: {
         type: 'object',
         properties: {
@@ -382,6 +399,36 @@ CRITICAL RULES:
               },
             },
           },
+          aggregation: {
+            type: 'object',
+            description: 'Server-side aggregation for large datasets. Use this for counts, sums, averages instead of fetching raw records.',
+            properties: {
+              group_by: {
+                type: 'string',
+                description: 'Field to group results by (e.g., "response", "category", "status")',
+              },
+              metrics: {
+                type: 'array',
+                description: 'Metrics to compute for each group',
+                items: {
+                  type: 'object',
+                  properties: {
+                    field: {
+                      type: 'string',
+                      description: 'Field to aggregate',
+                    },
+                    operation: {
+                      type: 'string',
+                      enum: ['count', 'sum', 'avg', 'min', 'max'],
+                      description: 'Aggregation operation',
+                    },
+                  },
+                  required: ['field', 'operation'],
+                },
+              },
+            },
+            required: ['group_by'],
+          },
           category_ids: {
             type: 'array',
             items: { type: 'number' },
@@ -398,8 +445,8 @@ CRITICAL RULES:
   defaultConfig: {
     cacheTTLSeconds: 3600,
     timeout: 30,
-    defaultLimit: 100,
-    maxLimit: 1000,
+    defaultLimit: 30,
+    maxLimit: 200,
     defaultChartType: 'bar',
     enabledChartTypes: ['bar', 'line', 'pie', 'area', 'scatter', 'radar', 'table'],
   },
@@ -484,6 +531,17 @@ CRITICAL RULES:
       const filters = parseFilters(args.filters);
       const sort = parseSort(args.sort);
 
+      // Parse aggregation config if provided
+      const aggregationConfig: AggregationConfig | undefined = args.aggregation
+        ? {
+            group_by: args.aggregation.group_by,
+            metrics: args.aggregation.metrics?.map(m => ({
+              field: m.field,
+              operation: m.operation as AggregationMetric['operation'],
+            })),
+          }
+        : undefined;
+
       let response: DataQueryResponse;
 
       if (dataSource.type === 'api') {
@@ -512,22 +570,42 @@ CRITICAL RULES:
           response = applyClientSideSort(response, sort);
         }
 
-        // Apply pagination
+        // Apply aggregation OR pagination (not both)
         if (response.success && response.data) {
-          const totalRecords = response.data.length;
-          response.data = response.data.slice(offset, offset + limit);
-          response.metadata.totalRecords = totalRecords;
-          response.metadata.recordCount = response.data.length;
+          if (aggregationConfig) {
+            // Aggregate the data server-side
+            const totalRecords = response.data.length;
+            const aggregatedData = aggregateData(response.data, aggregationConfig);
+            response.data = aggregatedData as unknown as Record<string, unknown>[];
+            response.metadata.totalRecords = totalRecords;
+            response.metadata.recordCount = aggregatedData.length;
+          } else {
+            // Apply pagination for raw data
+            const totalRecords = response.data.length;
+            response.data = response.data.slice(offset, offset + limit);
+            response.metadata.totalRecords = totalRecords;
+            response.metadata.recordCount = response.data.length;
+          }
         }
       } else {
         // Query CSV data
-        response = queryCSVData(
-          dataSource.config.filePath,
-          filters,
-          sort,
-          limit,
-          offset
-        );
+        if (aggregationConfig) {
+          // Use aggregation query for CSV
+          response = queryCSVDataWithAggregation(
+            dataSource.config.filePath,
+            aggregationConfig,
+            filters
+          );
+        } else {
+          // Use regular query for CSV
+          response = queryCSVData(
+            dataSource.config.filePath,
+            filters,
+            sort,
+            limit,
+            offset
+          );
+        }
       }
 
       // Build visualization hint - always include when data is returned successfully

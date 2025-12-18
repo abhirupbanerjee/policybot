@@ -191,6 +191,63 @@ export type DataSource =
   | { type: 'api'; config: DataAPIConfig }
   | { type: 'csv'; config: DataCSVConfig };
 
+// ===== Aggregation Types =====
+
+/**
+ * Supported aggregation operations
+ */
+export type AggregationOperation = 'count' | 'sum' | 'avg' | 'min' | 'max';
+
+/**
+ * Metric definition for aggregation
+ */
+export interface AggregationMetric {
+  /** Field to aggregate */
+  field: string;
+  /** Aggregation operation */
+  operation: AggregationOperation;
+}
+
+/**
+ * Aggregation configuration for data queries
+ */
+export interface AggregationConfig {
+  /** Field to group results by */
+  group_by: string;
+  /** Metrics to compute for each group */
+  metrics?: AggregationMetric[];
+}
+
+/**
+ * Single aggregated result row
+ * Contains the group key, count, and any computed metrics
+ */
+export interface AggregatedRow {
+  /** Count of records in this group */
+  count: number;
+  /** Dynamic fields for group key and computed metrics */
+  [key: string]: unknown;
+}
+
+/**
+ * Response containing aggregated data
+ */
+export interface AggregatedDataResponse {
+  /** Whether the aggregation succeeded */
+  success: boolean;
+  /** Aggregated results */
+  data: AggregatedRow[] | null;
+  /** Aggregation metadata */
+  metadata: DataQueryMetadata & {
+    /** Indicates response contains aggregated data */
+    aggregated: true;
+    /** The field data was grouped by */
+    groupedBy: string;
+  };
+  /** Error information if failed */
+  error?: DataQueryError;
+}
+
 // ===== Query Types =====
 
 /**

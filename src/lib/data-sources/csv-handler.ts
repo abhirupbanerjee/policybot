@@ -12,7 +12,9 @@ import type {
   DataFilter,
   DataSort,
   DataQueryResponse,
+  AggregationConfig,
 } from '../../types/data-sources';
+import { aggregateData } from './aggregation';
 
 // ===== Types =====
 
@@ -402,6 +404,98 @@ function applySorting(
 
     return sort.direction === 'asc' ? comparison : -comparison;
   });
+}
+
+// ===== Aggregation =====
+
+/**
+ * Query CSV data with aggregation (server-side)
+ * Returns compact aggregated results instead of raw records
+ */
+export function queryCSVDataWithAggregation(
+  filePath: string,
+  aggregation: AggregationConfig,
+  filters?: DataFilter[]
+): DataQueryResponse {
+  const startTime = Date.now();
+
+  try {
+    // Check if file exists
+    if (!fs.existsSync(filePath)) {
+      return {
+        success: false,
+        data: null,
+        metadata: {
+          source: path.basename(filePath),
+          sourceType: 'csv',
+          fetchedAt: new Date().toISOString(),
+          cached: false,
+          recordCount: 0,
+          fields: [],
+          executionTimeMs: Date.now() - startTime,
+        },
+        error: {
+          code: 'FILE_NOT_FOUND',
+          message: `CSV file not found: ${filePath}`,
+        },
+      };
+    }
+
+    // Parse the file
+    const parsed = parseCSVFile(filePath);
+    let data = parsed.data;
+
+    // Apply filters first
+    if (filters && filters.length > 0) {
+      data = applyFilters(data, filters);
+    }
+
+    const totalRecords = data.length;
+
+    // Aggregate the data
+    const aggregatedData = aggregateData(data, aggregation);
+
+    // Build field names for the aggregated result
+    const aggregatedFields = [aggregation.group_by, 'count'];
+    if (aggregation.metrics) {
+      for (const metric of aggregation.metrics) {
+        aggregatedFields.push(`${metric.field}_${metric.operation}`);
+      }
+    }
+
+    return {
+      success: true,
+      data: aggregatedData as unknown as Record<string, unknown>[],
+      metadata: {
+        source: path.basename(filePath),
+        sourceType: 'csv',
+        fetchedAt: new Date().toISOString(),
+        cached: false,
+        recordCount: aggregatedData.length,
+        totalRecords,
+        fields: aggregatedFields,
+        executionTimeMs: Date.now() - startTime,
+      },
+    };
+  } catch (error) {
+    return {
+      success: false,
+      data: null,
+      metadata: {
+        source: path.basename(filePath),
+        sourceType: 'csv',
+        fetchedAt: new Date().toISOString(),
+        cached: false,
+        recordCount: 0,
+        fields: [],
+        executionTimeMs: Date.now() - startTime,
+      },
+      error: {
+        code: 'AGGREGATION_ERROR',
+        message: error instanceof Error ? error.message : 'Unknown error aggregating CSV',
+      },
+    };
+  }
 }
 
 // ===== File Storage =====
