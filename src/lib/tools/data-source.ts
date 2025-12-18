@@ -229,13 +229,22 @@ function recommendVisualization(
     return { chartType: 'table' };
   }
 
-  // Single record with only count/total - no chart needed, just show table
-  // This handles "total count" type queries where a chart is not useful
-  if (data.length === 1) {
+  // Suppress charts for data that doesn't benefit from visualization:
+  // 1. Single record (simple counts, totals)
+  // 2. Very few records (1-2) that are just aggregate results
+  if (data.length <= 2) {
     const firstRow = data[0];
-    const nonCountFields = fields.filter(f => f !== 'count' && firstRow[f] !== undefined);
-    // If the only meaningful fields are count/aggregated values, use table
-    if (nonCountFields.length === 0 || (nonCountFields.length === 1 && typeof firstRow[nonCountFields[0]] === 'number')) {
+    // Check if this looks like an aggregate result (mostly numeric/count fields)
+    const categoricalFields = fields.filter(f => {
+      const val = firstRow[f];
+      return typeof val === 'string' && isNaN(Number(val as string)) && f !== 'count';
+    });
+    // If no categorical fields, or only numeric/count fields, use table
+    if (categoricalFields.length === 0) {
+      return { chartType: 'table' };
+    }
+    // For 1-2 records, charts aren't useful unless we have clear categories
+    if (data.length === 1 && categoricalFields.length < 2) {
       return { chartType: 'table' };
     }
   }
@@ -891,17 +900,26 @@ export function getAvailableDataSourcesDescription(categoryIds: number[]): strin
 
   // Start with critical anti-code rules that apply to ALL models (including Gemini)
   const descriptions: string[] = [
-    '## Data Visualization Rules',
+    '## Data Visualization Rules (MANDATORY)',
     '',
-    'CRITICAL - DO NOT GENERATE CODE FOR VISUALIZATIONS:',
-    '- DO NOT generate Python, matplotlib, pandas, seaborn, plotly, or any programming code',
-    '- DO NOT use print(), plt., import, df., pd., np., fig., ax., or any code constructs',
-    '- DO NOT output code blocks with ```python, ```javascript, or any programming language',
-    '- DO NOT suggest running scripts, code snippets, or external tools to visualize data',
-    '- DO NOT use data_visualizer, display_chart(), or any function-call-like syntax in your response',
+    '⚠️ CRITICAL - NEVER OUTPUT CODE IN YOUR RESPONSE:',
+    '- NEVER write print(), data_source.query(), SELECT, or ANY code syntax',
+    '- NEVER output Python, SQL, JavaScript, or any programming code',
+    '- NEVER use matplotlib, pandas, plotly, seaborn, or any library calls',
+    '- NEVER output ```python, ```sql, or any code blocks',
+    '- NEVER write function calls like display_chart(), create_pie_chart(), etc.',
     '',
-    'INSTEAD: Use the data_source tool to query data. The system automatically renders interactive charts.',
-    'Just describe the data insights in plain text after calling the tool.',
+    '✅ CORRECT APPROACH:',
+    '1. Call the data_source TOOL (not print/code) to fetch data',
+    '2. The system AUTOMATICALLY renders charts from the tool result',
+    '3. In your response, just describe insights in PLAIN TEXT - no code!',
+    '',
+    'EXAMPLE OF WHAT NOT TO DO:',
+    '❌ print(data_source.query("SELECT...", "bar_chart"))',
+    '❌ ```python import pandas...```',
+    '',
+    'EXAMPLE OF CORRECT RESPONSE:',
+    '✅ "Based on the survey data, St. George has 200 respondents (40%)..."',
     '',
     'Available Data Sources:',
   ];

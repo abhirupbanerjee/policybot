@@ -256,6 +256,14 @@ function pivotDataForMultiSeries(
 }
 
 /**
+ * Check if any labels exceed the maximum length for legend display
+ * Long labels (>50 chars) should only show in tooltips, not legends
+ */
+function hasLongLabels(labels: (string | undefined)[], maxLength = 50): boolean {
+  return labels.some(label => label !== undefined && label.length > maxLength);
+}
+
+/**
  * Generate user-friendly chart title
  */
 function generateChartTitle(
@@ -450,7 +458,7 @@ function BarChartComponent({
         <XAxis dataKey={xField} tick={{ fontSize: 12 }} />
         <YAxis tick={{ fontSize: 12 }} tickFormatter={formatNumber} />
         <Tooltip formatter={(value) => formatNumber(value as number)} />
-        {isMultiSeries && <Legend />}
+        {isMultiSeries && !hasLongLabels(dataKeys) && <Legend />}
         {dataKeys.map((key, i) => (
           <Bar
             key={key}
@@ -487,7 +495,7 @@ function LineChartComponent({
         <XAxis dataKey={xField} tick={{ fontSize: 12 }} />
         <YAxis tick={{ fontSize: 12 }} tickFormatter={formatNumber} />
         <Tooltip formatter={(value) => formatNumber(value as number)} />
-        {isMultiSeries && <Legend />}
+        {isMultiSeries && !hasLongLabels(dataKeys) && <Legend />}
         {dataKeys.map((key, i) => (
           <Line
             key={key}
@@ -527,7 +535,7 @@ function AreaChartComponent({
         <XAxis dataKey={xField} tick={{ fontSize: 12 }} />
         <YAxis tick={{ fontSize: 12 }} tickFormatter={formatNumber} />
         <Tooltip formatter={(value) => formatNumber(value as number)} />
-        {isMultiSeries && <Legend />}
+        {isMultiSeries && !hasLongLabels(dataKeys) && <Legend />}
         {dataKeys.map((key, i) => (
           <Area
             key={key}
@@ -576,7 +584,7 @@ function PieChartComponent({
           ))}
         </Pie>
         <Tooltip formatter={(value) => formatNumber(value as number)} />
-        <Legend />
+        {!hasLongLabels(pieData.map(d => String(d.name ?? ''))) && <Legend />}
       </PieChart>
     </ResponsiveContainer>
   );
@@ -620,7 +628,7 @@ function ScatterChartComponent({
         <XAxis dataKey={xField} tick={{ fontSize: 12 }} name={xField} />
         <YAxis dataKey={yField} tick={{ fontSize: 12 }} name={yField} tickFormatter={formatNumber} />
         <Tooltip cursor={{ strokeDasharray: '3 3' }} />
-        {isMultiSeries && <Legend />}
+        {isMultiSeries && !hasLongLabels(scatterData.map(s => s.name)) && <Legend />}
         {scatterData.map(({ name, data: seriesData, color }) => (
           <Scatter key={name} name={name} data={seriesData} fill={color} />
         ))}
@@ -671,7 +679,7 @@ function RadarChartComponent({
             fillOpacity={0.3}
           />
         ))}
-        {isMultiSeries && <Legend />}
+        {isMultiSeries && !hasLongLabels(dataKeys) && <Legend />}
         <Tooltip formatter={(value) => formatNumber(value as number)} />
       </RadarChart>
     </ResponsiveContainer>
