@@ -456,7 +456,11 @@ export function queryCSVDataWithAggregation(
     const aggregatedData = aggregateData(data, aggregation);
 
     // Build field names for the aggregated result
-    const aggregatedFields = [aggregation.group_by, 'count'];
+    // Handle both single field and array of fields for group_by
+    const groupByFields = Array.isArray(aggregation.group_by)
+      ? aggregation.group_by
+      : [aggregation.group_by];
+    const aggregatedFields = [...groupByFields, 'count'];
     if (aggregation.metrics) {
       for (const metric of aggregation.metrics) {
         aggregatedFields.push(`${metric.field}_${metric.operation}`);

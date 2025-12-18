@@ -212,8 +212,8 @@ export interface AggregationMetric {
  * Aggregation configuration for data queries
  */
 export interface AggregationConfig {
-  /** Field to group results by */
-  group_by: string;
+  /** Field(s) to group results by - single field or array for multi-dimensional grouping */
+  group_by: string | string[];
   /** Metrics to compute for each group */
   metrics?: AggregationMetric[];
 }
@@ -241,8 +241,8 @@ export interface AggregatedDataResponse {
   metadata: DataQueryMetadata & {
     /** Indicates response contains aggregated data */
     aggregated: true;
-    /** The field data was grouped by */
-    groupedBy: string;
+    /** The field(s) data was grouped by */
+    groupedBy: string | string[];
   };
   /** Error information if failed */
   error?: DataQueryError;

@@ -229,6 +229,17 @@ function recommendVisualization(
     return { chartType: 'table' };
   }
 
+  // Single record with only count/total - no chart needed, just show table
+  // This handles "total count" type queries where a chart is not useful
+  if (data.length === 1) {
+    const firstRow = data[0];
+    const nonCountFields = fields.filter(f => f !== 'count' && firstRow[f] !== undefined);
+    // If the only meaningful fields are count/aggregated values, use table
+    if (nonCountFields.length === 0 || (nonCountFields.length === 1 && typeof firstRow[nonCountFields[0]] === 'number')) {
+      return { chartType: 'table' };
+    }
+  }
+
   const firstRow = data[0];
 
   // Categorize fields
@@ -248,14 +259,30 @@ function recommendVisualization(
 
   // ===== CHART TYPE SELECTION RULES =====
 
-  // Rule 1: Aggregated data with groupBy → Stacked Bar
-  if (aggregation?.group_by && stringFields.length >= 2) {
-    const xField = stringFields.find(f => f !== aggregation.group_by) || stringFields[0];
+  // Normalize group_by to array for easier handling
+  const groupByFields = aggregation?.group_by
+    ? (Array.isArray(aggregation.group_by) ? aggregation.group_by : [aggregation.group_by])
+    : [];
+
+  // Rule 1: Multi-field aggregation → Stacked Bar (for cross-tabulation)
+  if (groupByFields.length >= 2) {
+    // First field is X-axis, second is groupBy for stacking
+    return {
+      chartType: 'bar',
+      xField: groupByFields[0],
+      yField: numericFields[0] || 'count',
+      groupBy: groupByFields[1],
+    };
+  }
+
+  // Rule 1b: Single-field aggregation with multiple string fields → Stacked Bar
+  if (groupByFields.length === 1 && stringFields.length >= 2) {
+    const xField = stringFields.find(f => f !== groupByFields[0]) || stringFields[0];
     return {
       chartType: 'bar',
       xField,
       yField: numericFields[0] || 'count',
-      groupBy: aggregation.group_by,
+      groupBy: groupByFields[0],
     };
   }
 
@@ -372,7 +399,7 @@ interface DataSourceToolArgs {
     group_by?: string;
   };
   aggregation?: {
-    group_by: string;
+    group_by: string | string[];
     metrics?: Array<{
       field: string;
       operation: string;
@@ -419,7 +446,9 @@ OTHER RULES:
 
 IMPORTANT FOR LARGE DATASETS:
 - For analysis questions (counts, averages, distributions), use the 'aggregation' parameter
-- aggregation.group_by: field to group results by (e.g., "response", "category", "status")
+- aggregation.group_by: field(s) to group results by - can be a single field or ARRAY of fields for cross-tabulation
+  - Single field: "residence" → groups by residence only
+  - Multiple fields: ["residence", "education"] → groups by both (creates stacked/multi-series data)
 - aggregation.metrics: [{field, operation}] where operation is count/sum/avg/min/max
 - This returns compact summaries instead of raw records, enabling analysis of 5000+ row datasets
 - Only request raw records (without aggregation) when you need specific individual records`,
@@ -509,8 +538,11 @@ IMPORTANT FOR LARGE DATASETS:
             description: 'Server-side aggregation for large datasets. Use this for counts, sums, averages instead of fetching raw records.',
             properties: {
               group_by: {
-                type: 'string',
-                description: 'Field to group results by (e.g., "response", "category", "status")',
+                oneOf: [
+                  { type: 'string' },
+                  { type: 'array', items: { type: 'string' } },
+                ],
+                description: 'Field(s) to group results by. Use array for multi-dimensional grouping (e.g., ["residence", "education"])',
               },
               metrics: {
                 type: 'array',
@@ -857,7 +889,22 @@ export function getAvailableDataSourcesDescription(categoryIds: number[]): strin
     return '';
   }
 
-  const descriptions: string[] = ['Available Data Sources:'];
+  // Start with critical anti-code rules that apply to ALL models (including Gemini)
+  const descriptions: string[] = [
+    '## Data Visualization Rules',
+    '',
+    'CRITICAL - DO NOT GENERATE CODE FOR VISUALIZATIONS:',
+    '- DO NOT generate Python, matplotlib, pandas, seaborn, plotly, or any programming code',
+    '- DO NOT use print(), plt., import, df., pd., np., fig., ax., or any code constructs',
+    '- DO NOT output code blocks with ```python, ```javascript, or any programming language',
+    '- DO NOT suggest running scripts, code snippets, or external tools to visualize data',
+    '- DO NOT use data_visualizer, display_chart(), or any function-call-like syntax in your response',
+    '',
+    'INSTEAD: Use the data_source tool to query data. The system automatically renders interactive charts.',
+    'Just describe the data insights in plain text after calling the tool.',
+    '',
+    'Available Data Sources:',
+  ];
 
   for (const source of sources) {
     if (source.type === 'api') {

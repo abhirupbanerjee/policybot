@@ -13,6 +13,7 @@ import type {
 
 /**
  * Aggregate data by grouping and computing metrics
+ * Supports both single-field and multi-field grouping
  *
  * @param data - Array of records to aggregate
  * @param config - Aggregation configuration
@@ -28,25 +29,38 @@ export function aggregateData(
 
   const { group_by, metrics } = config;
 
-  // Group records by the specified field
+  // Normalize group_by to always be an array
+  const groupByFields = Array.isArray(group_by) ? group_by : [group_by];
+
+  // Group records by the specified field(s)
   const groups = new Map<string, Record<string, unknown>[]>();
 
   for (const record of data) {
-    const groupValue = String(record[group_by] ?? 'null');
-    if (!groups.has(groupValue)) {
-      groups.set(groupValue, []);
+    // Create composite key from all group_by fields
+    const keyParts = groupByFields.map(field => String(record[field] ?? 'null'));
+    const compositeKey = keyParts.join('|||'); // Use unique separator
+
+    if (!groups.has(compositeKey)) {
+      groups.set(compositeKey, []);
     }
-    groups.get(groupValue)!.push(record);
+    groups.get(compositeKey)!.push(record);
   }
 
   // Compute aggregations for each group
   const results: AggregatedRow[] = [];
 
-  for (const [groupValue, records] of groups) {
+  for (const [compositeKey, records] of groups) {
+    const keyParts = compositeKey.split('|||');
+
     const row: AggregatedRow = {
-      [group_by]: groupValue === 'null' ? null : groupValue,
       count: records.length,
     };
+
+    // Add each group_by field to the result
+    groupByFields.forEach((field, index) => {
+      const value = keyParts[index];
+      row[field] = value === 'null' ? null : value;
+    });
 
     // Compute additional metrics if specified
     if (metrics && metrics.length > 0) {
