@@ -68,14 +68,6 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json({ error: 'Skill not found' }, { status: 404 });
     }
 
-    // Prevent modifying core skills (except toggling active)
-    if (existing.is_core) {
-      return NextResponse.json(
-        { error: 'Cannot modify core skills' },
-        { status: 403 }
-      );
-    }
-
     const body = await request.json();
     const updates: Partial<CreateSkillInput> & { is_active?: boolean } = {};
 

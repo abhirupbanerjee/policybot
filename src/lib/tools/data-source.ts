@@ -526,25 +526,36 @@ Important:
         );
       }
 
-      // Build visualization hint if requested
+      // Build visualization hint - always include when data is returned successfully
       let visualizationHint: VisualizationHint | undefined;
-      if (args.visualization && response.success) {
-        const chartType = args.visualization.chart_type || toolConfig.defaultChartType;
-
-        // Validate chart type is enabled
-        if (!toolConfig.enabledChartTypes.includes(chartType)) {
+      if (response.success && response.data && response.data.length > 0) {
+        if (args.visualization) {
+          // Use explicit visualization request
+          const chartType = args.visualization.chart_type || toolConfig.defaultChartType;
           visualizationHint = {
-            chartType: toolConfig.defaultChartType,
+            chartType: toolConfig.enabledChartTypes.includes(chartType) ? chartType : toolConfig.defaultChartType,
             xField: args.visualization.x_field,
             yField: args.visualization.y_field,
             groupBy: args.visualization.group_by,
           };
-        } else {
+        } else if (response.data) {
+          // Auto-generate default visualization hint
+          const firstRow = response.data[0] as Record<string, unknown>;
+          const fields = response.metadata?.fields || Object.keys(firstRow);
+          const numericFields = fields.filter(f => {
+            const val = firstRow[f];
+            return typeof val === 'number' || (!isNaN(Number(val)) && val !== null && val !== '');
+          });
+          const stringFields = fields.filter(f => {
+            const val = firstRow[f];
+            return typeof val === 'string' && isNaN(Number(val));
+          });
+
+          // Pick sensible defaults: first string field for x-axis, first numeric for y-axis
           visualizationHint = {
-            chartType,
-            xField: args.visualization.x_field,
-            yField: args.visualization.y_field,
-            groupBy: args.visualization.group_by,
+            chartType: toolConfig.defaultChartType,
+            xField: stringFields[0] || fields[0],
+            yField: numericFields[0] || fields[1] || fields[0],
           };
         }
       }
