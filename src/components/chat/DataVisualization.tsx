@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, Component, ErrorInfo, ReactNode } from 'react';
 import {
   BarChart,
   Bar,
@@ -25,8 +25,42 @@ import {
   ResponsiveContainer,
   Cell,
 } from 'recharts';
-import { BarChart3, LineChart as LineChartIcon, PieChart as PieChartIcon, Table, Download, ChevronDown, ChevronUp, Activity, Radar as RadarIcon } from 'lucide-react';
+import { BarChart3, LineChart as LineChartIcon, PieChart as PieChartIcon, Table, Download, ChevronDown, ChevronUp, Activity, Radar as RadarIcon, AlertCircle } from 'lucide-react';
 import type { ChartType, VisualizationHint } from '@/types/data-sources';
+
+// ===== Error Boundary =====
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error?: Error;
+}
+
+class ChartErrorBoundary extends Component<{ children: ReactNode; fallback?: ReactNode }, ErrorBoundaryState> {
+  constructor(props: { children: ReactNode; fallback?: ReactNode }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    console.error('Chart rendering error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback || (
+        <div className="flex items-center gap-2 p-4 bg-red-50 text-red-600 rounded-lg">
+          <AlertCircle size={20} />
+          <span>Unable to render chart. View data in table format instead.</span>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // ===== Types =====
 
@@ -125,14 +159,22 @@ function aggregateData(
 /**
  * Format number for display
  */
-function formatNumber(value: number): string {
-  if (Math.abs(value) >= 1000000) {
-    return `${(value / 1000000).toFixed(1)}M`;
+function formatNumber(value: unknown): string {
+  // Handle non-numeric values
+  if (value === null || value === undefined) return '-';
+
+  const num = typeof value === 'number' ? value : Number(value);
+
+  // If conversion failed, return as string
+  if (isNaN(num)) return String(value);
+
+  if (Math.abs(num) >= 1000000) {
+    return `${(num / 1000000).toFixed(1)}M`;
   }
-  if (Math.abs(value) >= 1000) {
-    return `${(value / 1000).toFixed(1)}K`;
+  if (Math.abs(num) >= 1000) {
+    return `${(num / 1000).toFixed(1)}K`;
   }
-  return value.toFixed(value % 1 === 0 ? 0 : 2);
+  return num.toFixed(num % 1 === 0 ? 0 : 2);
 }
 
 // ===== Sub-Components =====
@@ -460,6 +502,12 @@ export default function DataVisualization({
 }: DataVisualizationProps) {
   const [chartType, setChartType] = useState<ChartType>(initialChartType);
   const [showRawData, setShowRawData] = useState(false);
+  const [isMounted, setIsMounted] = useState(false);
+
+  // Delay chart rendering until after hydration to avoid SSR mismatch
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   // Derive available fields from data
   const numericFields = useMemo(() => getNumericFields(data), [data]);
@@ -564,25 +612,33 @@ export default function DataVisualization({
 
       {/* Chart */}
       <div className="bg-white rounded-lg p-4 min-h-[300px]">
-        {chartType === 'bar' && (
-          <BarChartComponent data={data} xField={xField} yField={yField} />
+        {!isMounted && chartType !== 'table' ? (
+          <div className="flex items-center justify-center h-[300px]">
+            <div className="text-gray-500 text-sm">Loading chart...</div>
+          </div>
+        ) : (
+          <ChartErrorBoundary fallback={<DataTable data={data} />}>
+            {chartType === 'bar' && (
+              <BarChartComponent data={data} xField={xField} yField={yField} />
+            )}
+            {chartType === 'line' && (
+              <LineChartComponent data={data} xField={xField} yField={yField} />
+            )}
+            {chartType === 'area' && (
+              <AreaChartComponent data={data} xField={xField} yField={yField} />
+            )}
+            {chartType === 'pie' && (
+              <PieChartComponent data={data} nameField={xField} valueField={yField} />
+            )}
+            {chartType === 'scatter' && (
+              <ScatterChartComponent data={data} xField={xField} yField={yField} />
+            )}
+            {chartType === 'radar' && (
+              <RadarChartComponent data={data} nameField={xField} valueField={yField} />
+            )}
+            {chartType === 'table' && <DataTable data={data} />}
+          </ChartErrorBoundary>
         )}
-        {chartType === 'line' && (
-          <LineChartComponent data={data} xField={xField} yField={yField} />
-        )}
-        {chartType === 'area' && (
-          <AreaChartComponent data={data} xField={xField} yField={yField} />
-        )}
-        {chartType === 'pie' && (
-          <PieChartComponent data={data} nameField={xField} valueField={yField} />
-        )}
-        {chartType === 'scatter' && (
-          <ScatterChartComponent data={data} xField={xField} yField={yField} />
-        )}
-        {chartType === 'radar' && (
-          <RadarChartComponent data={data} nameField={xField} valueField={yField} />
-        )}
-        {chartType === 'table' && <DataTable data={data} />}
       </div>
 
       {/* Raw Data Toggle */}
