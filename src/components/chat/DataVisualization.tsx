@@ -221,6 +221,41 @@ function formatFieldName(fieldName: string): string {
 }
 
 /**
+ * Pivot data for multi-series charts
+ * Transforms grouped data into a format suitable for stacked/multi-series charts
+ *
+ * Input:  [{ location: "NYC", education: "HS", count: 10 }, { location: "NYC", education: "BS", count: 20 }]
+ * Output: { pivotedData: [{ location: "NYC", "HS": 10, "BS": 20 }], seriesKeys: ["HS", "BS"] }
+ */
+function pivotDataForMultiSeries(
+  data: Record<string, unknown>[],
+  xField: string,
+  groupBy: string,
+  valueField: string
+): { pivotedData: Record<string, unknown>[]; seriesKeys: string[] } {
+  const grouped = new Map<string, Record<string, unknown>>();
+  const seriesKeysSet = new Set<string>();
+
+  for (const row of data) {
+    const xValue = String(row[xField] ?? 'Unknown');
+    const groupValue = String(row[groupBy] ?? 'Unknown');
+    const value = row[valueField];
+
+    seriesKeysSet.add(groupValue);
+
+    if (!grouped.has(xValue)) {
+      grouped.set(xValue, { [xField]: xValue });
+    }
+    grouped.get(xValue)![groupValue] = value;
+  }
+
+  return {
+    pivotedData: Array.from(grouped.values()),
+    seriesKeys: Array.from(seriesKeysSet),
+  };
+}
+
+/**
  * Generate user-friendly chart title
  */
 function generateChartTitle(
@@ -396,11 +431,18 @@ function BarChartComponent({
   data,
   xField,
   yField,
+  groupBy,
+  seriesKeys,
 }: {
   data: Record<string, unknown>[];
   xField: string;
   yField: string;
+  groupBy?: string;
+  seriesKeys?: string[];
 }) {
+  const dataKeys = seriesKeys && seriesKeys.length > 0 ? seriesKeys : [yField];
+  const isMultiSeries = dataKeys.length > 1;
+
   return (
     <ResponsiveContainer width="100%" height={300}>
       <BarChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
@@ -408,8 +450,17 @@ function BarChartComponent({
         <XAxis dataKey={xField} tick={{ fontSize: 12 }} />
         <YAxis tick={{ fontSize: 12 }} tickFormatter={formatNumber} />
         <Tooltip formatter={(value) => formatNumber(value as number)} />
-        <Legend />
-        <Bar dataKey={yField} fill={CHART_COLORS[0]} radius={[4, 4, 0, 0]} />
+        {isMultiSeries && <Legend />}
+        {dataKeys.map((key, i) => (
+          <Bar
+            key={key}
+            dataKey={key}
+            name={key}
+            stackId={groupBy ? 'stack' : undefined}
+            fill={CHART_COLORS[i % CHART_COLORS.length]}
+            radius={groupBy ? undefined : [4, 4, 0, 0]}
+          />
+        ))}
       </BarChart>
     </ResponsiveContainer>
   );
@@ -419,11 +470,16 @@ function LineChartComponent({
   data,
   xField,
   yField,
+  seriesKeys,
 }: {
   data: Record<string, unknown>[];
   xField: string;
   yField: string;
+  seriesKeys?: string[];
 }) {
+  const dataKeys = seriesKeys && seriesKeys.length > 0 ? seriesKeys : [yField];
+  const isMultiSeries = dataKeys.length > 1;
+
   return (
     <ResponsiveContainer width="100%" height={300}>
       <LineChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
@@ -431,14 +487,18 @@ function LineChartComponent({
         <XAxis dataKey={xField} tick={{ fontSize: 12 }} />
         <YAxis tick={{ fontSize: 12 }} tickFormatter={formatNumber} />
         <Tooltip formatter={(value) => formatNumber(value as number)} />
-        <Legend />
-        <Line
-          type="monotone"
-          dataKey={yField}
-          stroke={CHART_COLORS[0]}
-          strokeWidth={2}
-          dot={{ fill: CHART_COLORS[0] }}
-        />
+        {isMultiSeries && <Legend />}
+        {dataKeys.map((key, i) => (
+          <Line
+            key={key}
+            type="monotone"
+            dataKey={key}
+            name={key}
+            stroke={CHART_COLORS[i % CHART_COLORS.length]}
+            strokeWidth={2}
+            dot={{ fill: CHART_COLORS[i % CHART_COLORS.length], r: 4 }}
+          />
+        ))}
       </LineChart>
     </ResponsiveContainer>
   );
@@ -448,11 +508,18 @@ function AreaChartComponent({
   data,
   xField,
   yField,
+  groupBy,
+  seriesKeys,
 }: {
   data: Record<string, unknown>[];
   xField: string;
   yField: string;
+  groupBy?: string;
+  seriesKeys?: string[];
 }) {
+  const dataKeys = seriesKeys && seriesKeys.length > 0 ? seriesKeys : [yField];
+  const isMultiSeries = dataKeys.length > 1;
+
   return (
     <ResponsiveContainer width="100%" height={300}>
       <AreaChart data={data} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
@@ -460,13 +527,18 @@ function AreaChartComponent({
         <XAxis dataKey={xField} tick={{ fontSize: 12 }} />
         <YAxis tick={{ fontSize: 12 }} tickFormatter={formatNumber} />
         <Tooltip formatter={(value) => formatNumber(value as number)} />
-        <Legend />
-        <Area
-          type="monotone"
-          dataKey={yField}
-          stroke={CHART_COLORS[0]}
-          fill={`${CHART_COLORS[0]}40`}
-        />
+        {isMultiSeries && <Legend />}
+        {dataKeys.map((key, i) => (
+          <Area
+            key={key}
+            type="monotone"
+            dataKey={key}
+            name={key}
+            stackId={groupBy ? 'stack' : undefined}
+            stroke={CHART_COLORS[i % CHART_COLORS.length]}
+            fill={`${CHART_COLORS[i % CHART_COLORS.length]}40`}
+          />
+        ))}
       </AreaChart>
     </ResponsiveContainer>
   );
@@ -514,11 +586,33 @@ function ScatterChartComponent({
   data,
   xField,
   yField,
+  groupBy,
 }: {
   data: Record<string, unknown>[];
   xField: string;
   yField: string;
+  groupBy?: string;
 }) {
+  // Group data by groupBy field if provided for multi-series scatter
+  const scatterData = useMemo(() => {
+    if (!groupBy) return [{ name: 'Data', data, color: CHART_COLORS[0] }];
+
+    const groups = new Map<string, Record<string, unknown>[]>();
+    for (const row of data) {
+      const key = String(row[groupBy] ?? 'Unknown');
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(row);
+    }
+
+    return Array.from(groups.entries()).map(([name, groupData], i) => ({
+      name,
+      data: groupData,
+      color: CHART_COLORS[i % CHART_COLORS.length],
+    }));
+  }, [data, groupBy]);
+
+  const isMultiSeries = scatterData.length > 1;
+
   return (
     <ResponsiveContainer width="100%" height={300}>
       <ScatterChart margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
@@ -526,8 +620,10 @@ function ScatterChartComponent({
         <XAxis dataKey={xField} tick={{ fontSize: 12 }} name={xField} />
         <YAxis dataKey={yField} tick={{ fontSize: 12 }} name={yField} tickFormatter={formatNumber} />
         <Tooltip cursor={{ strokeDasharray: '3 3' }} />
-        <Legend />
-        <Scatter name="Data" data={data} fill={CHART_COLORS[0]} />
+        {isMultiSeries && <Legend />}
+        {scatterData.map(({ name, data: seriesData, color }) => (
+          <Scatter key={name} name={name} data={seriesData} fill={color} />
+        ))}
       </ScatterChart>
     </ResponsiveContainer>
   );
@@ -537,30 +633,45 @@ function RadarChartComponent({
   data,
   nameField,
   valueField,
+  seriesKeys,
 }: {
   data: Record<string, unknown>[];
   nameField: string;
   valueField: string;
+  seriesKeys?: string[];
 }) {
-  // Aggregate data for radar chart
-  const radarData = useMemo(() => {
-    return aggregateData(data, nameField, valueField);
-  }, [data, nameField, valueField]);
+  // If seriesKeys provided, use pivoted data with multiple radar polygons
+  // Otherwise, aggregate data by nameField (existing behavior)
+  const { chartData, dataKeys } = useMemo(() => {
+    if (seriesKeys && seriesKeys.length > 0) {
+      // Data is already pivoted - each row has multiple series values
+      return { chartData: data, dataKeys: seriesKeys };
+    }
+
+    // Existing aggregation behavior for single series
+    const aggregated = aggregateData(data, nameField, valueField);
+    return { chartData: aggregated, dataKeys: ['value'] };
+  }, [data, nameField, valueField, seriesKeys]);
+
+  const isMultiSeries = dataKeys.length > 1;
 
   return (
     <ResponsiveContainer width="100%" height={300}>
-      <RadarChart cx="50%" cy="50%" outerRadius="80%" data={radarData}>
+      <RadarChart cx="50%" cy="50%" outerRadius="80%" data={chartData}>
         <PolarGrid />
-        <PolarAngleAxis dataKey="name" tick={{ fontSize: 11 }} />
+        <PolarAngleAxis dataKey={seriesKeys ? nameField : 'name'} tick={{ fontSize: 11 }} />
         <PolarRadiusAxis tick={{ fontSize: 10 }} tickFormatter={formatNumber} />
-        <Radar
-          name={valueField}
-          dataKey="value"
-          stroke={CHART_COLORS[0]}
-          fill={CHART_COLORS[0]}
-          fillOpacity={0.5}
-        />
-        <Legend />
+        {dataKeys.map((key, i) => (
+          <Radar
+            key={key}
+            name={key}
+            dataKey={key}
+            stroke={CHART_COLORS[i % CHART_COLORS.length]}
+            fill={CHART_COLORS[i % CHART_COLORS.length]}
+            fillOpacity={0.3}
+          />
+        ))}
+        {isMultiSeries && <Legend />}
         <Tooltip formatter={(value) => formatNumber(value as number)} />
       </RadarChart>
     </ResponsiveContainer>
@@ -574,8 +685,7 @@ export default function DataVisualization({
   data,
   xField: initialXField,
   yField: initialYField,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  groupBy, // Reserved for future grouping functionality
+  groupBy,
   sourceName,
   cached,
   fields,
@@ -607,14 +717,32 @@ export default function DataVisualization({
     return initialYField || numericFields[0] || allFields[1] || 'value';
   });
 
-  // Prepare chart data - auto-aggregate categorical data
+  // Pivot data for multi-series charts when groupBy is provided
+  const { pivotedData, seriesKeys } = useMemo(() => {
+    if (!groupBy || !xField || !yField || chartType === 'table') {
+      return { pivotedData: undefined, seriesKeys: undefined };
+    }
+
+    // Check if groupBy field exists in data
+    if (data.length > 0 && !(groupBy in data[0])) {
+      return { pivotedData: undefined, seriesKeys: undefined };
+    }
+
+    return pivotDataForMultiSeries(data, xField, groupBy, yField);
+  }, [data, xField, yField, groupBy, chartType]);
+
+  // Prepare chart data - auto-aggregate categorical data or use pivoted data
   const chartData = useMemo(() => {
+    // Use pivoted data for multi-series if available
+    if (pivotedData && seriesKeys && seriesKeys.length > 0) {
+      return pivotedData;
+    }
+    // For categorical data, count occurrences by the selected X field
     if (isCategorical && chartType !== 'table') {
-      // For categorical data, count occurrences by the selected X field
       return countByCategory(data, xField);
     }
     return data;
-  }, [data, xField, isCategorical, chartType]);
+  }, [data, xField, isCategorical, chartType, pivotedData, seriesKeys]);
 
   // The Y field for categorical data is always 'count'
   const effectiveYField = isCategorical ? 'count' : yField;
@@ -771,22 +899,49 @@ export default function DataVisualization({
         ) : (
           <ChartErrorBoundary fallback={<DataTable data={data} />}>
             {chartType === 'bar' && (
-              <BarChartComponent data={chartData} xField={isCategorical ? 'name' : xField} yField={effectiveYField} />
+              <BarChartComponent
+                data={chartData}
+                xField={isCategorical ? 'name' : xField}
+                yField={effectiveYField}
+                groupBy={groupBy}
+                seriesKeys={seriesKeys}
+              />
             )}
             {chartType === 'line' && (
-              <LineChartComponent data={chartData} xField={isCategorical ? 'name' : xField} yField={effectiveYField} />
+              <LineChartComponent
+                data={chartData}
+                xField={isCategorical ? 'name' : xField}
+                yField={effectiveYField}
+                seriesKeys={seriesKeys}
+              />
             )}
             {chartType === 'area' && (
-              <AreaChartComponent data={chartData} xField={isCategorical ? 'name' : xField} yField={effectiveYField} />
+              <AreaChartComponent
+                data={chartData}
+                xField={isCategorical ? 'name' : xField}
+                yField={effectiveYField}
+                groupBy={groupBy}
+                seriesKeys={seriesKeys}
+              />
             )}
             {chartType === 'pie' && (
               <PieChartComponent data={chartData} nameField={isCategorical ? 'name' : xField} valueField={effectiveYField} />
             )}
             {chartType === 'scatter' && (
-              <ScatterChartComponent data={chartData} xField={isCategorical ? 'name' : xField} yField={effectiveYField} />
+              <ScatterChartComponent
+                data={chartData}
+                xField={isCategorical ? 'name' : xField}
+                yField={effectiveYField}
+                groupBy={groupBy}
+              />
             )}
             {chartType === 'radar' && (
-              <RadarChartComponent data={chartData} nameField={isCategorical ? 'name' : xField} valueField={effectiveYField} />
+              <RadarChartComponent
+                data={chartData}
+                nameField={isCategorical ? 'name' : xField}
+                valueField={effectiveYField}
+                seriesKeys={seriesKeys}
+              />
             )}
             {chartType === 'table' && <DataTable data={data} />}
           </ChartErrorBoundary>

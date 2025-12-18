@@ -216,6 +216,103 @@ function parseSort(sortArg?: { field: string; direction?: string }): DataSort | 
 }
 
 /**
+ * Recommend chart type and fields based on data characteristics
+ * Smart auto-detection for best visualization
+ */
+function recommendVisualization(
+  data: Record<string, unknown>[],
+  fields: string[],
+  aggregation?: AggregationConfig,
+  defaultChartType: ChartType = 'bar'
+): VisualizationHint {
+  if (data.length === 0) {
+    return { chartType: 'table' };
+  }
+
+  const firstRow = data[0];
+
+  // Categorize fields
+  const stringFields = fields.filter(f => {
+    const val = firstRow[f];
+    return typeof val === 'string' && isNaN(Number(val as string));
+  });
+
+  const numericFields = fields.filter(f => {
+    const val = firstRow[f];
+    return typeof val === 'number' || (!isNaN(Number(val)) && val !== null && val !== '');
+  });
+
+  // Count unique values for categorical detection
+  const getUniqueCount = (field: string) =>
+    new Set(data.map(d => d[field])).size;
+
+  // ===== CHART TYPE SELECTION RULES =====
+
+  // Rule 1: Aggregated data with groupBy → Stacked Bar
+  if (aggregation?.group_by && stringFields.length >= 2) {
+    const xField = stringFields.find(f => f !== aggregation.group_by) || stringFields[0];
+    return {
+      chartType: 'bar',
+      xField,
+      yField: numericFields[0] || 'count',
+      groupBy: aggregation.group_by,
+    };
+  }
+
+  // Rule 2: Time series data → Line Chart
+  const dateFields = fields.filter(f =>
+    /date|time|year|month|day/i.test(f) ||
+    !isNaN(Date.parse(String(firstRow[f])))
+  );
+  if (dateFields.length > 0 && numericFields.length > 0) {
+    return {
+      chartType: 'line',
+      xField: dateFields[0],
+      yField: numericFields[0],
+    };
+  }
+
+  // Rule 3: Few categories with values → Pie Chart
+  const bestCategoryField = stringFields.find(f => {
+    const uniqueCount = getUniqueCount(f);
+    return uniqueCount >= 2 && uniqueCount <= 8;
+  });
+  if (bestCategoryField && numericFields.length > 0 && data.length <= 20) {
+    return {
+      chartType: 'pie',
+      xField: bestCategoryField,
+      yField: numericFields[0],
+    };
+  }
+
+  // Rule 4: Many data points with 2 numeric fields → Scatter
+  if (numericFields.length >= 2 && data.length > 30) {
+    return {
+      chartType: 'scatter',
+      xField: numericFields[0],
+      yField: numericFields[1],
+      groupBy: stringFields[0],
+    };
+  }
+
+  // Rule 5: Comparing multiple metrics → Radar
+  if (numericFields.length >= 3 && data.length <= 10) {
+    return {
+      chartType: 'radar',
+      xField: stringFields[0] || fields[0],
+      yField: numericFields[0],
+    };
+  }
+
+  // Rule 6: Default → Bar Chart (most versatile)
+  return {
+    chartType: defaultChartType,
+    xField: stringFields[0] || fields[0],
+    yField: numericFields[0] || 'count',
+  };
+}
+
+/**
  * Format the query response for LLM consumption
  */
 function formatResponseForLLM(
@@ -302,12 +399,20 @@ export const dataSourceTool: ToolDefinition = {
       name: 'data_source',
       description: `Query external data sources (APIs and CSV files) to retrieve structured data. Use this when users ask about data from external systems, reports, statistics, or when you need to fetch and analyze external data. The available data sources are context-dependent based on the current category.
 
-CRITICAL RULES:
-- The system AUTOMATICALLY renders interactive charts from the data - you do NOT need to generate any chart code
-- DO NOT generate ANY chart markup, code, or visualization syntax in your response
-- DO NOT use <chart>, <graph>, print(), display_*(), datavisualizer, or any code-like constructs
+CRITICAL - DO NOT GENERATE CODE:
+- DO NOT generate Python, matplotlib, pandas, seaborn, plotly, or any programming code
+- DO NOT use print(), plt., import, df., pd., np., fig., ax., or any code syntax
+- DO NOT output code blocks with python, javascript, or any programming language
+- DO NOT suggest running scripts or code to visualize data
+
+CRITICAL - AUTOMATIC VISUALIZATION:
+- The system AUTOMATICALLY renders interactive charts from the data
+- You do NOT need to generate any chart code, markup, or visualization syntax
+- DO NOT use <chart>, <graph>, display_*(), datavisualizer, or any constructs
 - DO NOT generate image markdown like ![chart](url) or reference any image URLs
 - JUST describe the data insights in plain text - the interactive chart will appear automatically
+
+OTHER RULES:
 - Only data sources linked to the current category are accessible
 - Use filters to narrow results
 - Always provide analysis along with the data
@@ -612,7 +717,7 @@ IMPORTANT FOR LARGE DATASETS:
       let visualizationHint: VisualizationHint | undefined;
       if (response.success && response.data && response.data.length > 0) {
         if (args.visualization) {
-          // Use explicit visualization request
+          // Use explicit visualization request from LLM
           const chartType = args.visualization.chart_type || toolConfig.defaultChartType;
           visualizationHint = {
             chartType: toolConfig.enabledChartTypes.includes(chartType) ? chartType : toolConfig.defaultChartType,
@@ -620,25 +725,15 @@ IMPORTANT FOR LARGE DATASETS:
             yField: args.visualization.y_field,
             groupBy: args.visualization.group_by,
           };
-        } else if (response.data) {
-          // Auto-generate default visualization hint
-          const firstRow = response.data[0] as Record<string, unknown>;
-          const fields = response.metadata?.fields || Object.keys(firstRow);
-          const numericFields = fields.filter(f => {
-            const val = firstRow[f];
-            return typeof val === 'number' || (!isNaN(Number(val)) && val !== null && val !== '');
-          });
-          const stringFields = fields.filter(f => {
-            const val = firstRow[f];
-            return typeof val === 'string' && isNaN(Number(val));
-          });
-
-          // Pick sensible defaults: first string field for x-axis, first numeric for y-axis
-          visualizationHint = {
-            chartType: toolConfig.defaultChartType,
-            xField: stringFields[0] || fields[0],
-            yField: numericFields[0] || fields[1] || fields[0],
-          };
+        } else {
+          // Auto-recommend based on data characteristics
+          const fields = response.metadata?.fields || Object.keys(response.data[0]);
+          visualizationHint = recommendVisualization(
+            response.data,
+            fields,
+            aggregationConfig,
+            toolConfig.defaultChartType
+          );
         }
       }
 

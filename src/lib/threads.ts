@@ -80,6 +80,7 @@ function toMessage(parsed: ParsedMessage): Message {
     tool_call_id: parsed.toolCallId || undefined,
     name: parsed.toolName || undefined,
     generatedDocuments: parsed.generatedDocuments || undefined,
+    visualizations: parsed.visualizations || undefined,
     timestamp: parsed.createdAt,
   };
 }
