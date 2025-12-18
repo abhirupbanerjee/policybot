@@ -292,13 +292,14 @@ export const dataSourceTool: ToolDefinition = {
       name: 'data_source',
       description: `Query external data sources (APIs and CSV files) to retrieve structured data. Use this when users ask about data from external systems, reports, statistics, or when you need to fetch and analyze external data. The available data sources are context-dependent based on the current category.
 
-Important:
+CRITICAL RULES:
+- The system AUTOMATICALLY renders interactive charts from the data - you do NOT need to generate any chart code
+- DO NOT generate ANY chart markup, code, or visualization syntax in your response
+- DO NOT use <chart>, <graph>, print(), display_*(), datavisualizer, or any code-like constructs
+- DO NOT generate image markdown like ![chart](url) or reference any image URLs
+- JUST describe the data insights in plain text - the interactive chart will appear automatically
 - Only data sources linked to the current category are accessible
 - Use filters to narrow results
-- The system will AUTOMATICALLY render interactive charts from the returned data
-- DO NOT generate image markdown like ![chart](url) or fake image URLs - charts are rendered by the UI
-- DO NOT create base64 images or reference external image hosting
-- Simply describe the data insights in text - the interactive chart will appear automatically below your response
 - Always provide analysis along with the data`,
       parameters: {
         type: 'object',

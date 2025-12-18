@@ -42,6 +42,9 @@ COPY --from=builder /app/.next/static ./.next/static
 # Create data directory
 RUN mkdir -p /app/data && chown -R nextjs:nodejs /app/data
 
+# Create transformers cache directory (for Xenova reranker model)
+RUN mkdir -p /tmp/transformers_cache && chmod 777 /tmp/transformers_cache
+
 USER nextjs
 
 EXPOSE 3000

@@ -113,6 +113,11 @@ function runMigrations(database: Database.Database): void {
     database.exec('ALTER TABLE messages ADD COLUMN generated_documents_json TEXT');
   }
 
+  // Check and add visualizations_json column to messages (for data_source tool charts)
+  if (!messageColumnNames.includes('visualizations_json')) {
+    database.exec('ALTER TABLE messages ADD COLUMN visualizations_json TEXT');
+  }
+
   // Check if skills table exists, create if not (for existing databases)
   const skillsTableExists = database.prepare(
     "SELECT name FROM sqlite_master WHERE type='table' AND name='skills'"

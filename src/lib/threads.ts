@@ -276,6 +276,7 @@ export async function addMessage(
     toolCallId: message.tool_call_id,
     toolName: message.name,
     generatedDocuments: message.generatedDocuments,
+    visualizations: message.visualizations,
   });
 
   // Update title if this is the first user message and title is default

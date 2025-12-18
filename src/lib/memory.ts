@@ -216,13 +216,15 @@ export async function extractFacts(
     .replace('{maxFacts}', String(maxFacts));
 
   try {
-    // Use LiteLLM proxy or direct OpenAI
-    const baseURL = process.env.LITELLM_BASE_URL || 'https://api.openai.com/v1';
-    const apiKey = process.env.LITELLM_API_KEY || process.env.OPENAI_API_KEY || '';
+    // Use LiteLLM proxy or direct OpenAI (consistent with openai.ts)
+    const baseURL = process.env.OPENAI_BASE_URL || undefined;
+    const apiKey = process.env.OPENAI_BASE_URL
+      ? (process.env.LITELLM_MASTER_KEY || process.env.OPENAI_API_KEY)
+      : process.env.OPENAI_API_KEY;
 
     const client = new OpenAI({
       baseURL,
-      apiKey,
+      apiKey: apiKey || '',
     });
 
     const response = await client.chat.completions.create({
