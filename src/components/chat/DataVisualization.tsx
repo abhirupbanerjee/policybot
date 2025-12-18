@@ -206,6 +206,38 @@ function isCategoricalData(data: Record<string, unknown>[]): boolean {
 }
 
 /**
+ * Generate user-friendly title from field name
+ * Converts snake_case/camelCase to Title Case
+ */
+function formatFieldName(fieldName: string): string {
+  return fieldName
+    // Split on underscores, hyphens, and camelCase
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/[_-]/g, ' ')
+    // Capitalize first letter of each word
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
+}
+
+/**
+ * Generate user-friendly chart title
+ */
+function generateChartTitle(
+  categoryField: string,
+  isCategorical: boolean,
+  sourceName?: string
+): string {
+  const fieldLabel = formatFieldName(categoryField);
+
+  if (isCategorical) {
+    return `Survey Results: ${fieldLabel}`;
+  }
+
+  return sourceName ? `Data: ${fieldLabel}` : `Chart: ${fieldLabel}`;
+}
+
+/**
  * Format number for display
  */
 function formatNumber(value: unknown): string {
@@ -621,7 +653,9 @@ export default function DataVisualization({
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `${sourceName || 'data'}-export.csv`;
+    // Use a clean filename based on category field
+    const cleanName = formatFieldName(xField).replace(/\s+/g, '-').toLowerCase();
+    link.download = `${cleanName}-data.csv`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -644,7 +678,9 @@ export default function DataVisualization({
       const url = canvas.toDataURL('image/png');
       const link = document.createElement('a');
       link.href = url;
-      link.download = `${sourceName || 'chart'}-${chartType}.png`;
+      // Use a clean filename based on category field
+      const cleanName = formatFieldName(xField).replace(/\s+/g, '-').toLowerCase();
+      link.download = `${cleanName}-${chartType}-chart.png`;
       link.click();
     } catch (error) {
       console.error('Error exporting chart:', error);
@@ -660,7 +696,7 @@ export default function DataVisualization({
         <div className="flex items-center gap-2">
           {CHART_ICONS[chartType]}
           <h4 className="font-medium text-blue-900">
-            {title || `Data from ${sourceName || 'Source'}`}
+            {title || generateChartTitle(xField, isCategorical, sourceName)}
           </h4>
           {cached && (
             <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-600 rounded">
@@ -778,7 +814,6 @@ export default function DataVisualization({
       {/* Footer with record count */}
       <div className="mt-3 text-xs text-blue-600">
         {data.length} record{data.length !== 1 ? 's' : ''}
-        {sourceName && ` from ${sourceName}`}
       </div>
     </div>
   );

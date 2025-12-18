@@ -295,7 +295,10 @@ export const dataSourceTool: ToolDefinition = {
 Important:
 - Only data sources linked to the current category are accessible
 - Use filters to narrow results
-- Request visualization hints when data should be displayed as charts
+- The system will AUTOMATICALLY render interactive charts from the returned data
+- DO NOT generate image markdown like ![chart](url) or fake image URLs - charts are rendered by the UI
+- DO NOT create base64 images or reference external image hosting
+- Simply describe the data insights in text - the interactive chart will appear automatically below your response
 - Always provide analysis along with the data`,
       parameters: {
         type: 'object',
