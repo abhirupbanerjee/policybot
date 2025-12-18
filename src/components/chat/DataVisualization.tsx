@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useEffect, Component, ErrorInfo, ReactNode } from 'react';
+import React, { useState, useMemo, useEffect, useRef, Component, ErrorInfo, ReactNode } from 'react';
 import {
   BarChart,
   Bar,
@@ -25,7 +25,7 @@ import {
   ResponsiveContainer,
   Cell,
 } from 'recharts';
-import { BarChart3, LineChart as LineChartIcon, PieChart as PieChartIcon, Table, Download, ChevronDown, ChevronUp, Activity, Radar as RadarIcon, AlertCircle } from 'lucide-react';
+import { BarChart3, LineChart as LineChartIcon, PieChart as PieChartIcon, Table, Download, ChevronDown, ChevronUp, Activity, Radar as RadarIcon, AlertCircle, Image } from 'lucide-react';
 import type { ChartType, VisualizationHint } from '@/types/data-sources';
 
 // ===== Error Boundary =====
@@ -135,7 +135,7 @@ function getStringFields(data: Record<string, unknown>[]): string[] {
 }
 
 /**
- * Aggregate data by a field
+ * Aggregate data by a field (sum values)
  */
 function aggregateData(
   data: Record<string, unknown>[],
@@ -154,6 +154,55 @@ function aggregateData(
     name,
     value,
   }));
+}
+
+/**
+ * Count occurrences by category (for categorical/survey data)
+ */
+function countByCategory(
+  data: Record<string, unknown>[],
+  categoryField: string
+): Record<string, unknown>[] {
+  const counts: Record<string, number> = {};
+
+  for (const row of data) {
+    const key = String(row[categoryField] ?? 'Unknown');
+    // Skip empty/Nan values
+    if (key && key !== 'Nan' && key !== 'null' && key !== 'undefined' && key !== '') {
+      counts[key] = (counts[key] || 0) + 1;
+    }
+  }
+
+  // Sort by count descending
+  return Object.entries(counts)
+    .sort((a, b) => b[1] - a[1])
+    .map(([name, count]) => ({
+      name,
+      count,
+    }));
+}
+
+/**
+ * Check if data is categorical (no numeric fields or all values are non-numeric strings)
+ */
+function isCategoricalData(data: Record<string, unknown>[]): boolean {
+  if (!data || data.length === 0) return false;
+
+  const numericFields = getNumericFields(data);
+
+  // If there are no numeric fields, it's categorical
+  if (numericFields.length === 0) return true;
+
+  // Check if numeric fields are actually just IDs or dates (not useful for Y-axis)
+  const firstRow = data[0];
+  const usefulNumericFields = numericFields.filter(field => {
+    const value = firstRow[field];
+    const strValue = String(value);
+    // Exclude date-like values and UUID-like values
+    return !strValue.includes('-') && !strValue.includes('T') && !strValue.includes(':');
+  });
+
+  return usefulNumericFields.length === 0;
 }
 
 /**
@@ -503,6 +552,8 @@ export default function DataVisualization({
   const [chartType, setChartType] = useState<ChartType>(initialChartType);
   const [showRawData, setShowRawData] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const chartRef = useRef<HTMLDivElement>(null);
 
   // Delay chart rendering until after hydration to avoid SSR mismatch
   useEffect(() => {
@@ -514,9 +565,27 @@ export default function DataVisualization({
   const stringFields = useMemo(() => getStringFields(data), [data]);
   const allFields = useMemo(() => fields || [...stringFields, ...numericFields], [fields, stringFields, numericFields]);
 
+  // Detect if data is categorical (no useful numeric fields - needs count aggregation)
+  const isCategorical = useMemo(() => isCategoricalData(data), [data]);
+
   // Field selections with defaults
   const [xField, setXField] = useState(initialXField || stringFields[0] || allFields[0] || 'name');
-  const [yField, setYField] = useState(initialYField || numericFields[0] || allFields[1] || 'value');
+  const [yField, setYField] = useState(() => {
+    if (isCategoricalData(data)) return 'count'; // For categorical data, Y is always count
+    return initialYField || numericFields[0] || allFields[1] || 'value';
+  });
+
+  // Prepare chart data - auto-aggregate categorical data
+  const chartData = useMemo(() => {
+    if (isCategorical && chartType !== 'table') {
+      // For categorical data, count occurrences by the selected X field
+      return countByCategory(data, xField);
+    }
+    return data;
+  }, [data, xField, isCategorical, chartType]);
+
+  // The Y field for categorical data is always 'count'
+  const effectiveYField = isCategorical ? 'count' : yField;
 
   // Available chart types
   const availableTypes: ChartType[] = ['bar', 'line', 'area', 'pie', 'scatter', 'radar', 'table'];
@@ -557,6 +626,33 @@ export default function DataVisualization({
     URL.revokeObjectURL(url);
   };
 
+  const handleExportImage = async () => {
+    if (!chartRef.current || chartType === 'table') return;
+
+    setIsExporting(true);
+    try {
+      // Dynamic import html2canvas to avoid SSR issues
+      const html2canvas = (await import('html2canvas')).default;
+
+      const canvas = await html2canvas(chartRef.current, {
+        backgroundColor: '#ffffff',
+        scale: 2, // Higher resolution
+        logging: false,
+      });
+
+      // Convert to PNG and download
+      const url = canvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${sourceName || 'chart'}-${chartType}.png`;
+      link.click();
+    } catch (error) {
+      console.error('Error exporting chart:', error);
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   return (
     <div className="bg-blue-50 rounded-lg border border-blue-200 p-4 mt-3">
       {/* Header */}
@@ -573,16 +669,34 @@ export default function DataVisualization({
           )}
         </div>
         <div className="flex items-center gap-2">
+          {chartType !== 'table' && (
+            <button
+              onClick={handleExportImage}
+              disabled={isExporting}
+              className="flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:bg-blue-100 rounded disabled:opacity-50"
+              title="Export as PNG"
+            >
+              <Image size={14} />
+              <span className="hidden sm:inline">{isExporting ? 'Exporting...' : 'PNG'}</span>
+            </button>
+          )}
           <button
             onClick={handleExportCSV}
             className="flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:bg-blue-100 rounded"
             title="Export as CSV"
           >
             <Download size={14} />
-            <span className="hidden sm:inline">Export</span>
+            <span className="hidden sm:inline">CSV</span>
           </button>
         </div>
       </div>
+
+      {/* Categorical data indicator */}
+      {isCategorical && chartType !== 'table' && (
+        <div className="mb-2 text-xs text-blue-700 bg-blue-100 px-2 py-1 rounded inline-block">
+          📊 Showing count of records by category
+        </div>
+      )}
 
       {/* Controls */}
       <div className="flex flex-wrap items-center gap-4 mb-4 pb-3 border-b border-blue-200">
@@ -595,23 +709,25 @@ export default function DataVisualization({
         {chartType !== 'table' && (
           <>
             <FieldSelector
-              label="X-Axis"
+              label="Category"
               value={xField}
-              options={allFields}
+              options={isCategorical ? stringFields : allFields}
               onChange={setXField}
             />
-            <FieldSelector
-              label="Y-Axis"
-              value={yField}
-              options={allFields}
-              onChange={setYField}
-            />
+            {!isCategorical && (
+              <FieldSelector
+                label="Value"
+                value={yField}
+                options={allFields}
+                onChange={setYField}
+              />
+            )}
           </>
         )}
       </div>
 
       {/* Chart */}
-      <div className="bg-white rounded-lg p-4 min-h-[300px]">
+      <div ref={chartRef} className="bg-white rounded-lg p-4 min-h-[300px]">
         {!isMounted && chartType !== 'table' ? (
           <div className="flex items-center justify-center h-[300px]">
             <div className="text-gray-500 text-sm">Loading chart...</div>
@@ -619,22 +735,22 @@ export default function DataVisualization({
         ) : (
           <ChartErrorBoundary fallback={<DataTable data={data} />}>
             {chartType === 'bar' && (
-              <BarChartComponent data={data} xField={xField} yField={yField} />
+              <BarChartComponent data={chartData} xField={isCategorical ? 'name' : xField} yField={effectiveYField} />
             )}
             {chartType === 'line' && (
-              <LineChartComponent data={data} xField={xField} yField={yField} />
+              <LineChartComponent data={chartData} xField={isCategorical ? 'name' : xField} yField={effectiveYField} />
             )}
             {chartType === 'area' && (
-              <AreaChartComponent data={data} xField={xField} yField={yField} />
+              <AreaChartComponent data={chartData} xField={isCategorical ? 'name' : xField} yField={effectiveYField} />
             )}
             {chartType === 'pie' && (
-              <PieChartComponent data={data} nameField={xField} valueField={yField} />
+              <PieChartComponent data={chartData} nameField={isCategorical ? 'name' : xField} valueField={effectiveYField} />
             )}
             {chartType === 'scatter' && (
-              <ScatterChartComponent data={data} xField={xField} yField={yField} />
+              <ScatterChartComponent data={chartData} xField={isCategorical ? 'name' : xField} yField={effectiveYField} />
             )}
             {chartType === 'radar' && (
-              <RadarChartComponent data={data} nameField={xField} valueField={yField} />
+              <RadarChartComponent data={chartData} nameField={isCategorical ? 'name' : xField} valueField={effectiveYField} />
             )}
             {chartType === 'table' && <DataTable data={data} />}
           </ChartErrorBoundary>
