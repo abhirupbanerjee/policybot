@@ -107,7 +107,8 @@ export async function generateResponseWithTools(
   conversationHistory: Message[],
   context: string,
   userMessage: string,
-  enableTools: boolean = true
+  enableTools: boolean = true,
+  categoryIds?: number[]
 ): Promise<{
   content: string;
   toolCalls?: ToolCall[];
@@ -157,8 +158,8 @@ export async function generateResponseWithTools(
     content: `Organizational Knowledge Base:\n${context}\n\n---\n\nQuestion: ${userMessage}`,
   });
 
-  // Prepare completion params
-  const tools = effectiveEnableTools ? getToolDefinitions() : undefined;
+  // Prepare completion params - pass categoryIds for dynamic Function API tools
+  const tools = effectiveEnableTools ? getToolDefinitions(categoryIds) : undefined;
   const completionParams = {
     model: llmSettings.model,
     messages,

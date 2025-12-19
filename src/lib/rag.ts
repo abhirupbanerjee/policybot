@@ -343,13 +343,14 @@ export async function ragQuery(
     systemPrompt = `${systemPrompt}\n\n${summaryContext}`;
   }
 
-  // Generate response with tools (web search)
+  // Generate response with tools (web search, function APIs)
   const { content: answer, fullHistory } = await generateResponseWithTools(
     systemPrompt,
     conversationHistory,
     context,
     userMessage,
-    true // Enable tools (web search)
+    true, // Enable tools
+    categoryIds // Pass category IDs for dynamic Function API tools
   );
 
   // Extract sources from RAG (use reranked chunks for accurate scores)
