@@ -331,6 +331,55 @@ function runMigrations(database: Database.Database): void {
     `);
   }
 
+  // Check and create function_api_configs table for Function Calling APIs
+  const functionApiConfigsTableExists = database.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='function_api_configs'"
+  ).get();
+
+  if (!functionApiConfigsTableExists) {
+    database.exec(`
+      -- Function API configurations (OpenAI-format function calling)
+      CREATE TABLE IF NOT EXISTS function_api_configs (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL UNIQUE,
+        description TEXT,
+        base_url TEXT NOT NULL,
+        auth_type TEXT NOT NULL DEFAULT 'api_key' CHECK(auth_type IN ('api_key', 'bearer', 'basic', 'none')),
+        auth_header TEXT,
+        auth_credentials TEXT,
+        default_headers TEXT,
+        tools_schema TEXT NOT NULL,
+        endpoint_mappings TEXT NOT NULL,
+        timeout_seconds INTEGER DEFAULT 30,
+        cache_ttl_seconds INTEGER DEFAULT 3600,
+        is_enabled INTEGER DEFAULT 1,
+        status TEXT DEFAULT 'untested' CHECK(status IN ('active', 'inactive', 'error', 'untested')),
+        created_by TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        last_tested DATETIME,
+        last_error TEXT
+      );
+
+      -- Function API-Category mapping
+      CREATE TABLE IF NOT EXISTS function_api_categories (
+        api_id TEXT NOT NULL,
+        category_id INTEGER NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (api_id) REFERENCES function_api_configs(id) ON DELETE CASCADE,
+        FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
+        PRIMARY KEY (api_id, category_id)
+      );
+
+      -- Indexes for function APIs
+      CREATE INDEX IF NOT EXISTS idx_function_api_status ON function_api_configs(status);
+      CREATE INDEX IF NOT EXISTS idx_function_api_name ON function_api_configs(name);
+      CREATE INDEX IF NOT EXISTS idx_function_api_enabled ON function_api_configs(is_enabled);
+      CREATE INDEX IF NOT EXISTS idx_function_api_categories_api ON function_api_categories(api_id);
+      CREATE INDEX IF NOT EXISTS idx_function_api_categories_cat ON function_api_categories(category_id);
+    `);
+  }
+
   // Migration: Update file_type CHECK constraint to include 'md' format
   // SQLite doesn't allow modifying CHECK constraints, so we recreate the table
   try {
@@ -709,6 +758,44 @@ CREATE TABLE IF NOT EXISTS data_source_audit (
 );
 CREATE INDEX IF NOT EXISTS idx_data_source_audit_source ON data_source_audit(source_type, source_id);
 CREATE INDEX IF NOT EXISTS idx_data_source_audit_time ON data_source_audit(changed_at DESC);
+
+-- Function API configurations (OpenAI-format function calling)
+CREATE TABLE IF NOT EXISTS function_api_configs (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  description TEXT,
+  base_url TEXT NOT NULL,
+  auth_type TEXT NOT NULL DEFAULT 'api_key' CHECK(auth_type IN ('api_key', 'bearer', 'basic', 'none')),
+  auth_header TEXT,
+  auth_credentials TEXT,
+  default_headers TEXT,
+  tools_schema TEXT NOT NULL,
+  endpoint_mappings TEXT NOT NULL,
+  timeout_seconds INTEGER DEFAULT 30,
+  cache_ttl_seconds INTEGER DEFAULT 3600,
+  is_enabled INTEGER DEFAULT 1,
+  status TEXT DEFAULT 'untested' CHECK(status IN ('active', 'inactive', 'error', 'untested')),
+  created_by TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  last_tested DATETIME,
+  last_error TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_function_api_status ON function_api_configs(status);
+CREATE INDEX IF NOT EXISTS idx_function_api_name ON function_api_configs(name);
+CREATE INDEX IF NOT EXISTS idx_function_api_enabled ON function_api_configs(is_enabled);
+
+-- Function API-Category mapping
+CREATE TABLE IF NOT EXISTS function_api_categories (
+  api_id TEXT NOT NULL,
+  category_id INTEGER NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (api_id) REFERENCES function_api_configs(id) ON DELETE CASCADE,
+  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE,
+  PRIMARY KEY (api_id, category_id)
+);
+CREATE INDEX IF NOT EXISTS idx_function_api_categories_api ON function_api_categories(api_id);
+CREATE INDEX IF NOT EXISTS idx_function_api_categories_cat ON function_api_categories(category_id);
   `;
 }
 

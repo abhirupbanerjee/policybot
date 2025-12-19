@@ -19,11 +19,13 @@ import {
   Building2,
   FileText,
   Database,
+  Zap,
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
 import Modal from '@/components/ui/Modal';
 import DataSourcesTab from './DataSourcesTab';
+import FunctionAPITab from './FunctionAPITab';
 
 // Tool interface matching API response
 interface Tool {
@@ -108,6 +110,8 @@ function getToolIcon(toolName: string) {
       return FileText;
     case 'data_source':
       return Database;
+    case 'function_api':
+      return Zap;
     default:
       return Settings;
   }
@@ -949,6 +953,14 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false }: Tool
             categoriesPath={forSuperuser ? '/api/superuser/data-sources' : '/api/admin/categories'}
           />
         );
+      case 'function_api':
+        // Function API has its own management UI
+        return (
+          <FunctionAPITab
+            apiBasePath="/api/admin/function-apis"
+            categoriesPath="/api/admin/categories"
+          />
+        );
       default:
         return (
           <GenericToolConfig
@@ -1294,8 +1306,8 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false }: Tool
                       <div className={tool.name === 'data_source' ? '' : 'max-w-2xl'}>
                         {renderConfigForm(tool)}
 
-                        {/* Metadata and Save - not shown for data_source which has its own UI */}
-                        {tool.name !== 'data_source' && (
+                        {/* Metadata and Save - not shown for data_source and function_api which have their own UI */}
+                        {tool.name !== 'data_source' && tool.name !== 'function_api' && (
                           <>
                             {/* Metadata */}
                             {tool.metadata && (

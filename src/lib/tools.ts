@@ -2,6 +2,7 @@ import type { OpenAI } from 'openai';
 import { tavilyWebSearch } from './tools/tavily';
 import { documentGenerationTool } from './tools/docgen';
 import { dataSourceTool } from './tools/data-source';
+import { functionApiTool, getDynamicFunctionDefinitions, isFunctionAPIFunction } from './tools/function-api';
 import { isToolEnabled as isToolEnabledDb, migrateTavilySettingsIfNeeded, ensureToolConfigsExist } from './db/tool-config';
 
 // ============ Types ============
@@ -34,11 +35,11 @@ export interface ToolDefinition {
   description: string;
   /** Tool category - how it's invoked */
   category: ToolCategory;
-  /** OpenAI function definition (only for autonomous tools) */
+  /** OpenAI function definition (only for autonomous tools with static definitions) */
   definition?: OpenAI.Chat.ChatCompletionTool;
-  /** Execute the tool with arguments */
+  /** Execute the tool with arguments. Second param is function name for dynamic tools. */
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  execute: (args: any) => Promise<string>;
+  execute: (args: any, functionName?: string) => Promise<string>;
   /** Validate tool configuration */
   validateConfig: (config: Record<string, unknown>) => ValidationResult;
   /** Default configuration values */
@@ -67,6 +68,7 @@ export const AVAILABLE_TOOLS: Record<string, ToolDefinition> = {
   web_search: tavilyWebSearch,
   doc_gen: documentGenerationTool,
   data_source: dataSourceTool,
+  function_api: functionApiTool,
 };
 
 // ============ Initialization ============
@@ -109,19 +111,40 @@ export function isToolEnabled(name: string): boolean {
 /**
  * Get all tool definitions for OpenAI API
  * Only returns definitions for enabled autonomous tools
+ * @param categoryIds - Optional category IDs to include dynamic function definitions
  */
-export function getToolDefinitions(): OpenAI.Chat.ChatCompletionTool[] {
+export function getToolDefinitions(categoryIds?: number[]): OpenAI.Chat.ChatCompletionTool[] {
   initializeTools();
-  return Object.values(AVAILABLE_TOOLS)
-    .filter(tool => tool.category === 'autonomous' && tool.definition && isToolEnabled(tool.name))
-    .map(tool => tool.definition!);
+
+  const tools: OpenAI.Chat.ChatCompletionTool[] = [];
+
+  // Add static tool definitions
+  for (const tool of Object.values(AVAILABLE_TOOLS)) {
+    if (tool.category !== 'autonomous' || !isToolEnabled(tool.name)) continue;
+
+    // Skip function_api here - its definitions are added dynamically below
+    if (tool.name === 'function_api') continue;
+
+    if (tool.definition) {
+      tools.push(tool.definition);
+    }
+  }
+
+  // Add dynamic function definitions from Function APIs
+  if (categoryIds && categoryIds.length > 0 && isToolEnabled('function_api')) {
+    const functionDefinitions = getDynamicFunctionDefinitions(categoryIds);
+    tools.push(...functionDefinitions);
+  }
+
+  return tools;
 }
 
 /**
  * Get all enabled autonomous tool definitions (alias for getToolDefinitions)
+ * @param categoryIds - Optional category IDs to include dynamic function definitions
  */
-export function getEnabledAutonomousTools(): OpenAI.Chat.ChatCompletionTool[] {
-  return getToolDefinitions();
+export function getEnabledAutonomousTools(categoryIds?: number[]): OpenAI.Chat.ChatCompletionTool[] {
+  return getToolDefinitions(categoryIds);
 }
 
 /**
@@ -151,14 +174,41 @@ export function getAllTools(): ToolDefinition[] {
 
 /**
  * Execute a tool by name with arguments
- * @param name - Tool name (e.g., 'web_search')
+ * @param name - Tool name (e.g., 'web_search') or dynamic function name
  * @param args - JSON string of tool arguments
  * @returns JSON string result
  */
 export async function executeTool(name: string, args: string): Promise<string> {
   initializeTools();
 
-  const tool = AVAILABLE_TOOLS[name];
+  // Check standard tools first
+  let tool = AVAILABLE_TOOLS[name];
+
+  // If not found, check if it's a dynamic function from function_api
+  if (!tool && isFunctionAPIFunction(name)) {
+    tool = AVAILABLE_TOOLS['function_api'];
+
+    // Check if function_api tool is enabled
+    if (!isToolEnabled('function_api')) {
+      return JSON.stringify({
+        error: `Function APIs are currently disabled`,
+        errorCode: 'TOOL_DISABLED',
+      });
+    }
+
+    try {
+      const parsedArgs = JSON.parse(args);
+      // Pass the function name to the function_api tool
+      return await tool.execute(parsedArgs, name);
+    } catch (error) {
+      console.error(`Function API execution error [${name}]:`, error);
+      return JSON.stringify({
+        error: error instanceof Error ? error.message : 'Unknown error',
+        errorCode: 'EXECUTION_ERROR',
+      });
+    }
+  }
+
   if (!tool) {
     return JSON.stringify({
       error: `Unknown tool: ${name}`,

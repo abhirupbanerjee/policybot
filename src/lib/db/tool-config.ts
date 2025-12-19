@@ -354,6 +354,12 @@ export const TOOL_DEFAULTS: Record<string, { enabled: boolean; config: Record<st
       enabledChartTypes: ['bar', 'line', 'pie', 'area', 'scatter', 'radar', 'table'],
     },
   },
+  function_api: {
+    enabled: true,
+    config: {
+      globalEnabled: true,
+    },
+  },
 };
 
 /**
