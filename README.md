@@ -9,36 +9,54 @@ Policy Bot is an **enterprise AI assistant platform** designed for organizations
 ### Core Concepts
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           POLICY BOT PLATFORM                               │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐         │
-│  │   CATEGORIES    │    │     SKILLS      │    │      TOOLS      │         │
-│  │   (Departments) │    │   (Behaviors)   │    │   (Capabilities)│         │
-│  ├─────────────────┤    ├─────────────────┤    ├─────────────────┤         │
-│  │ • HR Policies   │    │ • Always-on     │    │ • Web Search    │         │
-│  │ • Finance       │    │ • Category-     │    │ • Data Sources  │         │
-│  │ • Procurement   │    │   triggered     │    │ • Function APIs │         │
-│  │ • Operations    │    │ • Keyword-      │    │ • Document RAG  │         │
-│  │ • IT            │    │   triggered     │    │ • Visualizations│         │
-│  └────────┬────────┘    └────────┬────────┘    └────────┬────────┘         │
-│           │                      │                      │                  │
-│           └──────────────────────┼──────────────────────┘                  │
-│                                  ▼                                         │
-│  ┌─────────────────────────────────────────────────────────────────────┐   │
-│  │                        MULTI-LLM ENGINE                              │   │
-│  │  OpenAI │ Mistral │ Gemini │ Ollama (Local)                         │   │
-│  └─────────────────────────────────────────────────────────────────────┘   │
-│                                  │                                         │
-│           ┌──────────────────────┼──────────────────────┐                  │
-│           ▼                      ▼                      ▼                  │
-│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐         │
-│  │     MEMORY      │    │  SUMMARIZATION  │    │     USERS       │         │
-│  │ (Per-User Facts)│    │ (Long Threads)  │    │   (3-Tier ACL)  │         │
-│  └─────────────────┘    └─────────────────┘    └─────────────────┘         │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────────────────────────────┐
+│                               POLICY BOT PLATFORM                                     │
+├───────────────────────────────────────────────────────────────────────────────────────┤
+│                                                                                       │
+│  ┌──────────────────────────────────────────────────────────────────────────────────┐ │
+│  │                              USER INPUT LAYER                                    │ │
+│  │    ┌─────────────┐    ┌─────────────┐    ┌─────────────────────────────────────┐ │ │
+│  │    │    TEXT     │    │    VOICE    │    │           THREAD CONTEXT            │ │ │
+│  │    │   (Chat)    │    │  (Whisper)  │    │  Conversations stored locally in    │ │ │
+│  │    └──────┬──────┘    └──────┬──────┘    │  SQLite with file-based messages    │ │ │
+│  │           └─────────┬────────┘           └─────────────────────────────────────┘ │ │
+│  └─────────────────────┼────────────────────────────────────────────────────────────┘ │
+│                        ▼                                                              │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐                        │
+│  │   CATEGORIES    │  │     SKILLS      │  │      TOOLS      │                        │
+│  │   (Departments) │  │   (Behaviors)   │  │   (Capabilities)│                        │
+│  ├─────────────────┤  ├─────────────────┤  ├─────────────────┤                        │
+│  │ • HR Policies   │  │ • Always-on     │  │ • Web Search    │                        │
+│  │ • Finance       │  │ • Category-     │  │ • Data Sources  │                        │
+│  │ • Procurement   │  │   triggered     │  │ • Function APIs │                        │
+│  │ • Operations    │  │ • Keyword-      │  │ • Document RAG  │                        │
+│  │ • IT            │  │   triggered     │  │ • Visualizations│                        │
+│  └────────┬────────┘  └────────┬────────┘  └────────┬────────┘                        │
+│           └────────────────────┼────────────────────┘                                 │
+│                                ▼                                                      │
+│  ┌──────────────────────────────────────────────────────────────────────────────────┐ │
+│  │                          MULTI-PROVIDER RAG PIPELINE                             │ │
+│  │  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────────┐  │ │
+│  │  │  INGESTION  │  │  EMBEDDING  │  │  RERANKING  │  │      LLM ENGINE         │  │ │
+│  │  │ Office, PDF │  │ OpenAI or   │  │ Cohere API  │  │ OpenAI │ Mistral        │  │ │
+│  │  │ Images, TXT │→ │ Local Model │→ │ or Local    │→ │ Gemini │ Ollama         │  │ │
+│  │  │ Azure DI /  |  |  (3072 dim) |  | MiniLM-L6   |  │                         |  | |
+|  |  | Mistral OCR │  │             |  |             |  |     (LiteLLM)           │  │ │
+│  │  └─────────────┘  └─────────────┘  └─────────────┘  └─────────────────────────┘  │ │
+│  └──────────────────────────────────────────────────────────────────────────────────┘ │
+│                                        │                                              │
+│           ┌────────────────────────────┼────────────────────────────┐                 │
+│           ▼                            ▼                            ▼                 │
+│  ┌─────────────────┐          ┌─────────────────┐          ┌─────────────────┐        │
+│  │     MEMORY      │          │  SUMMARIZATION  │          │     USERS       │        │
+│  │ (Per-User Facts)│          │ (Long Threads)  │          │   (3-Tier ACL)  │        │
+│  └─────────────────┘          └─────────────────┘          └─────────────────┘        │
+│                                                                                       │
+│  ┌──────────────────────────────────────────────────────────────────────────────────┐ │
+│  │                           LOCAL DATA STORAGE                                     │ │
+│  │    SQLite (metadata) │ ChromaDB (vectors) │ Redis (cache) │ Filesystem (files)   │ │
+│  └──────────────────────────────────────────────────────────────────────────────────┘ │
+└───────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Platform Capabilities
@@ -68,7 +86,7 @@ Policy Bot is an **enterprise AI assistant platform** designed for organizations
 
 ### Chat & Query
 - **Natural Language Q&A** - Ask questions about policy documents in plain English
-- **Web Search Integration** - Automatic web search via Tavily API when needed (see [Web Search](docs/web-search.md))
+- **Web Search Integration** - Automatic web search via Tavily API when needed
 - **Source Citations** - Every response includes document names, page numbers, and relevance scores
 - **Conversation Threads** - Organize discussions into separate threads with category-based context
 - **Multi-Turn Context** - Maintains conversation history for follow-up questions
@@ -145,15 +163,14 @@ Policy Bot is an **enterprise AI assistant platform** designed for organizations
         ▼                 ▼                 ▼
 ┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐
 │    SQLite     │ │   ChromaDB    │ │     Redis     │ │ LiteLLM Proxy │
-│   Metadata    │ │ Vector Search │ │ Query Cache   │ │  (Port 4000)  │
+│     Data      │ │ Vector Search │ │ Query Cache   │ │  (Port 4000)  │
 └───────────────┘ └───────────────┘ └───────────────┘ └───────┬───────┘
                                                               │
                           ┌───────────────────────────────────┼───────────────────────────────────┐
                           │                                   │                                   │
                           ▼                                   ▼                                   ▼
                   ┌───────────────┐                   ┌───────────────┐                   ┌───────────────┐
-                  │   OpenAI API  │                   │  Mistral AI   │                   │    Ollama     │
-                  │ GPT-4.1-mini  │                   │ mistral-large │                   │   (Local)     │
+                  │   OpenAI API  │                   │  Mistral AI   │                   │    Ollama     │ 
                   └───────────────┘                   └───────────────┘                   └───────────────┘
 ```
 
@@ -189,11 +206,19 @@ Policy Bot is an **enterprise AI assistant platform** designed for organizations
 - `letsencrypt` - SSL certificates
 
 ### Resource Requirements
-| Resource | Minimum | Recommended |
-|----------|---------|-------------|
-| CPU | 2 cores | 4 cores |
-| RAM | 4 GB | 8 GB |
-| Disk | 20 GB | 50 GB |
+
+| Resource | Development | Small (1-10 users) | Medium (11-50 users) | Large (51+ users) |
+|----------|-------------|--------------------|-----------------------|-------------------|
+| CPU | 2 cores | 4 cores | 8 cores | 16+ cores |
+| RAM | 4 GB | 8 GB | 16 GB | 32+ GB |
+| Disk | 20 GB | 50 GB | 100 GB | 200+ GB |
+| Database | SQLite | SQLite | PostgreSQL | PostgreSQL + PgBouncer |
+
+**Scaling Notes:**
+- **Development**: Single-user local development with SQLite
+- **Small**: SQLite works well for small teams; consider PostgreSQL for better concurrency
+- **Medium**: Migrate to PostgreSQL for improved write concurrency and backup options
+- **Large**: Add PgBouncer for connection pooling; consider read replicas for heavy query loads
 
 ## Tech Stack
 
@@ -735,18 +760,42 @@ model_list:
 
 ## Documentation
 
-See [docs/README.md](docs/README.md) for complete documentation index.
-
-**Core Docs:**
-- [Solution Architecture](docs/SOLUTION.md) - System design, RAG pipeline, and reranker integration
-- [API Specification](docs/API_SPECIFICATION.md) - REST API reference
-- [OpenAPI Specification](docs/openapi.yaml) - OpenAPI 3.0 schema
-- [Infrastructure Guide](docs/INFRASTRUCTURE.md) - Docker, deployment, and cost estimation
+**Architecture & Design:**
+- [Solution Architecture](docs/SOLUTION.md) - System design, RAG pipeline, and data tools
 - [Database Schema](docs/DATABASE.md) - SQLite schema, settings, and model presets
 - [UI Wireframes](docs/UI_WIREFRAMES.md) - Admin dashboard and component designs
+
+**API Reference:**
+- [API Specification](docs/API_SPECIFICATION.md) - REST API reference
+- [OpenAPI Specification](docs/openapi.yaml) - OpenAPI 3.0 schema
+
+**Features & Configuration:**
+- [Memory, Skills & Functions](docs/Memory-Skill-Functions.md) - Skills system, tools, data sources, and function APIs
+- [Tools Reference](docs/Tools.md) - Web search, document generation, data sources, function APIs
 - [LiteLLM Guide](docs/liteLLM-implementation-guide.md) - Multi-provider LLM configuration
-- [Web Search Integration](docs/web-search.md) - Tavily web search setup
+
+**Deployment:**
+- [Infrastructure Guide](docs/INFRASTRUCTURE.md) - Docker, deployment, and cost estimation
 - [Deployment Checklist](docs/DEPLOYMENT_CHECKLIST.md) - Production deployment guide
+
+## Acknowledgements
+
+Policy Bot is built on the shoulders of excellent open-source projects:
+
+### Core Infrastructure
+- **[LiteLLM](https://github.com/BerriAI/litellm)** - Unified LLM API gateway for multi-provider support
+- **[Ollama](https://github.com/ollama/ollama)** - Local LLM inference for privacy-first deployments
+- **[Traefik](https://github.com/traefik/traefik)** - Cloud-native reverse proxy with automatic TLS
+- **[ChromaDB](https://github.com/chroma-core/chroma)** - Open-source vector database for embeddings
+- **[better-sqlite3](https://github.com/WiseLibs/better-sqlite3)** - Fast SQLite driver for Node.js
+- **[Redis](https://redis.io/)** - In-memory caching and session storage
+
+### Reranking
+- **[Xenova/all-MiniLM-L6-v2](https://huggingface.co/Xenova/all-MiniLM-L6-v2)** - Local reranking model
+
+### Framework & Libraries
+- **[Next.js](https://nextjs.org/)** - React framework with App Router
+- **[NextAuth.js](https://next-auth.js.org/)** - Authentication for Next.js
 
 ## License
 
