@@ -95,6 +95,8 @@ Policy Bot is a RAG-based (Retrieval-Augmented Generation) chatbot designed to h
 | Transcription | OpenAI whisper-1 | Voice-to-text |
 | OCR | Azure Document Intelligence, Mistral OCR | PDF/image text extraction |
 | Web Search | Tavily API (optional) | Real-time web search via function calling |
+| Data Sources | API + CSV integration | External data querying with visualization |
+| Function APIs | OpenAI-format schemas | Dynamic function calling to external services |
 | Reranking | Cohere API, Transformers.js | Chunk reranking for improved relevance |
 | Vector DB | ChromaDB | Category-based document embeddings storage |
 | Cache | Redis 7 | Query caching (RAG + Tavily), sessions |
@@ -297,7 +299,54 @@ Threads provide conversation isolation and category-based document access:
 - User-uploaded PDFs are attached to threads
 - Deleting a thread removes all associated data
 
-### 5. Authentication Flow
+### 5. Data Tools
+
+Policy Bot includes tools for querying external data sources and executing dynamic functions:
+
+#### Data Sources
+- **API Data Sources**: Connect to external REST APIs with authentication
+- **CSV Data Sources**: Upload and query CSV files with automatic column inference
+- **Category-Based Access**: Data sources linked to categories for access control
+- **Server-Side Aggregation**: Group, count, sum, avg operations for large datasets
+- **Auto-Visualization**: Automatic chart type selection based on data patterns
+
+```
+User Query
+    │
+    ▼
+┌─────────────────┐
+│ LLM decides to  │
+│ call data_source│
+│ tool            │
+└─────────────────┘
+    │
+    ▼
+┌─────────────────┐
+│ Fetch from API  │──── or ────┐
+│ or CSV source   │            │
+└─────────────────┘            │
+    │                          │
+    ▼                          ▼
+┌─────────────────┐    ┌─────────────────┐
+│ Apply filters,  │    │ Return cached   │
+│ aggregations    │    │ response        │
+└─────────────────┘    └─────────────────┘
+    │
+    ▼
+┌─────────────────┐
+│ Return data +   │
+│ visualization   │
+│ hints           │
+└─────────────────┘
+```
+
+#### Function APIs
+- **Dynamic Functions**: Admin-configured API endpoints with OpenAI-format schemas
+- **Automatic Injection**: Functions added to LLM tools based on category context
+- **Flexible Operations**: Support GET, POST, PUT, DELETE methods
+- **Use Cases**: Submit feedback, retrieve analytics, trigger workflows
+
+### 6. Authentication Flow
 
 ```
 User Access

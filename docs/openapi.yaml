@@ -52,6 +52,10 @@ tags:
     description: Category-specific prompt configuration
   - name: Super User - Tools
     description: Category-level tool overrides (superuser only)
+  - name: Admin - Data Sources
+    description: Data source management (API and CSV)
+  - name: Admin - Function APIs
+    description: Function API configuration with OpenAI-format schemas
   - name: Branding
     description: Public branding endpoints
 
@@ -3299,3 +3303,250 @@ paths:
                 $ref: '#/components/schemas/ApiError'
         '404':
           $ref: '#/components/responses/NotFound'
+
+  # ========== Admin - Data Sources ==========
+
+  /admin/data-sources:
+    get:
+      tags:
+        - Admin - Data Sources
+      summary: List all data sources
+      description: Get all API and CSV data sources
+      operationId: listDataSources
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [api, csv]
+        - name: categoryId
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Data sources list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  apis:
+                    type: array
+                    items:
+                      type: object
+                  csvs:
+                    type: array
+                    items:
+                      type: object
+                  counts:
+                    type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+    post:
+      tags:
+        - Admin - Data Sources
+      summary: Create API data source
+      operationId: createDataSource
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, endpoint]
+      responses:
+        '200':
+          description: Data source created
+        '400':
+          description: Validation error
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /admin/data-sources/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+
+    get:
+      tags:
+        - Admin - Data Sources
+      summary: Get data source
+      operationId: getDataSource
+      responses:
+        '200':
+          description: Data source details
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags:
+        - Admin - Data Sources
+      summary: Update data source
+      operationId: updateDataSource
+      responses:
+        '200':
+          description: Data source updated
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - Admin - Data Sources
+      summary: Delete data source
+      operationId: deleteDataSource
+      parameters:
+        - name: type
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [api, csv]
+      responses:
+        '200':
+          description: Data source deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/data-sources/{id}/test:
+    post:
+      tags:
+        - Admin - Data Sources
+      summary: Test data source
+      operationId: testDataSource
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Test results
+
+  /admin/data-sources/upload-csv:
+    post:
+      tags:
+        - Admin - Data Sources
+      summary: Upload CSV data source
+      operationId: uploadCSVDataSource
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file, name]
+      responses:
+        '200':
+          description: CSV uploaded
+
+  /admin/data-sources/parse-openapi:
+    post:
+      tags:
+        - Admin - Data Sources
+      summary: Parse OpenAPI spec
+      operationId: parseOpenAPISpec
+      responses:
+        '200':
+          description: Parsed endpoints
+
+  # ========== Admin - Function APIs ==========
+
+  /admin/function-apis:
+    get:
+      tags:
+        - Admin - Function APIs
+      summary: List Function APIs
+      operationId: listFunctionAPIs
+      parameters:
+        - name: categoryId
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Function APIs list
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+    post:
+      tags:
+        - Admin - Function APIs
+      summary: Create Function API
+      operationId: createFunctionAPI
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, baseUrl, toolsSchema, endpointMappings]
+      responses:
+        '200':
+          description: Function API created
+        '400':
+          description: Validation error
+
+  /admin/function-apis/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+
+    get:
+      tags:
+        - Admin - Function APIs
+      summary: Get Function API
+      operationId: getFunctionAPI
+      responses:
+        '200':
+          description: Function API details
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    put:
+      tags:
+        - Admin - Function APIs
+      summary: Update Function API
+      operationId: updateFunctionAPI
+      responses:
+        '200':
+          description: Function API updated
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      tags:
+        - Admin - Function APIs
+      summary: Delete Function API
+      operationId: deleteFunctionAPI
+      responses:
+        '200':
+          description: Function API deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /admin/function-apis/{id}/test:
+    post:
+      tags:
+        - Admin - Function APIs
+      summary: Test Function API
+      operationId: testFunctionAPI
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Test results

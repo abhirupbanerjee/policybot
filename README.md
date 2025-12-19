@@ -1,6 +1,68 @@
 # Policy Bot
 
-A Retrieval-Augmented Generation (RAG) chatbot that helps government staff query policy documents grouped by categories (HR, Finance, Procurement, Operations, etc) and check document compliance. Built with Next.js, ChromaDB, SQLite, and multi-provider LLM support via LiteLLM (OpenAI, Mistral, Ollama).
+A Retrieval-Augmented Generation (RAG) chatbot that helps government staff query policy documents grouped by categories (HR, Finance, Procurement, Operations, etc) and check document compliance. Built with Next.js, ChromaDB, SQLite, and multi-provider LLM support via LiteLLM (OpenAI, Mistral, Gemini, Ollama).
+
+## Why Policy Bot?
+
+Policy Bot is an **enterprise AI assistant platform** designed for organizations that need intelligent access to their policy documents and data, with full control over privacy, costs, and customization.
+
+### Core Concepts
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           POLICY BOT PLATFORM                               │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐         │
+│  │   CATEGORIES    │    │     SKILLS      │    │      TOOLS      │         │
+│  │   (Departments) │    │   (Behaviors)   │    │   (Capabilities)│         │
+│  ├─────────────────┤    ├─────────────────┤    ├─────────────────┤         │
+│  │ • HR Policies   │    │ • Always-on     │    │ • Web Search    │         │
+│  │ • Finance       │    │ • Category-     │    │ • Data Sources  │         │
+│  │ • Procurement   │    │   triggered     │    │ • Function APIs │         │
+│  │ • Operations    │    │ • Keyword-      │    │ • Document RAG  │         │
+│  │ • IT            │    │   triggered     │    │ • Visualizations│         │
+│  └────────┬────────┘    └────────┬────────┘    └────────┬────────┘         │
+│           │                      │                      │                  │
+│           └──────────────────────┼──────────────────────┘                  │
+│                                  ▼                                         │
+│  ┌─────────────────────────────────────────────────────────────────────┐   │
+│  │                        MULTI-LLM ENGINE                              │   │
+│  │  OpenAI │ Mistral │ Gemini │ Ollama (Local)                         │   │
+│  └─────────────────────────────────────────────────────────────────────┘   │
+│                                  │                                         │
+│           ┌──────────────────────┼──────────────────────┐                  │
+│           ▼                      ▼                      ▼                  │
+│  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐         │
+│  │     MEMORY      │    │  SUMMARIZATION  │    │     USERS       │         │
+│  │ (Per-User Facts)│    │ (Long Threads)  │    │   (3-Tier ACL)  │         │
+│  └─────────────────┘    └─────────────────┘    └─────────────────┘         │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Platform Capabilities
+
+| Capability | Description |
+|------------|-------------|
+| **Multi-Provider LLM** | Switch between OpenAI, Mistral, Gemini, or run locally with Ollama—no vendor lock-in |
+| **Text & Voice Input** | Interact via chat or voice recording (Whisper transcription) |
+| **Category-Based Organization** | Organize documents and users by department (HR, Finance, IT, etc.) |
+| **Three-Tier Access Control** | Admin → SuperUser → User hierarchy with category-based permissions |
+| **Skills System** | Inject custom behaviors based on category context or keyword triggers |
+| **Tool Integrations** | Web search, external API queries, CSV data lookups, OpenAI-style function calling |
+| **User Memory** | Extract and recall user-specific facts across conversations |
+| **Thread Summarization** | Automatically summarize long conversations to maintain context |
+| **Local Data Sovereignty** | All data stored locally—SQLite, ChromaDB, filesystem—with full backup control |
+| **Cost Optimization** | Shared infrastructure reduces per-user AI costs compared to individual subscriptions |
+
+### Key Differentiators
+
+1. **No Vendor Lock-In**: Seamlessly switch between cloud providers (OpenAI, Mistral, Gemini) or run fully local with Ollama
+2. **Department Isolation**: Category-based access ensures users only see relevant policies and data
+3. **Intelligent Context**: Skills inject domain-specific prompts; Memory recalls user preferences
+4. **Data Privacy**: Everything runs on your infrastructure—no data leaves your environment
+5. **Extensible Tools**: Connect to internal APIs, databases, and external services via configurable tools
 
 ## Features
 

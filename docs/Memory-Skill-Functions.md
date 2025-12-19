@@ -11,9 +11,11 @@ This document describes the key configuration components that control how the AI
 3. [Category Prompts](#3-category-prompts)
 4. [Skills](#4-skills)
 5. [Tools](#5-tools)
-6. [Memory](#6-memory)
-7. [Prompt Assembly Flow](#7-prompt-assembly-flow)
-8. [Comparison Table](#8-comparison-table)
+6. [Data Sources](#6-data-sources)
+7. [Function APIs](#7-function-apis)
+8. [Memory](#8-memory)
+9. [Prompt Assembly Flow](#9-prompt-assembly-flow)
+10. [Comparison Table](#10-comparison-table)
 
 ---
 
@@ -188,8 +190,8 @@ interface SkillsSettings {
 
 | Category | Description | Example |
 |----------|-------------|---------|
-| **Autonomous** | LLM-triggered via OpenAI function calling | `web_search` |
-| **Processor** | Post-response output processors | `doc_gen`, `data_viz` |
+| **Autonomous** | LLM-triggered via OpenAI function calling | `web_search`, `data_source`, `function_api` |
+| **Processor** | Post-response output processors | `doc_gen` |
 
 ### Storage
 - **Table:** `tool_configs` - Global tool configurations
@@ -227,17 +229,39 @@ interface SkillsSettings {
 }
 ```
 
-#### Data Visualization (`data_viz`) - Processor
+#### Data Source (`data_source`) - Autonomous
 ```typescript
 {
   enabled: true,
   config: {
+    cacheTTLSeconds: 3600,
+    timeout: 30,
+    defaultLimit: 30,
+    maxLimit: 200,
     defaultChartType: 'bar',
-    enabledChartTypes: ['bar', 'line', 'pie', 'area'],
-    maxDataPoints: 1000
+    enabledChartTypes: ['bar', 'line', 'pie', 'area', 'scatter', 'radar', 'table']
   }
 }
 ```
+- Queries external APIs and CSV data sources
+- Category-based access control
+- Supports filtering, sorting, aggregation
+- Automatic visualization recommendations
+- See [Data Sources](#6-data-sources) for full details
+
+#### Function API (`function_api`) - Autonomous
+```typescript
+{
+  enabled: true,
+  config: {
+    globalEnabled: true
+  }
+}
+```
+- Dynamic function calling with OpenAI-format schemas
+- Admin-configured external API endpoints
+- Category-based access control
+- See [Function APIs](#7-function-apis) for full details
 
 ### Category Overrides
 - Tools can have category-specific configurations
@@ -256,7 +280,196 @@ interface SkillsSettings {
 
 ---
 
-## 6. Memory
+## 6. Data Sources
+
+**What it is:** External data connections (APIs and CSV files) that the AI can query to retrieve structured information. Data sources are linked to categories for access control.
+
+### Storage
+- **Table:** `data_api_configs` - API data source configurations
+- **Table:** `data_csv_configs` - CSV data source configurations
+- **Table:** `data_api_categories` - Links APIs to categories
+- **Table:** `data_csv_categories` - Links CSVs to categories
+- **Table:** `data_source_audit` - Audit trail of changes
+
+### Data Source Types
+
+#### API Data Sources
+External REST APIs with configurable authentication and response mapping.
+
+```typescript
+interface DataAPIConfig {
+  id: string;
+  name: string;
+  description: string;
+  endpoint: string;                          // Full API URL
+  method: 'GET' | 'POST';
+  responseFormat: 'json' | 'csv';
+  authentication: {
+    type: 'none' | 'bearer' | 'api_key' | 'basic';
+    credentials?: { /* encrypted */ };
+  };
+  parameters: DataAPIParameter[];            // Parameter definitions
+  responseStructure: {
+    jsonPath: string;                        // Path to data array
+    fields: ResponseField[];                 // Field type definitions
+  };
+  categoryIds: number[];                     // Linked categories
+  status: 'active' | 'inactive' | 'error' | 'untested';
+}
+```
+
+#### CSV Data Sources
+Uploaded CSV files stored on the server with automatic column inference.
+
+```typescript
+interface DataCSVConfig {
+  id: string;
+  name: string;
+  description: string;
+  filePath: string;                          // Server storage path
+  columns: CSVColumn[];                      // Column definitions
+  rowCount: number;
+  categoryIds: number[];                     // Linked categories
+}
+```
+
+### Query Capabilities
+
+| Feature | Description |
+|---------|-------------|
+| **Filtering** | Field-based filters: eq, ne, gt, lt, gte, lte, contains, in |
+| **Sorting** | Sort by any field, ascending or descending |
+| **Pagination** | Limit and offset for large datasets |
+| **Aggregation** | Server-side group_by with count/sum/avg/min/max |
+| **Multi-dimensional grouping** | Group by multiple fields for cross-tabulation |
+
+### Visualization
+
+Data source responses include automatic visualization hints:
+- **bar** - Default for categorical data
+- **line** - Time series data
+- **pie** - Part-to-whole (2-8 categories)
+- **scatter** - Correlation analysis
+- **radar** - Multi-metric comparison
+- **table** - Raw data or single records
+
+### Access Control
+- Data sources are linked to categories
+- Users can only query sources linked to their accessible categories
+- Source availability is injected into the system prompt context
+
+### Administration
+```
+Admin → Create API/CSV configs → Link to categories → Test connection → Activate
+```
+
+---
+
+## 7. Function APIs
+
+**What it is:** Dynamic function calling capability using OpenAI-format tool schemas. Administrators configure external APIs with explicit function definitions that the LLM can invoke directly.
+
+### Key Difference from Data Sources
+- **Data Sources**: Focus on data retrieval with querying/filtering
+- **Function APIs**: Support arbitrary API operations (GET/POST/PUT/DELETE) with structured schemas
+
+### Storage
+- **Table:** `function_api_configs` - Function API configurations
+- **Table:** `function_api_categories` - Links Function APIs to categories
+
+### Configuration Structure
+
+```typescript
+interface FunctionAPIConfig {
+  id: string;
+  name: string;                              // Display name
+  description: string;
+
+  // API Connection
+  baseUrl: string;                           // e.g., "https://api.example.com"
+  authType: 'api_key' | 'bearer' | 'basic' | 'none';
+  authHeader?: string;                       // e.g., "X-API-Key"
+  authCredentials?: string;                  // Encrypted
+
+  // Function Definitions (OpenAI format)
+  toolsSchema: OpenAI.Chat.ChatCompletionTool[];
+
+  // Endpoint Mappings
+  endpointMappings: Record<string, {
+    method: 'GET' | 'POST' | 'PUT' | 'DELETE';
+    path: string;                            // Relative to baseUrl
+  }>;
+
+  // Settings
+  timeoutSeconds: number;
+  cacheTTLSeconds: number;
+  isEnabled: boolean;
+  status: 'active' | 'inactive' | 'error' | 'untested';
+
+  // Access Control
+  categoryIds: number[];
+}
+```
+
+### OpenAI Tool Schema Format
+
+Functions are defined using standard OpenAI tool format:
+
+```json
+{
+  "type": "function",
+  "function": {
+    "name": "get_user_stats",
+    "description": "Retrieve user statistics for a given time period",
+    "parameters": {
+      "type": "object",
+      "properties": {
+        "user_id": { "type": "string" },
+        "start_date": { "type": "string", "format": "date" },
+        "end_date": { "type": "string", "format": "date" }
+      },
+      "required": ["user_id"]
+    }
+  }
+}
+```
+
+### Dynamic Injection Flow
+
+```
+1. User selects category or starts conversation
+2. System fetches Function APIs linked to that category
+3. Tool definitions are added to LLM's available functions
+4. LLM decides when to call functions based on user intent
+5. System maps function name → endpoint, executes HTTP request
+6. Response returned to LLM for final answer generation
+```
+
+### Response Format
+
+```typescript
+interface FunctionExecutionResult {
+  success: boolean;
+  data?: unknown;                            // API response
+  metadata?: {
+    source: string;                          // Config name
+    functionName: string;
+    executionTimeMs: number;
+    cached: boolean;
+  };
+  error?: { code: string; message: string; };
+}
+```
+
+### Use Cases
+- Submit feedback to external systems
+- Retrieve analytics from business APIs
+- Trigger workflows in external services
+- Query specialized databases
+
+---
+
+## 8. Memory
 
 **What it is:** Persistent conversation context that allows follow-up questions and maintains continuity within threads.
 
@@ -279,7 +492,7 @@ User: "What about section 3?"  ← Bot understands context
 
 ---
 
-## 7. Prompt Assembly Flow
+## 9. Prompt Assembly Flow
 
 When a user sends a message, the complete prompt is assembled in this order:
 
@@ -302,22 +515,26 @@ When a user sends a message, the complete prompt is assembled in this order:
 ├─────────────────────────────────────────────────────────────┤
 │ 6. + RAG Context (knowledge base documents)                 │
 ├─────────────────────────────────────────────────────────────┤
-│ 7. → Sent to OpenAI with Tool Definitions                   │
+│ 7. + Available Data Sources (injected for LLM awareness)    │
+├─────────────────────────────────────────────────────────────┤
+│ 8. + Available Function APIs (injected as tool definitions) │
+├─────────────────────────────────────────────────────────────┤
+│ 9. → Sent to OpenAI with Tool Definitions                   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 8. Comparison Table
+## 10. Comparison Table
 
-| Aspect | System Prompt | Category Prompt | Starter Prompts | Skills | Tools | Memory |
-|--------|--------------|-----------------|-----------------|--------|-------|--------|
-| **Purpose** | Global AI behavior | Category-specific tuning | Quick conversation starters | Modular expertise injection | Extended capabilities | Conversation context |
-| **Scope** | All conversations | Per-category | Per-category | Per-trigger (always/category/keyword) | Global + per-category | Per-thread |
-| **User-facing?** | No | No | Yes (buttons) | No | Visible (outputs) | No |
-| **Configured by** | Admin | Admin/Superuser | Admin/Superuser | Admin | Admin | System |
-| **Storage** | `settings` table | `category_prompts` | `category_prompts` | `skills` table | `tool_configs` | `messages` table |
-| **Max length** | ~8000 chars (combined) | Remaining budget | 500 chars/prompt | Token budget | N/A | Message window |
+| Aspect | System Prompt | Category Prompt | Starter Prompts | Skills | Tools | Data Sources | Function APIs | Memory |
+|--------|--------------|-----------------|-----------------|--------|-------|--------------|---------------|--------|
+| **Purpose** | Global AI behavior | Category-specific tuning | Quick conversation starters | Modular expertise injection | Extended capabilities | External data querying | Dynamic function calling | Conversation context |
+| **Scope** | All conversations | Per-category | Per-category | Per-trigger (always/category/keyword) | Global + per-category | Per-category | Per-category | Per-thread |
+| **User-facing?** | No | No | Yes (buttons) | No | Visible (outputs) | Visible (charts/data) | Visible (results) | No |
+| **Configured by** | Admin | Admin/Superuser | Admin/Superuser | Admin | Admin | Admin | Admin | System |
+| **Storage** | `settings` table | `category_prompts` | `category_prompts` | `skills` table | `tool_configs` | `data_*_configs` | `function_api_configs` | `messages` table |
+| **Max length** | ~8000 chars (combined) | Remaining budget | 500 chars/prompt | Token budget | N/A | Record limits | N/A | Message window |
 
 ---
 
@@ -341,6 +558,25 @@ tool_configs (tool_name, is_enabled, config_json, ...)
 
 -- Category-specific tool overrides
 category_tool_configs (category_id, tool_name, is_enabled, branding_json, ...)
+
+-- API Data Sources
+data_api_configs (id, name, endpoint, authentication, parameters, response_structure, ...)
+
+-- CSV Data Sources
+data_csv_configs (id, name, file_path, columns, row_count, ...)
+
+-- Data source to category mappings
+data_api_categories (api_id, category_id)
+data_csv_categories (csv_id, category_id)
+
+-- Data source audit trail
+data_source_audit (source_type, source_id, action, changed_by, ...)
+
+-- Function API configurations
+function_api_configs (id, name, base_url, auth_type, tools_schema, endpoint_mappings, ...)
+
+-- Function API to category mappings
+function_api_categories (api_id, category_id)
 ```
 
 ---

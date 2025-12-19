@@ -155,6 +155,20 @@ When `AUTH_DISABLED=true` in environment:
 | DELETE | `/api/categories/{id}/prompt` | Yes | Admin/Superuser | Reset category prompt |
 | GET | `/api/superuser/tools` | Yes | Superuser | List tools with overrides |
 | POST | `/api/superuser/tools/{name}` | Yes | Superuser | Set category tool override |
+| GET | `/api/admin/data-sources` | Yes | Admin | List all data sources |
+| POST | `/api/admin/data-sources` | Yes | Admin | Create API data source |
+| GET | `/api/admin/data-sources/{id}` | Yes | Admin | Get data source details |
+| PUT | `/api/admin/data-sources/{id}` | Yes | Admin | Update data source |
+| DELETE | `/api/admin/data-sources/{id}` | Yes | Admin | Delete data source |
+| POST | `/api/admin/data-sources/{id}/test` | Yes | Admin | Test data source connectivity |
+| POST | `/api/admin/data-sources/upload-csv` | Yes | Admin | Upload CSV data source |
+| POST | `/api/admin/data-sources/parse-openapi` | Yes | Admin | Parse OpenAPI spec |
+| GET | `/api/admin/function-apis` | Yes | Admin | List all Function APIs |
+| POST | `/api/admin/function-apis` | Yes | Admin | Create Function API |
+| GET | `/api/admin/function-apis/{id}` | Yes | Admin | Get Function API details |
+| PUT | `/api/admin/function-apis/{id}` | Yes | Admin | Update Function API |
+| DELETE | `/api/admin/function-apis/{id}` | Yes | Admin | Delete Function API |
+| POST | `/api/admin/function-apis/{id}/test` | Yes | Admin | Test Function API |
 
 ---
 
@@ -2701,7 +2715,410 @@ Reset category prompt to global system prompt only.
 
 ---
 
-### 19. Superuser - Tools Management
+### 19. Admin - Data Sources
+
+Manage API and CSV data sources for structured data querying.
+
+#### `GET /api/admin/data-sources`
+
+List all data sources (APIs and CSVs).
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Query Parameters**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `type` | string | No | Filter by type: `api` or `csv` |
+| `categoryId` | number | No | Filter by linked category |
+
+**Response** `200 OK`:
+
+```typescript
+{
+  apis: DataAPIConfig[];
+  csvs: DataCSVConfig[];
+  counts: {
+    apis: number;
+    csvs: number;
+    total: number;
+  };
+}
+```
+
+---
+
+#### `POST /api/admin/data-sources`
+
+Create a new API data source.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Request Body**:
+
+```typescript
+{
+  name: string;                    // Required, unique
+  description?: string;
+  endpoint: string;                // Required, full URL
+  method?: 'GET' | 'POST';         // Default: 'GET'
+  responseFormat?: 'json' | 'csv'; // Default: 'json'
+  authentication?: {
+    type: 'none' | 'bearer' | 'api_key' | 'basic';
+    credentials?: {
+      token?: string;
+      apiKey?: string;
+      apiKeyHeader?: string;
+      apiKeyLocation?: 'header' | 'query';
+      username?: string;
+      password?: string;
+    };
+  };
+  headers?: Record<string, string>;
+  parameters?: DataAPIParameter[];
+  responseStructure?: {
+    jsonPath: string;
+    dataIsArray: boolean;
+    fields: ResponseField[];
+    totalCountPath?: string;
+  };
+  sampleResponse?: object;
+  openApiSpec?: object;
+  configMethod?: 'manual' | 'openapi';
+  categoryIds?: number[];
+}
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  success: true;
+  dataSource: DataAPIConfig;
+}
+```
+
+---
+
+#### `GET /api/admin/data-sources/{id}`
+
+Get data source details.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Response** `200 OK`:
+
+```typescript
+{
+  dataSource: DataAPIConfig | DataCSVConfig;
+  type: 'api' | 'csv';
+}
+```
+
+---
+
+#### `PUT /api/admin/data-sources/{id}`
+
+Update a data source.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Request Body**: Same as POST (partial updates supported)
+
+**Response** `200 OK`:
+
+```typescript
+{
+  success: true;
+  dataSource: DataAPIConfig | DataCSVConfig;
+}
+```
+
+---
+
+#### `DELETE /api/admin/data-sources/{id}`
+
+Delete a data source.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Query Parameters**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `type` | string | Yes | Data source type: `api` or `csv` |
+
+**Response** `200 OK`:
+
+```typescript
+{
+  success: true;
+  deleted: { id: string; type: string; };
+}
+```
+
+---
+
+#### `POST /api/admin/data-sources/{id}/test`
+
+Test data source connectivity.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Response** `200 OK`:
+
+```typescript
+{
+  success: boolean;
+  latencyMs: number;
+  sampleData?: object[];
+  recordCount?: number;
+  error?: string;
+}
+```
+
+---
+
+#### `POST /api/admin/data-sources/upload-csv`
+
+Upload a CSV file as a data source.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Request**: `multipart/form-data`
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `file` | File | Yes | CSV file |
+| `name` | string | Yes | Unique data source name |
+| `description` | string | No | Human-readable description |
+| `categoryIds` | string | No | JSON array of category IDs |
+
+**Response** `200 OK`:
+
+```typescript
+{
+  success: true;
+  dataSource: DataCSVConfig;
+}
+```
+
+---
+
+#### `POST /api/admin/data-sources/parse-openapi`
+
+Parse an OpenAPI specification to auto-configure an API data source.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Request Body**:
+
+```typescript
+{
+  spec: object | string;  // OpenAPI spec as JSON or YAML string
+}
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  success: true;
+  endpoints: Array<{
+    path: string;
+    method: string;
+    operationId: string;
+    summary: string;
+    parameters: object[];
+    responseSchema: object;
+  }>;
+}
+```
+
+---
+
+### 20. Admin - Function APIs
+
+Manage Function API configurations with OpenAI-format tool schemas.
+
+#### `GET /api/admin/function-apis`
+
+List all Function API configurations.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Query Parameters**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `categoryId` | number | No | Filter by linked category |
+
+**Response** `200 OK`:
+
+```typescript
+{
+  functionApis: FunctionAPIConfig[];
+  count: number;
+}
+```
+
+---
+
+#### `POST /api/admin/function-apis`
+
+Create a new Function API configuration.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Request Body**:
+
+```typescript
+{
+  name: string;                              // Required, unique
+  description?: string;
+  baseUrl: string;                           // Required
+  authType: 'api_key' | 'bearer' | 'basic' | 'none';
+  authHeader?: string;                       // e.g., 'X-API-Key'
+  authCredentials?: string;                  // API key or token
+  defaultHeaders?: Record<string, string>;
+  toolsSchema: Array<{                       // Required, OpenAI format
+    type: 'function';
+    function: {
+      name: string;
+      description: string;
+      parameters: {
+        type: 'object';
+        properties: Record<string, object>;
+        required?: string[];
+      };
+    };
+  }>;
+  endpointMappings: Record<string, {         // Required
+    method: 'GET' | 'POST' | 'PUT' | 'DELETE';
+    path: string;
+  }>;
+  timeoutSeconds?: number;                   // Default: 30
+  cacheTTLSeconds?: number;                  // Default: 3600
+  categoryIds?: number[];
+}
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  success: true;
+  functionApi: FunctionAPIConfig;
+}
+```
+
+**Error Responses**:
+
+| Status | Error | Code | Solution |
+|--------|-------|------|----------|
+| 400 | "Name is required" | VALIDATION_ERROR | Include name |
+| 400 | "Base URL is required" | VALIDATION_ERROR | Include baseUrl |
+| 400 | "Invalid tools schema" | VALIDATION_ERROR | Fix schema format |
+| 400 | "Invalid endpoint mappings" | VALIDATION_ERROR | Ensure all functions have mappings |
+| 409 | "A function API with this name already exists" | DUPLICATE | Use unique name |
+
+---
+
+#### `GET /api/admin/function-apis/{id}`
+
+Get Function API details.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Response** `200 OK`:
+
+```typescript
+{
+  functionApi: FunctionAPIConfig;
+}
+```
+
+---
+
+#### `PUT /api/admin/function-apis/{id}`
+
+Update a Function API configuration.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Request Body**: Same as POST (partial updates supported)
+
+**Response** `200 OK`:
+
+```typescript
+{
+  success: true;
+  functionApi: FunctionAPIConfig;
+}
+```
+
+---
+
+#### `DELETE /api/admin/function-apis/{id}`
+
+Delete a Function API configuration.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Response** `200 OK`:
+
+```typescript
+{
+  success: true;
+  deleted: { id: string; };
+}
+```
+
+---
+
+#### `POST /api/admin/function-apis/{id}/test`
+
+Test Function API connectivity.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Request Body**:
+
+```typescript
+{
+  functionName?: string;  // Optional: test specific function
+  testParams?: object;    // Optional: parameters to pass
+}
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  success: boolean;
+  latencyMs: number;
+  response?: unknown;
+  error?: string;
+}
+```
+
+---
+
+### 21. Superuser - Tools Management
 
 Superusers can configure category-level tool overrides.
 
@@ -2776,7 +3193,7 @@ Create or update category-level tool override.
 
 ---
 
-### 20. Super User - User Management
+### 22. Super User - User Management
 
 Super users can manage subscriptions for regular users within their assigned categories.
 

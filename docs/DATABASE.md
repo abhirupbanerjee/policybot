@@ -347,6 +347,133 @@ CREATE TABLE IF NOT EXISTS category_tool_configs (
 CREATE INDEX IF NOT EXISTS idx_category_tool_configs_category ON category_tool_configs(category_id);
 CREATE INDEX IF NOT EXISTS idx_category_tool_configs_tool ON category_tool_configs(tool_name);
 
+-- ============ Data Sources ============
+
+-- API Data Source Configurations
+CREATE TABLE IF NOT EXISTS data_api_configs (
+  id TEXT PRIMARY KEY,
+  name TEXT UNIQUE NOT NULL,
+  description TEXT,
+  endpoint TEXT NOT NULL,
+  method TEXT NOT NULL CHECK (method IN ('GET', 'POST')),
+  response_format TEXT NOT NULL CHECK (response_format IN ('json', 'csv')),
+  authentication TEXT,           -- JSON: {type, credentials}
+  headers TEXT,                  -- JSON: custom headers
+  parameters TEXT,               -- JSON: parameter definitions
+  response_structure TEXT,       -- JSON: {jsonPath, fields, ...}
+  sample_response TEXT,          -- JSON: example response
+  openapi_spec TEXT,             -- JSON: original OpenAPI spec
+  config_method TEXT NOT NULL CHECK (config_method IN ('manual', 'openapi')),
+  status TEXT NOT NULL CHECK (status IN ('active', 'inactive', 'error', 'untested')),
+  created_by TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  last_tested DATETIME,
+  last_error TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_data_api_configs_name ON data_api_configs(name);
+CREATE INDEX IF NOT EXISTS idx_data_api_configs_status ON data_api_configs(status);
+
+-- API to Category mapping (many-to-many)
+CREATE TABLE IF NOT EXISTS data_api_categories (
+  api_id TEXT NOT NULL,
+  category_id INTEGER NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (api_id, category_id),
+  FOREIGN KEY (api_id) REFERENCES data_api_configs(id) ON DELETE CASCADE,
+  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_data_api_categories_api ON data_api_categories(api_id);
+CREATE INDEX IF NOT EXISTS idx_data_api_categories_category ON data_api_categories(category_id);
+
+-- CSV Data Source Configurations
+CREATE TABLE IF NOT EXISTS data_csv_configs (
+  id TEXT PRIMARY KEY,
+  name TEXT UNIQUE NOT NULL,
+  description TEXT,
+  file_path TEXT NOT NULL,
+  original_filename TEXT,
+  columns TEXT,                  -- JSON: column definitions
+  sample_data TEXT,              -- JSON: first 5 rows
+  row_count INTEGER DEFAULT 0,
+  file_size INTEGER DEFAULT 0,
+  created_by TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_data_csv_configs_name ON data_csv_configs(name);
+
+-- CSV to Category mapping (many-to-many)
+CREATE TABLE IF NOT EXISTS data_csv_categories (
+  csv_id TEXT NOT NULL,
+  category_id INTEGER NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (csv_id, category_id),
+  FOREIGN KEY (csv_id) REFERENCES data_csv_configs(id) ON DELETE CASCADE,
+  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_data_csv_categories_csv ON data_csv_categories(csv_id);
+CREATE INDEX IF NOT EXISTS idx_data_csv_categories_category ON data_csv_categories(category_id);
+
+-- Data Source Audit Trail
+CREATE TABLE IF NOT EXISTS data_source_audit (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_type TEXT NOT NULL CHECK (source_type IN ('api', 'csv')),
+  source_id TEXT NOT NULL,
+  action TEXT NOT NULL CHECK (action IN ('created', 'updated', 'tested', 'deleted')),
+  changed_by TEXT NOT NULL,
+  details TEXT,                  -- JSON: change details
+  changed_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_data_source_audit_source ON data_source_audit(source_type, source_id);
+CREATE INDEX IF NOT EXISTS idx_data_source_audit_action ON data_source_audit(action);
+
+-- ============ Function APIs ============
+
+-- Function API Configurations
+CREATE TABLE IF NOT EXISTS function_api_configs (
+  id TEXT PRIMARY KEY,
+  name TEXT UNIQUE NOT NULL,
+  description TEXT,
+  base_url TEXT NOT NULL,
+  auth_type TEXT NOT NULL CHECK (auth_type IN ('api_key', 'bearer', 'basic', 'none')),
+  auth_header TEXT,
+  auth_credentials TEXT,         -- Encrypted
+  default_headers TEXT,          -- JSON: default headers
+  tools_schema TEXT NOT NULL,    -- JSON: OpenAI tool definitions
+  endpoint_mappings TEXT NOT NULL, -- JSON: function name -> endpoint mapping
+  timeout_seconds INTEGER DEFAULT 30,
+  cache_ttl_seconds INTEGER DEFAULT 3600,
+  is_enabled INTEGER DEFAULT 1,
+  status TEXT NOT NULL CHECK (status IN ('active', 'inactive', 'error', 'untested')),
+  created_by TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  last_tested DATETIME,
+  last_error TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_function_api_configs_name ON function_api_configs(name);
+CREATE INDEX IF NOT EXISTS idx_function_api_configs_status ON function_api_configs(status);
+
+-- Function API to Category mapping (many-to-many)
+CREATE TABLE IF NOT EXISTS function_api_categories (
+  api_id TEXT NOT NULL,
+  category_id INTEGER NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (api_id, category_id),
+  FOREIGN KEY (api_id) REFERENCES function_api_configs(id) ON DELETE CASCADE,
+  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_function_api_categories_api ON function_api_categories(api_id);
+CREATE INDEX IF NOT EXISTS idx_function_api_categories_category ON function_api_categories(category_id);
+
 -- ============ Memory ============
 
 CREATE TABLE IF NOT EXISTS user_memories (
@@ -769,6 +896,121 @@ Category-level tool configuration overrides.
 | created_at | DATETIME | Creation timestamp |
 | updated_at | DATETIME | Last update timestamp |
 | updated_by | TEXT | Email of last updater |
+
+### data_api_configs
+
+API data source configurations for external REST APIs.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | TEXT | UUID primary key |
+| name | TEXT | Unique data source name |
+| description | TEXT | Human-readable description |
+| endpoint | TEXT | Full API endpoint URL |
+| method | TEXT | `GET` or `POST` |
+| response_format | TEXT | `json` or `csv` |
+| authentication | TEXT | JSON: {type, credentials} (credentials encrypted) |
+| headers | TEXT | JSON: custom request headers |
+| parameters | TEXT | JSON: parameter definitions array |
+| response_structure | TEXT | JSON: {jsonPath, dataIsArray, fields, totalCountPath} |
+| sample_response | TEXT | JSON: example response for LLM context |
+| openapi_spec | TEXT | JSON: original OpenAPI spec if imported |
+| config_method | TEXT | `manual` or `openapi` |
+| status | TEXT | `active`, `inactive`, `error`, `untested` |
+| created_by | TEXT | Admin email who created |
+| created_at | DATETIME | Creation timestamp |
+| updated_at | DATETIME | Last update timestamp |
+| last_tested | DATETIME | Last test timestamp |
+| last_error | TEXT | Error message from last failed test |
+
+### data_api_categories
+
+Maps API data sources to categories (many-to-many).
+
+| Column | Type | Description |
+|--------|------|-------------|
+| api_id | TEXT | FK to data_api_configs.id |
+| category_id | INTEGER | FK to categories.id |
+| created_at | DATETIME | When linked |
+
+### data_csv_configs
+
+CSV data source configurations for uploaded CSV files.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | TEXT | UUID primary key |
+| name | TEXT | Unique data source name |
+| description | TEXT | Human-readable description |
+| file_path | TEXT | Server storage path |
+| original_filename | TEXT | Original upload filename |
+| columns | TEXT | JSON: column definitions [{name, type, description, format}] |
+| sample_data | TEXT | JSON: first 5 rows for preview |
+| row_count | INTEGER | Total number of rows |
+| file_size | INTEGER | File size in bytes |
+| created_by | TEXT | Admin email who uploaded |
+| created_at | DATETIME | Creation timestamp |
+| updated_at | DATETIME | Last update timestamp |
+
+### data_csv_categories
+
+Maps CSV data sources to categories (many-to-many).
+
+| Column | Type | Description |
+|--------|------|-------------|
+| csv_id | TEXT | FK to data_csv_configs.id |
+| category_id | INTEGER | FK to categories.id |
+| created_at | DATETIME | When linked |
+
+### data_source_audit
+
+Audit trail for data source changes.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INTEGER | Auto-increment primary key |
+| source_type | TEXT | `api` or `csv` |
+| source_id | TEXT | ID of the data source |
+| action | TEXT | `created`, `updated`, `tested`, `deleted` |
+| changed_by | TEXT | Email of admin who made change |
+| details | TEXT | JSON: change details |
+| changed_at | DATETIME | Change timestamp |
+
+### function_api_configs
+
+Function API configurations with OpenAI-format tool schemas.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | TEXT | UUID primary key |
+| name | TEXT | Unique configuration name |
+| description | TEXT | Human-readable description |
+| base_url | TEXT | Base URL for the API |
+| auth_type | TEXT | `api_key`, `bearer`, `basic`, `none` |
+| auth_header | TEXT | Header name for API key (e.g., `X-API-Key`) |
+| auth_credentials | TEXT | Encrypted credentials |
+| default_headers | TEXT | JSON: default headers to include |
+| tools_schema | TEXT | JSON: Array of OpenAI tool definitions |
+| endpoint_mappings | TEXT | JSON: function name → {method, path} mapping |
+| timeout_seconds | INTEGER | Request timeout (default: 30) |
+| cache_ttl_seconds | INTEGER | Cache TTL (default: 3600) |
+| is_enabled | INTEGER | 1=enabled, 0=disabled |
+| status | TEXT | `active`, `inactive`, `error`, `untested` |
+| created_by | TEXT | Admin email who created |
+| created_at | DATETIME | Creation timestamp |
+| updated_at | DATETIME | Last update timestamp |
+| last_tested | DATETIME | Last test timestamp |
+| last_error | TEXT | Error message from last failed test |
+
+### function_api_categories
+
+Maps Function APIs to categories (many-to-many).
+
+| Column | Type | Description |
+|--------|------|-------------|
+| api_id | TEXT | FK to function_api_configs.id |
+| category_id | INTEGER | FK to categories.id |
+| created_at | DATETIME | When linked |
 
 ### user_memories
 

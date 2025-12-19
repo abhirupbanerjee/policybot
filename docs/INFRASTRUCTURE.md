@@ -802,6 +802,15 @@ fi
 - [ ] Test file upload limits
 - [ ] Check CORS settings
 
+### Data Sources & Function APIs
+
+- [ ] Ensure outbound network access is allowed for external API calls
+- [ ] Store API credentials securely (encrypted in database)
+- [ ] Review data source categories to ensure proper access control
+- [ ] Test data source connectivity before assigning to categories
+- [ ] Monitor data source usage via audit logs
+- [ ] Configure firewall rules for specific external API domains if required
+
 ### Ongoing
 
 - [ ] Monitor for unauthorized access attempts
