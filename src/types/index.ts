@@ -255,7 +255,8 @@ export type ErrorCode =
   | 'UPLOAD_LIMIT'
   | 'INVALID_FILE_TYPE'
   | 'SERVICE_ERROR'
-  | 'RATE_LIMITED';
+  | 'RATE_LIMITED'
+  | 'NOT_CONFIGURED';
 
 // ============ Storage Types ============
 

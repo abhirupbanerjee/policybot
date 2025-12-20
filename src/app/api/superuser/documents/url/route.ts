@@ -1,0 +1,248 @@
+/**
+ * Super User - URL Ingestion API
+ * POST /api/superuser/documents/url - Ingest content from web URLs or YouTube to assigned category
+ * GET /api/superuser/documents/url - Check URL ingestion availability
+ */
+
+import { NextRequest, NextResponse } from 'next/server';
+import { getCurrentUser } from '@/lib/auth';
+import { getUserRole, getUserId } from '@/lib/users';
+import { getSuperUserWithAssignments } from '@/lib/db/users';
+import { getCategoryById } from '@/lib/db/categories';
+import { ingestUrls, ingestYouTubeUrl, getUrlIngestionStatus } from '@/lib/ingest';
+import { isYouTubeUrl } from '@/lib/youtube';
+import { isTavilyConfigured } from '@/lib/tools/tavily';
+
+const MAX_URLS = 5;
+const MAX_NAME_LENGTH = 255;
+
+interface UrlIngestionRequest {
+  urls?: string[];
+  youtubeUrl?: string;
+  name?: string;
+  categoryId?: number;
+}
+
+interface UrlIngestionResponse {
+  results: Array<{
+    url: string;
+    success: boolean;
+    documentId?: string;
+    filename?: string;
+    sourceType: 'youtube' | 'web';
+    error?: string;
+  }>;
+  summary: {
+    total: number;
+    successful: number;
+    failed: number;
+  };
+  category?: {
+    categoryId: number;
+    categoryName: string;
+  };
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const role = await getUserRole(user.email);
+    if (role !== 'superuser') {
+      return NextResponse.json({ error: 'Super user access required' }, { status: 403 });
+    }
+
+    const userId = await getUserId(user.email);
+    if (!userId) {
+      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+    }
+
+    // Get super user's assigned categories
+    const superUserData = getSuperUserWithAssignments(userId);
+    if (!superUserData || superUserData.assignedCategories.length === 0) {
+      return NextResponse.json(
+        { error: 'No categories assigned to you' },
+        { status: 403 }
+      );
+    }
+
+    const body = await request.json() as UrlIngestionRequest;
+    const { urls, youtubeUrl, name, categoryId } = body;
+
+    // Validate category ID (required for super users)
+    if (!categoryId || typeof categoryId !== 'number') {
+      return NextResponse.json(
+        { error: 'Category ID is required' },
+        { status: 400 }
+      );
+    }
+
+    // Verify super user has access to this category
+    const hasAccess = superUserData.assignedCategories.some(c => c.categoryId === categoryId);
+    if (!hasAccess) {
+      return NextResponse.json(
+        { error: 'You do not have access to upload to this category' },
+        { status: 403 }
+      );
+    }
+
+    // Verify category exists
+    const category = getCategoryById(categoryId);
+    if (!category) {
+      return NextResponse.json({ error: 'Category not found' }, { status: 404 });
+    }
+
+    // Validate name if provided
+    if (name && name.length > MAX_NAME_LENGTH) {
+      return NextResponse.json(
+        { error: `Name must be ${MAX_NAME_LENGTH} characters or less` },
+        { status: 400 }
+      );
+    }
+
+    // Handle single YouTube URL with custom name
+    if (youtubeUrl) {
+      if (!isYouTubeUrl(youtubeUrl)) {
+        return NextResponse.json(
+          { error: 'Invalid YouTube URL' },
+          { status: 400 }
+        );
+      }
+
+      try {
+        const doc = await ingestYouTubeUrl(youtubeUrl, user.email, {
+          categoryIds: [categoryId],
+          isGlobal: false, // Super users cannot create global documents
+          customName: name,
+        });
+
+        return NextResponse.json<UrlIngestionResponse>({
+          results: [{
+            url: youtubeUrl,
+            success: true,
+            documentId: doc.id,
+            filename: doc.filename,
+            sourceType: 'youtube',
+          }],
+          summary: { total: 1, successful: 1, failed: 0 },
+          category: { categoryId: category.id, categoryName: category.name },
+        }, { status: 202 });
+      } catch (error) {
+        return NextResponse.json<UrlIngestionResponse>({
+          results: [{
+            url: youtubeUrl,
+            success: false,
+            sourceType: 'youtube',
+            error: error instanceof Error ? error.message : 'Failed to extract transcript',
+          }],
+          summary: { total: 1, successful: 0, failed: 1 },
+          category: { categoryId: category.id, categoryName: category.name },
+        }, { status: 207 });
+      }
+    }
+
+    // Handle batch URLs (web and/or YouTube)
+    if (!urls || !Array.isArray(urls) || urls.length === 0) {
+      return NextResponse.json(
+        { error: 'At least one URL is required' },
+        { status: 400 }
+      );
+    }
+
+    if (urls.length > MAX_URLS) {
+      return NextResponse.json(
+        { error: `Maximum ${MAX_URLS} URLs per batch` },
+        { status: 400 }
+      );
+    }
+
+    // Validate URL formats
+    const invalidUrls: string[] = [];
+    for (const url of urls) {
+      try {
+        new URL(url);
+      } catch {
+        if (!isYouTubeUrl(url)) {
+          invalidUrls.push(url);
+        }
+      }
+    }
+
+    if (invalidUrls.length > 0) {
+      return NextResponse.json(
+        { error: `Invalid URL format: ${invalidUrls.join(', ')}` },
+        { status: 400 }
+      );
+    }
+
+    // Check if web URLs are present but Tavily not configured
+    const hasWebUrls = urls.some(url => !isYouTubeUrl(url));
+    if (hasWebUrls && !isTavilyConfigured()) {
+      return NextResponse.json(
+        { error: 'Web URL extraction is not available. Contact administrator.' },
+        { status: 400 }
+      );
+    }
+
+    // Ingest all URLs (super users cannot create global documents)
+    const results = await ingestUrls(urls, user.email, {
+      categoryIds: [categoryId],
+      isGlobal: false,
+    });
+
+    const response: UrlIngestionResponse = {
+      results: results.map(r => ({
+        url: r.url,
+        success: r.success,
+        documentId: r.document?.id,
+        filename: r.document?.filename,
+        sourceType: r.sourceType,
+        error: r.error,
+      })),
+      summary: {
+        total: results.length,
+        successful: results.filter(r => r.success).length,
+        failed: results.filter(r => !r.success).length,
+      },
+      category: { categoryId: category.id, categoryName: category.name },
+    };
+
+    // Use 207 Multi-Status if there are mixed results
+    const status = response.summary.failed === 0 ? 202 :
+                   response.summary.successful === 0 ? 400 : 207;
+
+    return NextResponse.json(response, { status });
+  } catch (error) {
+    console.error('URL ingestion error:', error);
+    return NextResponse.json(
+      {
+        error: 'Failed to ingest URLs',
+        details: error instanceof Error ? error.message : undefined,
+      },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * GET - Check URL ingestion availability
+ */
+export async function GET() {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const status = getUrlIngestionStatus();
+    return NextResponse.json(status);
+  } catch {
+    return NextResponse.json(
+      { error: 'Failed to check status' },
+      { status: 500 }
+    );
+  }
+}

@@ -111,13 +111,24 @@ export default function SuperUserPage() {
   // Documents state
   const [documents, setDocuments] = useState<ManagedDocument[]>([]);
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [uploadMode, setUploadMode] = useState<'file' | 'text'>('file');
+  const [uploadMode, setUploadMode] = useState<'file' | 'text' | 'url'>('file');
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadTextName, setUploadTextName] = useState('');
   const [uploadTextContent, setUploadTextContent] = useState('');
   const [uploadCategory, setUploadCategory] = useState<number | null>(null);
   const [uploading, setUploading] = useState(false);
   const [deletingDocId, setDeletingDocId] = useState<number | null>(null);
+  // URL upload state
+  const [uploadUrls, setUploadUrls] = useState<string[]>(['', '', '', '', '']);
+  const [uploadYoutubeUrl, setUploadYoutubeUrl] = useState('');
+  const [uploadUrlName, setUploadUrlName] = useState('');
+  const [urlIngestionResults, setUrlIngestionResults] = useState<Array<{
+    url: string;
+    success: boolean;
+    filename?: string;
+    error?: string;
+    sourceType: 'youtube' | 'web';
+  }> | null>(null);
 
   // Document search and sort state
   const [docSearchTerm, setDocSearchTerm] = useState('');
@@ -300,14 +311,54 @@ export default function SuperUserPage() {
     }
   };
 
+  // URL validation helpers
+  const isValidUrl = (string: string): boolean => {
+    try {
+      new URL(string);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+
+  const isYouTubeUrl = (url: string): boolean => {
+    return /^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.be)\//.test(url);
+  };
+
+  // Get valid URLs from the batch input
+  const getValidWebUrls = (): string[] => {
+    return uploadUrls.filter(url => url.trim() && isValidUrl(url.trim()));
+  };
+
+  // Check if URL mode has valid input
+  const hasValidUrlInput = (): boolean => {
+    const hasYoutube = uploadYoutubeUrl.trim() && isYouTubeUrl(uploadYoutubeUrl.trim());
+    const hasWebUrls = getValidWebUrls().length > 0;
+    return hasYoutube || hasWebUrls;
+  };
+
+  const resetUploadForm = () => {
+    setUploadFile(null);
+    setUploadTextName('');
+    setUploadTextContent('');
+    setUploadCategory(null);
+    setUploadMode('file');
+    setUploadUrls(['', '', '', '', '']);
+    setUploadYoutubeUrl('');
+    setUploadUrlName('');
+    setUrlIngestionResults(null);
+  };
+
   const handleUploadDocument = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!uploadCategory) return;
     if (uploadMode === 'file' && !uploadFile) return;
     if (uploadMode === 'text' && (!uploadTextName.trim() || !uploadTextContent.trim())) return;
+    if (uploadMode === 'url' && !hasValidUrlInput()) return;
 
     setUploading(true);
     setError(null);
+    setUrlIngestionResults(null);
 
     try {
       let response: Response;
@@ -321,7 +372,7 @@ export default function SuperUserPage() {
           method: 'POST',
           body: formData,
         });
-      } else {
+      } else if (uploadMode === 'text') {
         response = await fetch('/api/superuser/documents/text', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -331,20 +382,61 @@ export default function SuperUserPage() {
             categoryId: uploadCategory,
           }),
         });
+      } else {
+        // URL mode
+        const youtubeUrl = uploadYoutubeUrl.trim();
+        const webUrls = getValidWebUrls();
+
+        if (youtubeUrl && isYouTubeUrl(youtubeUrl)) {
+          // Single YouTube URL with optional custom name
+          response = await fetch('/api/superuser/documents/url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              youtubeUrl,
+              name: uploadUrlName.trim() || undefined,
+              categoryId: uploadCategory,
+            }),
+          });
+        } else {
+          // Batch web URLs
+          response = await fetch('/api/superuser/documents/url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              urls: webUrls,
+              categoryId: uploadCategory,
+            }),
+          });
+        }
       }
 
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to upload document');
-      }
+      const data = await response.json();
 
-      await loadData();
-      setShowUploadModal(false);
-      setUploadFile(null);
-      setUploadTextName('');
-      setUploadTextContent('');
-      setUploadCategory(null);
-      setUploadMode('file');
+      if (uploadMode === 'url') {
+        // Handle URL ingestion results
+        if (data.results) {
+          setUrlIngestionResults(data.results);
+          // Only close if all successful
+          if (data.summary?.failed === 0) {
+            await loadData();
+            setShowUploadModal(false);
+            resetUploadForm();
+          } else {
+            // Show results but don't close
+            await loadData();
+          }
+        } else if (!response.ok) {
+          throw new Error(data.error || 'URL ingestion failed');
+        }
+      } else {
+        if (!response.ok) {
+          throw new Error(data.error || 'Failed to upload document');
+        }
+        await loadData();
+        setShowUploadModal(false);
+        resetUploadForm();
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to upload document');
     } finally {
@@ -1402,6 +1494,18 @@ export default function SuperUserPage() {
             <FileText size={16} className="inline mr-2" />
             Text Content
           </button>
+          <button
+            type="button"
+            onClick={() => setUploadMode('url')}
+            className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
+              uploadMode === 'url'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Globe size={16} className="inline mr-2" />
+            Web / YouTube
+          </button>
         </div>
 
         <form onSubmit={handleUploadDocument}>
@@ -1484,6 +1588,121 @@ export default function SuperUserPage() {
               </>
             )}
 
+            {/* URL Mode */}
+            {uploadMode === 'url' && (
+              <>
+                {/* URL Ingestion Results */}
+                {urlIngestionResults && (
+                  <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
+                    <h4 className="text-sm font-medium text-gray-700 mb-2">Ingestion Results</h4>
+                    <div className="space-y-2">
+                      {urlIngestionResults.map((result, idx) => (
+                        <div
+                          key={idx}
+                          className={`flex items-start gap-2 text-sm ${
+                            result.success ? 'text-green-700' : 'text-red-700'
+                          }`}
+                        >
+                          {result.success ? (
+                            <CheckCircle size={16} className="mt-0.5 flex-shrink-0" />
+                          ) : (
+                            <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+                          )}
+                          <div className="min-w-0">
+                            <p className="truncate">{result.url}</p>
+                            {result.success ? (
+                              <p className="text-xs text-green-600">{result.filename}</p>
+                            ) : (
+                              <p className="text-xs text-red-600">{result.error}</p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setUrlIngestionResults(null)}
+                      className="mt-2 text-xs text-blue-600 hover:underline"
+                    >
+                      Clear results
+                    </button>
+                  </div>
+                )}
+
+                {/* Web URLs Section */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Web URLs (up to 5 - saves API credits)
+                  </label>
+                  <div className="space-y-2">
+                    {uploadUrls.map((url, index) => (
+                      <input
+                        key={index}
+                        type="url"
+                        value={url}
+                        onChange={(e) => {
+                          const newUrls = [...uploadUrls];
+                          newUrls[index] = e.target.value;
+                          setUploadUrls(newUrls);
+                        }}
+                        placeholder={index === 0 ? 'https://example.com/article' : '(optional)'}
+                        className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm ${
+                          url && !isValidUrl(url) ? 'border-red-300' : 'border-gray-300'
+                        }`}
+                      />
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Tip: Add up to 5 URLs to optimize API credit usage (1 credit per 5 URLs)
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-4 py-2">
+                  <div className="flex-1 border-t border-gray-200"></div>
+                  <span className="text-sm text-gray-400">OR</span>
+                  <div className="flex-1 border-t border-gray-200"></div>
+                </div>
+
+                {/* YouTube Section */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    YouTube URL
+                  </label>
+                  <input
+                    type="url"
+                    value={uploadYoutubeUrl}
+                    onChange={(e) => setUploadYoutubeUrl(e.target.value)}
+                    placeholder="https://youtube.com/watch?v=..."
+                    className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm ${
+                      uploadYoutubeUrl && !isYouTubeUrl(uploadYoutubeUrl) ? 'border-red-300' : 'border-gray-300'
+                    }`}
+                  />
+                  {uploadYoutubeUrl && isYouTubeUrl(uploadYoutubeUrl) && (
+                    <p className="text-xs text-green-600 mt-1">
+                      YouTube video detected - transcript will be extracted
+                    </p>
+                  )}
+                </div>
+
+                {/* Custom name for YouTube */}
+                {uploadYoutubeUrl && isYouTubeUrl(uploadYoutubeUrl) && (
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                      Document Name <span className="text-gray-400">(optional)</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={uploadUrlName}
+                      onChange={(e) => setUploadUrlName(e.target.value)}
+                      placeholder="Auto-generated from video title if not provided"
+                      maxLength={255}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                    />
+                  </div>
+                )}
+              </>
+            )}
+
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
                 Category *
@@ -1509,11 +1728,7 @@ export default function SuperUserPage() {
               variant="secondary"
               onClick={() => {
                 setShowUploadModal(false);
-                setUploadFile(null);
-                setUploadTextName('');
-                setUploadTextContent('');
-                setUploadCategory(null);
-                setUploadMode('file');
+                resetUploadForm();
               }}
               disabled={uploading}
             >
@@ -1524,7 +1739,11 @@ export default function SuperUserPage() {
               loading={uploading}
               disabled={
                 !uploadCategory ||
-                (uploadMode === 'file' ? !uploadFile : (!uploadTextName.trim() || !uploadTextContent.trim()))
+                (uploadMode === 'file'
+                  ? !uploadFile
+                  : uploadMode === 'text'
+                  ? (!uploadTextName.trim() || !uploadTextContent.trim())
+                  : !hasValidUrlInput())
               }
             >
               Upload

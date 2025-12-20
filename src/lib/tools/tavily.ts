@@ -2,6 +2,187 @@ import { getWebSearchConfig } from '../db/tool-config';
 import { hashQuery, getCachedQuery, cacheQuery } from '../redis';
 import type { ToolDefinition, ValidationResult } from '../tools';
 
+// ============ URL Extract Types ============
+
+export interface ExtractResult {
+  url: string;
+  success: boolean;
+  content?: string;
+  error?: string;
+}
+
+// ============ URL Extract Functions ============
+
+/**
+ * Check if Tavily is configured (has API key)
+ */
+export function isTavilyConfigured(): boolean {
+  const { config: settings } = getWebSearchConfig();
+  return !!(settings.apiKey || process.env.TAVILY_API_KEY);
+}
+
+/**
+ * Extract content from web URLs using Tavily Extract API
+ * Supports batch extraction (up to 5 URLs per request for 1 credit)
+ *
+ * @param urls - Array of URLs to extract (max 5)
+ * @returns Array of extraction results
+ */
+export async function extractWebContent(urls: string[]): Promise<ExtractResult[]> {
+  // Validate input
+  if (!urls || urls.length === 0) {
+    return [];
+  }
+
+  if (urls.length > 5) {
+    throw new Error('Maximum 5 URLs per batch');
+  }
+
+  // Validate URLs
+  const validUrls: string[] = [];
+  const results: ExtractResult[] = [];
+
+  for (const url of urls) {
+    try {
+      new URL(url);
+      validUrls.push(url);
+    } catch {
+      results.push({
+        url,
+        success: false,
+        error: 'Invalid URL format',
+      });
+    }
+  }
+
+  if (validUrls.length === 0) {
+    return results;
+  }
+
+  // Get API key
+  const { config: settings } = getWebSearchConfig();
+  const apiKey = settings.apiKey || process.env.TAVILY_API_KEY;
+
+  if (!apiKey) {
+    return urls.map(url => ({
+      url,
+      success: false,
+      error: 'Tavily API key not configured. Set in Settings > Web Search.',
+    }));
+  }
+
+  try {
+    const response = await fetch('https://api.tavily.com/extract', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        api_key: apiKey,
+        urls: validUrls,
+        extract_depth: 'advanced',
+      }),
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(`Tavily API error: ${response.status} - ${errorData.message || 'Unknown error'}`);
+    }
+
+    const data = await response.json();
+
+    // Process successful results
+    if (data.results) {
+      for (const result of data.results) {
+        results.push({
+          url: result.url,
+          success: true,
+          content: result.raw_content,
+        });
+      }
+    }
+
+    // Process failed results
+    if (data.failed_results) {
+      for (const failed of data.failed_results) {
+        results.push({
+          url: failed.url,
+          success: false,
+          error: failed.error || 'Failed to extract content',
+        });
+      }
+    }
+
+    // Check for any URLs that weren't in either results or failed_results
+    for (const url of validUrls) {
+      const found = results.some(r => r.url === url);
+      if (!found) {
+        results.push({
+          url,
+          success: false,
+          error: 'No response from extraction service',
+        });
+      }
+    }
+
+    return results;
+  } catch (error) {
+    console.error('Tavily Extract error:', error);
+
+    // Return error for all valid URLs
+    for (const url of validUrls) {
+      const found = results.some(r => r.url === url);
+      if (!found) {
+        results.push({
+          url,
+          success: false,
+          error: error instanceof Error ? error.message : 'Unknown error occurred',
+        });
+      }
+    }
+
+    return results;
+  }
+}
+
+/**
+ * Format extracted web content for document ingestion
+ */
+export function formatWebContentForIngestion(url: string, content: string): string {
+  const urlObj = new URL(url);
+
+  const lines: string[] = [];
+  lines.push('Source: Web Page');
+  lines.push(`URL: ${url}`);
+  lines.push(`Domain: ${urlObj.hostname}`);
+  lines.push(`Extracted: ${new Date().toISOString()}`);
+  lines.push('');
+  lines.push('---');
+  lines.push('');
+  lines.push(content);
+
+  return lines.join('\n');
+}
+
+/**
+ * Generate a filename from a URL
+ */
+export function generateFilenameFromUrl(url: string): string {
+  try {
+    const urlObj = new URL(url);
+    const pathname = urlObj.pathname
+      .replace(/^\/+|\/+$/g, '') // Remove leading/trailing slashes
+      .replace(/\//g, '-') // Replace slashes with hyphens
+      .replace(/[^a-zA-Z0-9-_]/g, '') // Remove invalid characters
+      .slice(0, 50); // Limit length
+
+    const hostname = urlObj.hostname.replace(/^www\./, '');
+    const timestamp = Date.now();
+
+    return `web-${timestamp}-${hostname}${pathname ? `-${pathname}` : ''}.txt`;
+  } catch {
+    return `web-${Date.now()}.txt`;
+  }
+}
+
 /**
  * Web Search configuration schema for admin UI
  */

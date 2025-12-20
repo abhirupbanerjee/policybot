@@ -34,6 +34,18 @@ import {
 import { getCategoryById } from './db/categories';
 import { extractText, getMimeTypeFromFilename, type ExtractedPage } from './document-extractor';
 import type { DocumentChunk, GlobalDocument } from '@/types';
+import {
+  isYouTubeUrl,
+  extractYouTubeTranscript,
+  formatTranscriptForIngestion,
+  isYouTubeApiConfigured,
+} from './youtube';
+import {
+  extractWebContent,
+  formatWebContentForIngestion,
+  generateFilenameFromUrl,
+  isTavilyConfigured,
+} from './tools/tavily';
 
 // Create splitter with configurable settings
 function createSplitter(chunkSize?: number, chunkOverlap?: number): RecursiveCharacterTextSplitter {
@@ -683,4 +695,194 @@ export async function toggleDocumentGlobal(
 
   // Update SQLite
   setDocumentGlobal(numericId, isGlobal);
+}
+
+// ============ URL Ingestion Functions ============
+
+/**
+ * URL ingestion status for UI feedback
+ */
+export interface UrlIngestionStatus {
+  webEnabled: boolean;
+  youtubeEnabled: boolean;
+  youtubeMetadataEnabled: boolean;
+  message?: string;
+}
+
+/**
+ * Result of URL ingestion
+ */
+export interface UrlIngestionResult {
+  url: string;
+  success: boolean;
+  document?: GlobalDocument;
+  error?: string;
+  sourceType: 'youtube' | 'web';
+}
+
+/**
+ * Check what URL ingestion methods are available
+ */
+export function getUrlIngestionStatus(): UrlIngestionStatus {
+  const webEnabled = isTavilyConfigured();
+  const youtubeMetadataEnabled = isYouTubeApiConfigured();
+
+  let message: string | undefined;
+  if (!webEnabled) {
+    message = 'Web URL extraction requires Tavily API key. Configure in Settings > Web Search.';
+  }
+
+  return {
+    webEnabled,
+    youtubeEnabled: true, // youtube-transcript npm always available
+    youtubeMetadataEnabled,
+    message,
+  };
+}
+
+/**
+ * Ingest a single YouTube video
+ */
+export async function ingestYouTubeUrl(
+  url: string,
+  uploadedBy: string,
+  options?: {
+    categoryIds?: number[];
+    isGlobal?: boolean;
+    customName?: string;
+  }
+): Promise<GlobalDocument> {
+  const result = await extractYouTubeTranscript(url);
+
+  if (!result.success) {
+    throw new Error(result.error || 'Failed to extract YouTube transcript');
+  }
+
+  const content = formatTranscriptForIngestion(result);
+  const defaultName = result.videoInfo?.title || `YouTube-${result.videoId}`;
+  const documentName = options?.customName || defaultName;
+
+  return ingestTextContent(content, documentName, uploadedBy, {
+    categoryIds: options?.categoryIds,
+    isGlobal: options?.isGlobal,
+  });
+}
+
+/**
+ * Ingest multiple web URLs in a batch (max 5 for optimal credit usage)
+ */
+export async function ingestWebUrls(
+  urls: string[],
+  uploadedBy: string,
+  options?: {
+    categoryIds?: number[];
+    isGlobal?: boolean;
+  }
+): Promise<UrlIngestionResult[]> {
+  if (!isTavilyConfigured()) {
+    throw new Error('Web URL extraction requires Tavily API key. Configure in Settings > Web Search.');
+  }
+
+  if (urls.length > 5) {
+    throw new Error('Maximum 5 URLs per batch');
+  }
+
+  // Extract content from all URLs
+  const extractResults = await extractWebContent(urls);
+  const ingestionResults: UrlIngestionResult[] = [];
+
+  // Ingest each successful extraction
+  for (const extractResult of extractResults) {
+    if (extractResult.success && extractResult.content) {
+      try {
+        const content = formatWebContentForIngestion(extractResult.url, extractResult.content);
+        const filename = generateFilenameFromUrl(extractResult.url);
+
+        const doc = await ingestTextContent(content, filename.replace('.txt', ''), uploadedBy, {
+          categoryIds: options?.categoryIds,
+          isGlobal: options?.isGlobal,
+        });
+
+        ingestionResults.push({
+          url: extractResult.url,
+          success: true,
+          document: doc,
+          sourceType: 'web',
+        });
+      } catch (error) {
+        ingestionResults.push({
+          url: extractResult.url,
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to ingest content',
+          sourceType: 'web',
+        });
+      }
+    } else {
+      ingestionResults.push({
+        url: extractResult.url,
+        success: false,
+        error: extractResult.error || 'Failed to extract content',
+        sourceType: 'web',
+      });
+    }
+  }
+
+  return ingestionResults;
+}
+
+/**
+ * Ingest URLs (auto-detects YouTube vs web URLs)
+ * Separates YouTube URLs for individual processing and batches web URLs
+ */
+export async function ingestUrls(
+  urls: string[],
+  uploadedBy: string,
+  options?: {
+    categoryIds?: number[];
+    isGlobal?: boolean;
+  }
+): Promise<UrlIngestionResult[]> {
+  const results: UrlIngestionResult[] = [];
+  const webUrls: string[] = [];
+
+  // Process YouTube URLs individually
+  for (const url of urls) {
+    if (isYouTubeUrl(url)) {
+      try {
+        const doc = await ingestYouTubeUrl(url, uploadedBy, {
+          categoryIds: options?.categoryIds,
+          isGlobal: options?.isGlobal,
+        });
+        results.push({
+          url,
+          success: true,
+          document: doc,
+          sourceType: 'youtube',
+        });
+      } catch (error) {
+        results.push({
+          url,
+          success: false,
+          error: error instanceof Error ? error.message : 'Failed to ingest YouTube video',
+          sourceType: 'youtube',
+        });
+      }
+    } else {
+      webUrls.push(url);
+    }
+  }
+
+  // Process web URLs in batch (max 5 at a time)
+  if (webUrls.length > 0) {
+    for (let i = 0; i < webUrls.length; i += 5) {
+      const batch = webUrls.slice(i, i + 5);
+      const batchResults = await ingestWebUrls(batch, uploadedBy, {
+        categoryIds: options?.categoryIds,
+        isGlobal: options?.isGlobal,
+      });
+      results.push(...batchResults);
+    }
+  }
+
+  return results;
 }
