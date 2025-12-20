@@ -3,6 +3,7 @@ import { tavilyWebSearch } from './tools/tavily';
 import { documentGenerationTool } from './tools/docgen';
 import { dataSourceTool } from './tools/data-source';
 import { functionApiTool, getDynamicFunctionDefinitions, isFunctionAPIFunction } from './tools/function-api';
+import { youtubeToolDefinition } from './tools/youtube';
 import { isToolEnabled as isToolEnabledDb, migrateTavilySettingsIfNeeded, ensureToolConfigsExist } from './db/tool-config';
 
 // ============ Types ============
@@ -69,6 +70,7 @@ export const AVAILABLE_TOOLS: Record<string, ToolDefinition> = {
   doc_gen: documentGenerationTool,
   data_source: dataSourceTool,
   function_api: functionApiTool,
+  youtube: youtubeToolDefinition,
 };
 
 // ============ Initialization ============
