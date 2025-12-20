@@ -705,7 +705,7 @@ export async function toggleDocumentGlobal(
 export interface UrlIngestionStatus {
   webEnabled: boolean;
   youtubeEnabled: boolean;
-  youtubeMetadataEnabled: boolean;
+  youtubeSupadataEnabled: boolean;
   message?: string;
 }
 
@@ -725,18 +725,21 @@ export interface UrlIngestionResult {
  */
 export function getUrlIngestionStatus(): UrlIngestionStatus {
   const webEnabled = isTavilyConfigured();
-  const youtubeMetadataEnabled = isYouTubeApiConfigured();
+  const youtubeSupadataEnabled = isYouTubeApiConfigured(); // Now checks Supadata config
 
-  let message: string | undefined;
+  const messages: string[] = [];
   if (!webEnabled) {
-    message = 'Web URL extraction requires Tavily API key. Configure in Settings > Web Search.';
+    messages.push('Web URL extraction requires Tavily API key. Configure in Admin > Tools > Web Search.');
+  }
+  if (!youtubeSupadataEnabled) {
+    messages.push('YouTube extraction requires Supadata API key. Configure in Admin > Tools > YouTube.');
   }
 
   return {
     webEnabled,
-    youtubeEnabled: true, // youtube-transcript npm always available
-    youtubeMetadataEnabled,
-    message,
+    youtubeEnabled: true, // Fallback always available (may fail due to IP blocking)
+    youtubeSupadataEnabled,
+    message: messages.length > 0 ? messages.join(' ') : undefined,
   };
 }
 

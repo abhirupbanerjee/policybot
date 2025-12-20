@@ -2,11 +2,16 @@
  * YouTube Transcript Extraction Module
  *
  * Tiered approach:
- * 1. Primary: YouTube Data API v3 (requires API key + OAuth consent for video owner)
- * 2. Fallback: youtube-transcript npm package (works for any public video with captions)
+ * 1. Primary: Supadata API (reliable, requires API key from supadata.ai)
+ * 2. Fallback: youtube-transcript npm package (free, may be blocked by YouTube)
  */
 
 import { YoutubeTranscript } from 'youtube-transcript';
+import {
+  getYouTubeConfig,
+  extractWithSupadata,
+  isSupadataConfigured,
+} from './tools/youtube';
 
 // ============ Types ============
 
@@ -28,7 +33,7 @@ export interface TranscriptSegment {
 export interface YouTubeExtractResult {
   success: boolean;
   videoId: string;
-  source?: 'youtube-api-v3' | 'youtube-transcript';
+  source?: 'supadata' | 'youtube-transcript';
   videoInfo?: YouTubeVideoInfo;
   transcript?: string;
   segments?: TranscriptSegment[];
@@ -61,171 +66,43 @@ export function isYouTubeUrl(url: string): boolean {
          /^[a-zA-Z0-9_-]{11}$/.test(url);
 }
 
-// ============ YouTube Data API v3 (Primary) ============
-
 /**
- * Get YouTube API key from environment
- */
-function getYouTubeApiKey(): string | null {
-  return process.env.YOUTUBE_API_KEY || null;
-}
-
-/**
- * Check if YouTube Data API v3 is configured
+ * Check if YouTube extraction is configured (Supadata API key)
+ * Re-exported for backward compatibility
  */
 export function isYouTubeApiConfigured(): boolean {
-  return !!getYouTubeApiKey();
+  return isSupadataConfigured();
 }
 
+// ============ Supadata API (Primary) ============
+
 /**
- * Fetch video metadata from YouTube Data API v3
+ * Try to get transcript using Supadata API
  */
-async function fetchVideoInfo(videoId: string, apiKey: string): Promise<YouTubeVideoInfo | null> {
+async function trySupadataApi(videoId: string): Promise<YouTubeExtractResult | null> {
+  const { config } = getYouTubeConfig();
+
+  if (!config.apiKey) {
+    return null;
+  }
+
   try {
-    const url = `https://www.googleapis.com/youtube/v3/videos?` +
-      `part=snippet,contentDetails&id=${videoId}&key=${apiKey}`;
-
-    const response = await fetch(url);
-    if (!response.ok) {
-      console.error('YouTube API error:', response.status, await response.text());
-      return null;
-    }
-
-    const data = await response.json();
-    if (!data.items || data.items.length === 0) {
-      return null;
-    }
-
-    const item = data.items[0];
-    return {
+    const result = await extractWithSupadata(
       videoId,
-      title: item.snippet.title,
-      channelTitle: item.snippet.channelTitle,
-      description: item.snippet.description,
-      publishedAt: item.snippet.publishedAt,
-      duration: item.contentDetails.duration,
-    };
-  } catch (error) {
-    console.error('Error fetching video info:', error);
-    return null;
-  }
-}
-
-/**
- * Get caption tracks for a video using YouTube Data API v3
- */
-async function getCaptionTracks(videoId: string, apiKey: string): Promise<Array<{ id: string; language: string }>> {
-  try {
-    const url = `https://www.googleapis.com/youtube/v3/captions?` +
-      `part=snippet&videoId=${videoId}&key=${apiKey}`;
-
-    const response = await fetch(url);
-    if (!response.ok) {
-      // This often fails with 403 for videos you don't own
-      return [];
-    }
-
-    const data = await response.json();
-    if (!data.items || data.items.length === 0) {
-      return [];
-    }
-
-    return data.items.map((item: { id: string; snippet: { language: string } }) => ({
-      id: item.id,
-      language: item.snippet.language,
-    }));
-  } catch (error) {
-    console.error('Error fetching caption tracks:', error);
-    return [];
-  }
-}
-
-/**
- * Download a caption track using YouTube Data API v3
- * NOTE: This requires OAuth consent from the video owner
- */
-async function downloadCaption(captionId: string, apiKey: string): Promise<string | null> {
-  try {
-    // This endpoint requires OAuth, not just an API key
-    // It will fail for videos you don't own
-    const url = `https://www.googleapis.com/youtube/v3/captions/${captionId}?` +
-      `tfmt=srt&key=${apiKey}`;
-
-    const response = await fetch(url);
-    if (!response.ok) {
-      // Expected to fail for third-party videos (requires OAuth)
-      return null;
-    }
-
-    return await response.text();
-  } catch (error) {
-    console.error('Error downloading caption:', error);
-    return null;
-  }
-}
-
-/**
- * Try to get transcript using YouTube Data API v3
- */
-async function tryYouTubeApiV3(videoId: string): Promise<YouTubeExtractResult | null> {
-  const apiKey = getYouTubeApiKey();
-  if (!apiKey) {
-    return null;
-  }
-
-  try {
-    // Get caption tracks
-    const tracks = await getCaptionTracks(videoId, apiKey);
-    if (tracks.length === 0) {
-      return null;
-    }
-
-    // Prefer English captions
-    const englishTrack = tracks.find(t => t.language.startsWith('en')) || tracks[0];
-
-    // Try to download the caption (will fail if not video owner)
-    const captionText = await downloadCaption(englishTrack.id, apiKey);
-    if (!captionText) {
-      return null;
-    }
-
-    // Parse SRT format to plain text
-    const transcript = parseSrtToPlainText(captionText);
-
-    // Get video info
-    const videoInfo = await fetchVideoInfo(videoId, apiKey);
+      config.apiKey,
+      config.preferredLanguage
+    );
 
     return {
       success: true,
       videoId,
-      source: 'youtube-api-v3',
-      videoInfo: videoInfo || undefined,
-      transcript,
+      source: 'supadata',
+      transcript: result.transcript,
     };
   } catch (error) {
-    console.warn('YouTube API v3 failed:', error);
+    console.warn('Supadata API failed:', error);
     return null;
   }
-}
-
-/**
- * Parse SRT format to plain text
- */
-function parseSrtToPlainText(srt: string): string {
-  // Remove timestamps and sequence numbers, keep only text
-  const lines = srt.split('\n');
-  const textLines: string[] = [];
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-    // Skip empty lines, sequence numbers, and timestamp lines
-    if (!trimmed) continue;
-    if (/^\d+$/.test(trimmed)) continue;
-    if (/^\d{2}:\d{2}:\d{2}/.test(trimmed)) continue;
-    textLines.push(trimmed);
-  }
-
-  return textLines.join(' ');
 }
 
 // ============ youtube-transcript npm (Fallback) ============
@@ -234,6 +111,13 @@ function parseSrtToPlainText(srt: string): string {
  * Try to get transcript using youtube-transcript npm package
  */
 async function tryYouTubeTranscriptNpm(videoId: string): Promise<YouTubeExtractResult | null> {
+  const { config } = getYouTubeConfig();
+
+  // Check if fallback is enabled
+  if (!config.fallbackEnabled) {
+    return null;
+  }
+
   try {
     const transcriptItems = await YoutubeTranscript.fetchTranscript(videoId);
 
@@ -251,15 +135,10 @@ async function tryYouTubeTranscriptNpm(videoId: string): Promise<YouTubeExtractR
     // Combine into full transcript
     const transcript = segments.map(s => s.text).join(' ');
 
-    // Try to get video info if API key is available
-    const apiKey = getYouTubeApiKey();
-    const videoInfo = apiKey ? await fetchVideoInfo(videoId, apiKey) : undefined;
-
     return {
       success: true,
       videoId,
       source: 'youtube-transcript',
-      videoInfo: videoInfo || undefined,
       transcript,
       segments,
     };
@@ -274,8 +153,8 @@ async function tryYouTubeTranscriptNpm(videoId: string): Promise<YouTubeExtractR
 /**
  * Extract YouTube video transcript using tiered approach
  *
- * Primary: YouTube Data API v3 (requires API key + OAuth consent)
- * Fallback: youtube-transcript npm package (any public video with captions)
+ * Primary: Supadata API (reliable, requires API key)
+ * Fallback: youtube-transcript npm package (free, may be blocked)
  */
 export async function extractYouTubeTranscript(url: string): Promise<YouTubeExtractResult> {
   const videoId = extractVideoId(url);
@@ -288,10 +167,12 @@ export async function extractYouTubeTranscript(url: string): Promise<YouTubeExtr
     };
   }
 
-  // Primary: Try YouTube Data API v3
-  const apiResult = await tryYouTubeApiV3(videoId);
-  if (apiResult) {
-    return apiResult;
+  const { config } = getYouTubeConfig();
+
+  // Primary: Try Supadata API
+  const supadataResult = await trySupadataApi(videoId);
+  if (supadataResult) {
+    return supadataResult;
   }
 
   // Fallback: Try youtube-transcript npm package
@@ -300,11 +181,15 @@ export async function extractYouTubeTranscript(url: string): Promise<YouTubeExtr
     return npmResult;
   }
 
-  // Both failed
+  // Both failed - provide helpful error message
+  const errorMessage = config.apiKey
+    ? 'Failed to extract transcript from this video'
+    : 'YouTube extraction requires Supadata API key. Configure in Admin > Tools > YouTube.';
+
   return {
     success: false,
     videoId,
-    error: 'Either consent or captions not available for this video',
+    error: errorMessage,
   };
 }
 

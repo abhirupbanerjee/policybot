@@ -360,6 +360,14 @@ export const TOOL_DEFAULTS: Record<string, { enabled: boolean; config: Record<st
       globalEnabled: true,
     },
   },
+  youtube: {
+    enabled: false,  // Disabled until API key configured
+    config: {
+      apiKey: '',
+      preferredLanguage: 'en',
+      fallbackEnabled: true,  // Allow youtube-transcript npm fallback
+    },
+  },
 };
 
 /**
