@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Upload, RefreshCw, Trash2, FileText, AlertCircle, Users, UserPlus, Shield, User, Settings, Save, FolderOpen, Plus, Edit2, BarChart3, Database, HardDrive, Globe, Tag, Landmark, DollarSign, Activity, Layers, Server, ScrollText, ChevronUp, ChevronDown, ChevronsUpDown, Search, X, LayoutDashboard, Cpu, Mic, Sparkles, Download, Wand2, CheckCircle } from 'lucide-react';
+import { ArrowLeft, Upload, RefreshCw, Trash2, FileText, AlertCircle, Users, UserPlus, Shield, User, Settings, Save, FolderOpen, Plus, Edit2, BarChart3, Database, HardDrive, Globe, Tag, Landmark, DollarSign, Activity, Layers, Server, ScrollText, ChevronUp, ChevronDown, ChevronsUpDown, Search, X, LayoutDashboard, Cpu, Mic, Sparkles, Download, Wand2, CheckCircle, Youtube } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import Spinner from '@/components/ui/Spinner';
@@ -264,7 +264,7 @@ export default function AdminPage() {
 
   // Upload modal state
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [uploadMode, setUploadMode] = useState<'file' | 'text' | 'url'>('file');
+  const [uploadMode, setUploadMode] = useState<'file' | 'text' | 'web' | 'youtube'>('file');
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploadTextName, setUploadTextName] = useState('');
   const [uploadTextContent, setUploadTextContent] = useState('');
@@ -718,18 +718,12 @@ export default function AdminPage() {
     return uploadUrls.filter(url => url.trim() && isValidUrl(url.trim()));
   };
 
-  // Check if URL mode has valid input
-  const hasValidUrlInput = (): boolean => {
-    const hasYoutube = uploadYoutubeUrl.trim() && isYouTubeUrl(uploadYoutubeUrl.trim());
-    const hasWebUrls = getValidWebUrls().length > 0;
-    return hasYoutube || hasWebUrls;
-  };
-
   // Document handlers
   const handleUploadConfirm = async () => {
     if (uploadMode === 'file' && !uploadFile) return;
     if (uploadMode === 'text' && (!uploadTextName.trim() || !uploadTextContent.trim())) return;
-    if (uploadMode === 'url' && !hasValidUrlInput()) return;
+    if (uploadMode === 'web' && getValidWebUrls().length === 0) return;
+    if (uploadMode === 'youtube' && (!uploadYoutubeUrl.trim() || !isYouTubeUrl(uploadYoutubeUrl.trim()))) return;
 
     setUploading(true);
     setUploadProgress('Uploading...');
@@ -760,42 +754,38 @@ export default function AdminPage() {
             isGlobal: uploadIsGlobal,
           }),
         });
-      } else {
-        // URL mode
-        const youtubeUrl = uploadYoutubeUrl.trim();
+      } else if (uploadMode === 'web') {
+        // Web URLs mode
         const webUrls = getValidWebUrls();
-
-        if (youtubeUrl && isYouTubeUrl(youtubeUrl)) {
-          // Single YouTube URL with optional custom name
-          setUploadProgress('Extracting transcript...');
-          response = await fetch('/api/admin/documents/url', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              youtubeUrl,
-              name: uploadUrlName.trim() || undefined,
-              categoryIds: uploadCategoryIds,
-              isGlobal: uploadIsGlobal,
-            }),
-          });
-        } else {
-          // Batch web URLs
-          setUploadProgress('Extracting content...');
-          response = await fetch('/api/admin/documents/url', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              urls: webUrls,
-              categoryIds: uploadCategoryIds,
-              isGlobal: uploadIsGlobal,
-            }),
-          });
-        }
+        setUploadProgress('Extracting content...');
+        response = await fetch('/api/admin/documents/url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            urls: webUrls,
+            categoryIds: uploadCategoryIds,
+            isGlobal: uploadIsGlobal,
+          }),
+        });
+      } else {
+        // YouTube mode
+        const youtubeUrl = uploadYoutubeUrl.trim();
+        setUploadProgress('Extracting transcript...');
+        response = await fetch('/api/admin/documents/url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            youtubeUrl,
+            name: uploadUrlName.trim() || undefined,
+            categoryIds: uploadCategoryIds,
+            isGlobal: uploadIsGlobal,
+          }),
+        });
       }
 
       const data = await response.json();
 
-      if (uploadMode === 'url') {
+      if (uploadMode === 'web' || uploadMode === 'youtube') {
         // Handle URL ingestion results
         if (data.results) {
           setUrlIngestionResults(data.results);
@@ -4406,7 +4396,7 @@ export default function AdminPage() {
             }`}
           >
             <Upload size={16} className="inline mr-2" />
-            File Upload
+            File
           </button>
           <button
             onClick={() => setUploadMode('text')}
@@ -4417,18 +4407,29 @@ export default function AdminPage() {
             }`}
           >
             <FileText size={16} className="inline mr-2" />
-            Text Content
+            Text
           </button>
           <button
-            onClick={() => setUploadMode('url')}
+            onClick={() => setUploadMode('web')}
             className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
-              uploadMode === 'url'
+              uploadMode === 'web'
                 ? 'border-blue-600 text-blue-600'
                 : 'border-transparent text-gray-500 hover:text-gray-700'
             }`}
           >
             <Globe size={16} className="inline mr-2" />
-            Web / YouTube
+            Web
+          </button>
+          <button
+            onClick={() => setUploadMode('youtube')}
+            className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
+              uploadMode === 'youtube'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            <Youtube size={16} className="inline mr-2" />
+            YouTube
           </button>
         </div>
 
@@ -4506,8 +4507,8 @@ export default function AdminPage() {
             </>
           )}
 
-          {/* URL Mode */}
-          {uploadMode === 'url' && (
+          {/* Web Mode */}
+          {uploadMode === 'web' && (
             <>
               {/* URL Ingestion Results */}
               {urlIngestionResults && (
@@ -4574,14 +4575,51 @@ export default function AdminPage() {
                   Tip: Add up to 5 URLs to optimize API credit usage (1 credit per 5 URLs)
                 </p>
               </div>
+            </>
+          )}
 
-              <div className="flex items-center gap-4 py-2">
-                <div className="flex-1 border-t border-gray-200"></div>
-                <span className="text-sm text-gray-400">OR</span>
-                <div className="flex-1 border-t border-gray-200"></div>
-              </div>
+          {/* YouTube Mode */}
+          {uploadMode === 'youtube' && (
+            <>
+              {/* URL Ingestion Results */}
+              {urlIngestionResults && (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 mb-4">
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">Ingestion Results</h4>
+                  <div className="space-y-2">
+                    {urlIngestionResults.map((result, idx) => (
+                      <div
+                        key={idx}
+                        className={`flex items-start gap-2 text-sm ${
+                          result.success ? 'text-green-700' : 'text-red-700'
+                        }`}
+                      >
+                        {result.success ? (
+                          <CheckCircle size={16} className="mt-0.5 flex-shrink-0" />
+                        ) : (
+                          <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+                        )}
+                        <div className="min-w-0">
+                          <p className="truncate">{result.url}</p>
+                          {result.success ? (
+                            <p className="text-xs text-green-600">{result.filename}</p>
+                          ) : (
+                            <p className="text-xs text-red-600">{result.error}</p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setUrlIngestionResults(null)}
+                    className="mt-2 text-xs text-blue-600 hover:underline"
+                  >
+                    Clear results
+                  </button>
+                </div>
+              )}
 
-              {/* YouTube Section */}
+              {/* YouTube URL */}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   YouTube URL
@@ -4714,7 +4752,9 @@ export default function AdminPage() {
                 ? !uploadFile
                 : uploadMode === 'text'
                 ? (!uploadTextName.trim() || !uploadTextContent.trim())
-                : !hasValidUrlInput()
+                : uploadMode === 'web'
+                ? getValidWebUrls().length === 0
+                : !uploadYoutubeUrl.trim() || !isYouTubeUrl(uploadYoutubeUrl.trim())
             }
           >
             <Upload size={18} className="mr-2" />
