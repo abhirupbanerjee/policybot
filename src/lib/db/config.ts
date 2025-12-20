@@ -102,6 +102,10 @@ export interface SkillsSettings {
   debugMode: boolean;             // Log skill activation details
 }
 
+export interface LimitsSettings {
+  conversationHistoryMessages: number;  // Number of recent messages sent to LLM (default: 5)
+}
+
 // Available icon options for branding
 export const BRANDING_ICONS = [
   { key: 'government', label: 'Government', lucideIcon: 'Landmark' },
@@ -201,7 +205,8 @@ export type SettingKey =
   | 'reranker-settings'
   | 'memory-settings'
   | 'summarization-settings'
-  | 'skills-settings';
+  | 'skills-settings'
+  | 'limits-settings';
 
 // ============ Generic Operations ============
 
@@ -474,6 +479,21 @@ export function getSkillsSettings(): SkillsSettings {
   };
 }
 
+/**
+ * Get limits settings
+ * Priority: SQLite > JSON config > hardcoded defaults
+ */
+export function getLimitsSettings(): LimitsSettings {
+  const dbSettings = getSetting<LimitsSettings>('limits-settings');
+  if (dbSettings) return dbSettings;
+
+  // Fall back to JSON config
+  const config = loadConfig();
+  return {
+    conversationHistoryMessages: config.limits?.conversationHistoryMessages ?? 5,
+  };
+}
+
 // ============ Typed Setters ============
 
 /**
@@ -599,6 +619,16 @@ export function setSkillsSettings(settings: Partial<SkillsSettings>, updatedBy?:
   const current = getSkillsSettings();
   const updated = { ...current, ...settings };
   setSetting('skills-settings', updated, updatedBy);
+  return updated;
+}
+
+/**
+ * Update limits settings
+ */
+export function setLimitsSettings(settings: Partial<LimitsSettings>, updatedBy?: string): LimitsSettings {
+  const current = getLimitsSettings();
+  const updated = { ...current, ...settings };
+  setSetting('limits-settings', updated, updatedBy);
   return updated;
 }
 

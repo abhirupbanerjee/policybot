@@ -69,19 +69,6 @@ interface AcronymMappings {
   updatedBy: string;
 }
 
-interface TavilySettings {
-  apiKey: string;
-  enabled: boolean;
-  defaultTopic: 'general' | 'news' | 'finance';
-  defaultSearchDepth: 'basic' | 'advanced';
-  maxResults: number;
-  includeDomains: string[];
-  excludeDomains: string[];
-  cacheTTLSeconds: number;
-  updatedAt: string;
-  updatedBy: string;
-}
-
 interface AvailableModel {
   id: string;
   name: string;
@@ -139,7 +126,7 @@ interface ModelPreset {
 }
 
 type TabType = 'dashboard' | 'documents' | 'categories' | 'users' | 'settings' | 'stats' | 'skills' | 'tools' | 'backup';
-type SettingsSection = 'prompt' | 'rag' | 'llm' | 'acronyms' | 'tavily' | 'branding' | 'reranker' | 'memory' | 'summarization';
+type SettingsSection = 'prompt' | 'rag' | 'llm' | 'acronyms' | 'branding' | 'reranker' | 'memory' | 'summarization' | 'limits';
 
 interface BrandingSettings {
   botName: string;
@@ -173,6 +160,12 @@ interface SummarizationSettings {
   keepRecentMessages: number;
   summaryMaxTokens: number;
   archiveOriginalMessages: boolean;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+interface LimitsSettings {
+  conversationHistoryMessages: number;
   updatedAt?: string;
   updatedBy?: string;
 }
@@ -362,8 +355,6 @@ export default function AdminPage() {
   const [editedLlm, setEditedLlm] = useState<Omit<LLMSettings, 'updatedAt' | 'updatedBy'> | null>(null);
   const [acronymMappings, setAcronymMappings] = useState<AcronymMappings | null>(null);
   const [editedAcronyms, setEditedAcronyms] = useState<string>('');
-  const [tavilySettings, setTavilySettings] = useState<TavilySettings | null>(null);
-  const [editedTavily, setEditedTavily] = useState<Omit<TavilySettings, 'updatedAt' | 'updatedBy'> | null>(null);
   const [brandingSettings, setBrandingSettings] = useState<BrandingSettings | null>(null);
   const [editedBranding, setEditedBranding] = useState<Omit<BrandingSettings, 'updatedAt' | 'updatedBy'> | null>(null);
   const [rerankerSettings, setRerankerSettings] = useState<RerankerSettings | null>(null);
@@ -372,6 +363,8 @@ export default function AdminPage() {
   const [editedMemory, setEditedMemory] = useState<Omit<MemorySettings, 'updatedAt' | 'updatedBy'> | null>(null);
   const [summarizationSettings, setSummarizationSettings] = useState<SummarizationSettings | null>(null);
   const [editedSummarization, setEditedSummarization] = useState<Omit<SummarizationSettings, 'updatedAt' | 'updatedBy'> | null>(null);
+  const [limitsSettings, setLimitsSettingsState] = useState<LimitsSettings | null>(null);
+  const [editedLimits, setEditedLimits] = useState<Omit<LimitsSettings, 'updatedAt' | 'updatedBy'> | null>(null);
   const [embeddingSettings, setEmbeddingSettings] = useState<EmbeddingSettings | null>(null);
   const [transcriptionModel, setTranscriptionModel] = useState<string>('whisper-1');
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
@@ -392,11 +385,11 @@ export default function AdminPage() {
   const [ragModified, setRagModified] = useState(false);
   const [llmModified, setLlmModified] = useState(false);
   const [acronymsModified, setAcronymsModified] = useState(false);
-  const [tavilyModified, setTavilyModified] = useState(false);
   const [brandingModified, setBrandingModified] = useState(false);
   const [rerankerModified, setRerankerModified] = useState(false);
   const [memoryModified, setMemoryModified] = useState(false);
   const [summarizationModified, setSummarizationModified] = useState(false);
+  const [limitsModified, setLimitsModified] = useState(false);
   const [rerankerStatus, setRerankerStatus] = useState<RerankerProviderStatus[]>([]);
   const [rerankerStatusLoading, setRerankerStatusLoading] = useState(true);
 
@@ -549,19 +542,6 @@ export default function AdminPage() {
             .join('\n')
         );
       }
-      if (data.tavily) {
-        setTavilySettings(data.tavily);
-        setEditedTavily({
-          apiKey: data.tavily.apiKey,
-          enabled: data.tavily.enabled,
-          defaultTopic: data.tavily.defaultTopic,
-          defaultSearchDepth: data.tavily.defaultSearchDepth,
-          maxResults: data.tavily.maxResults,
-          includeDomains: data.tavily.includeDomains,
-          excludeDomains: data.tavily.excludeDomains,
-          cacheTTLSeconds: data.tavily.cacheTTLSeconds,
-        });
-      }
       if (data.branding) {
         setBrandingSettings(data.branding);
         setEditedBranding({
@@ -598,6 +578,12 @@ export default function AdminPage() {
           archiveOriginalMessages: data.summarization.archiveOriginalMessages,
         });
       }
+      if (data.limits) {
+        setLimitsSettingsState(data.limits);
+        setEditedLimits({
+          conversationHistoryMessages: data.limits.conversationHistoryMessages,
+        });
+      }
       if (data.embedding) {
         setEmbeddingSettings(data.embedding);
       }
@@ -609,11 +595,11 @@ export default function AdminPage() {
       setRagModified(false);
       setLlmModified(false);
       setAcronymsModified(false);
-      setTavilyModified(false);
       setBrandingModified(false);
       setRerankerModified(false);
       setMemoryModified(false);
       setSummarizationModified(false);
+      setLimitsModified(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load settings');
     } finally {
@@ -1713,60 +1699,6 @@ export default function AdminPage() {
     }
   };
 
-  const handleSaveTavily = async () => {
-    if (!editedTavily || !tavilyModified) return;
-
-    setSavingSettings(true);
-    setError(null);
-
-    try {
-      const response = await fetch('/api/admin/settings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'tavily', settings: editedTavily }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to save Tavily settings');
-      }
-
-      const result = await response.json();
-      setTavilySettings(result.settings);
-      setEditedTavily({
-        apiKey: result.settings.apiKey,
-        enabled: result.settings.enabled,
-        defaultTopic: result.settings.defaultTopic,
-        defaultSearchDepth: result.settings.defaultSearchDepth,
-        maxResults: result.settings.maxResults,
-        includeDomains: result.settings.includeDomains,
-        excludeDomains: result.settings.excludeDomains,
-        cacheTTLSeconds: result.settings.cacheTTLSeconds,
-      });
-      setTavilyModified(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save Tavily settings');
-    } finally {
-      setSavingSettings(false);
-    }
-  };
-
-  const handleResetTavily = () => {
-    if (tavilySettings) {
-      setEditedTavily({
-        apiKey: tavilySettings.apiKey,
-        enabled: tavilySettings.enabled,
-        defaultTopic: tavilySettings.defaultTopic,
-        defaultSearchDepth: tavilySettings.defaultSearchDepth,
-        maxResults: tavilySettings.maxResults,
-        includeDomains: tavilySettings.includeDomains,
-        excludeDomains: tavilySettings.excludeDomains,
-        cacheTTLSeconds: tavilySettings.cacheTTLSeconds,
-      });
-      setTavilyModified(false);
-    }
-  };
-
   // Branding handlers
   const handleSaveBranding = async () => {
     if (!editedBranding || !brandingModified) return;
@@ -1924,6 +1856,42 @@ export default function AdminPage() {
         archiveOriginalMessages: summarizationSettings.archiveOriginalMessages,
       });
       setSummarizationModified(false);
+    }
+  };
+
+  // Limits settings handlers
+  const handleSaveLimits = async () => {
+    if (!editedLimits || !limitsModified) return;
+    setSavingSettings(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/admin/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'limits', settings: editedLimits }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to save limits settings');
+      }
+
+      const data = await response.json();
+      setLimitsSettingsState(data.limits);
+      setLimitsModified(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save limits settings');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const handleResetLimits = () => {
+    if (limitsSettings) {
+      setEditedLimits({
+        conversationHistoryMessages: limitsSettings.conversationHistoryMessages,
+      });
+      setLimitsModified(false);
     }
   };
 
@@ -3034,16 +3002,6 @@ export default function AdminPage() {
                   Reranker
                 </button>
                 <button
-                  onClick={() => setSettingsSection('tavily')}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    settingsSection === 'tavily'
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  Web Search
-                </button>
-                <button
                   onClick={() => setSettingsSection('branding')}
                   className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                     settingsSection === 'branding'
@@ -3082,6 +3040,16 @@ export default function AdminPage() {
                   }`}
                 >
                   Summarization
+                </button>
+                <button
+                  onClick={() => setSettingsSection('limits')}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    settingsSection === 'limits'
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  Limits
                 </button>
               </nav>
             </div>
@@ -3585,191 +3553,6 @@ export default function AdminPage() {
                       )}
                     </div>
                   )}
-                </div>
-              )}
-
-              {/* Web Search (Tavily) Section */}
-              {settingsSection === 'tavily' && (
-                <div className="bg-white rounded-lg border shadow-sm">
-                  <div className="px-6 py-4 border-b">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h2 className="font-semibold text-gray-900">Web Search (Tavily)</h2>
-                        <p className="text-sm text-gray-500">Configure web search capabilities for real-time information</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {tavilyModified && (
-                          <Button variant="secondary" onClick={handleResetTavily} disabled={savingSettings}>
-                            Reset
-                          </Button>
-                        )}
-                        <Button onClick={handleSaveTavily} disabled={!tavilyModified || savingSettings} loading={savingSettings}>
-                          <Save size={18} className="mr-2" />
-                          Save
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                  {settingsLoading ? (
-                    <div className="px-6 py-12 flex justify-center"><Spinner size="lg" /></div>
-                  ) : editedTavily ? (
-                    <div className="p-6 space-y-6">
-                      {/* Enable/Disable Toggle */}
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <label className="font-medium text-gray-900">Enable Web Search</label>
-                          <p className="text-sm text-gray-500">Allow the assistant to search the web for current information</p>
-                        </div>
-                        <input
-                          type="checkbox"
-                          checked={editedTavily.enabled}
-                          onChange={(e) => {
-                            setEditedTavily({ ...editedTavily, enabled: e.target.checked });
-                            setTavilyModified(true);
-                          }}
-                          className="h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                        />
-                      </div>
-
-                      {/* API Key */}
-                      <div>
-                        <label className="block text-sm font-medium text-gray-900 mb-1">Tavily API Key</label>
-                        <input
-                          type="password"
-                          value={editedTavily.apiKey}
-                          onChange={(e) => {
-                            setEditedTavily({ ...editedTavily, apiKey: e.target.value });
-                            setTavilyModified(true);
-                          }}
-                          placeholder="tvly-xxxxxxxxxxxxx"
-                          className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        />
-                        <p className="mt-1 text-xs text-gray-500">
-                          Get your API key from{' '}
-                          <a href="https://tavily.com" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                            tavily.com
-                          </a>
-                        </p>
-                      </div>
-
-                      {/* Settings Grid */}
-                      <div className="grid grid-cols-2 gap-6">
-                        {/* Default Topic */}
-                        <div>
-                          <label className="block text-sm font-medium text-gray-900 mb-1">Default Topic</label>
-                          <select
-                            value={editedTavily.defaultTopic}
-                            onChange={(e) => {
-                              setEditedTavily({ ...editedTavily, defaultTopic: e.target.value as 'general' | 'news' | 'finance' });
-                              setTavilyModified(true);
-                            }}
-                            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          >
-                            <option value="general">General</option>
-                            <option value="news">News</option>
-                            <option value="finance">Finance</option>
-                          </select>
-                        </div>
-
-                        {/* Search Depth */}
-                        <div>
-                          <label className="block text-sm font-medium text-gray-900 mb-1">Search Depth</label>
-                          <select
-                            value={editedTavily.defaultSearchDepth}
-                            onChange={(e) => {
-                              setEditedTavily({ ...editedTavily, defaultSearchDepth: e.target.value as 'basic' | 'advanced' });
-                              setTavilyModified(true);
-                            }}
-                            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          >
-                            <option value="basic">Basic (1 credit/search)</option>
-                            <option value="advanced">Advanced (2 credits/search)</option>
-                          </select>
-                        </div>
-
-                        {/* Max Results */}
-                        <div>
-                          <label className="block text-sm font-medium text-gray-900 mb-1">Max Results</label>
-                          <input
-                            type="number"
-                            min="1"
-                            max="20"
-                            value={editedTavily.maxResults}
-                            onChange={(e) => {
-                              setEditedTavily({ ...editedTavily, maxResults: parseInt(e.target.value) || 5 });
-                              setTavilyModified(true);
-                            }}
-                            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          />
-                          <p className="mt-1 text-xs text-gray-500">Number of search results (1-20)</p>
-                        </div>
-
-                        {/* Cache TTL */}
-                        <div>
-                          <label className="block text-sm font-medium text-gray-900 mb-1">Cache Duration</label>
-                          <input
-                            type="number"
-                            min="60"
-                            max="2592000"
-                            value={editedTavily.cacheTTLSeconds}
-                            onChange={(e) => {
-                              setEditedTavily({ ...editedTavily, cacheTTLSeconds: parseInt(e.target.value) || 1800 });
-                              setTavilyModified(true);
-                            }}
-                            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          />
-                          <p className="mt-1 text-xs text-gray-500">
-                            {Math.floor(editedTavily.cacheTTLSeconds / 60)} minutes (60s - 2,592,000s)
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Include Domains */}
-                      <div>
-                        <label className="block text-sm font-medium text-gray-900 mb-1">Include Domains (Optional)</label>
-                        <textarea
-                          value={editedTavily.includeDomains.join('\n')}
-                          onChange={(e) => {
-                            setEditedTavily({
-                              ...editedTavily,
-                              includeDomains: e.target.value.split('\n').filter(d => d.trim()),
-                            });
-                            setTavilyModified(true);
-                          }}
-                          rows={3}
-                          placeholder="gov.gd&#10;.gov"
-                          className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
-                        />
-                        <p className="mt-1 text-xs text-gray-500">One domain per line. Only search these domains.</p>
-                      </div>
-
-                      {/* Exclude Domains */}
-                      <div>
-                        <label className="block text-sm font-medium text-gray-900 mb-1">Exclude Domains (Optional)</label>
-                        <textarea
-                          value={editedTavily.excludeDomains.join('\n')}
-                          onChange={(e) => {
-                            setEditedTavily({
-                              ...editedTavily,
-                              excludeDomains: e.target.value.split('\n').filter(d => d.trim()),
-                            });
-                            setTavilyModified(true);
-                          }}
-                          rows={3}
-                          placeholder="reddit.com&#10;twitter.com"
-                          className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
-                        />
-                        <p className="mt-1 text-xs text-gray-500">One domain per line. Exclude these domains from results.</p>
-                      </div>
-
-                      {/* Last Updated */}
-                      {tavilySettings && (
-                        <p className="text-xs text-gray-500">
-                          Last updated: {formatDate(tavilySettings.updatedAt)} by {tavilySettings.updatedBy}
-                        </p>
-                      )}
-                    </div>
-                  ) : null}
                 </div>
               )}
 
@@ -4281,6 +4064,66 @@ export default function AdminPage() {
                       {summarizationSettings?.updatedAt && (
                         <p className="text-xs text-gray-500">
                           Last updated: {formatDate(summarizationSettings.updatedAt)} by {summarizationSettings.updatedBy}
+                        </p>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
+              {/* Limits Section */}
+              {settingsSection === 'limits' && (
+                <div className="bg-white rounded-lg border shadow-sm">
+                  <div className="px-6 py-4 border-b">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h2 className="font-semibold text-gray-900">Limits</h2>
+                        <p className="text-sm text-gray-500">Configure system limits and constraints</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {limitsModified && (
+                          <Button variant="secondary" onClick={handleResetLimits} disabled={savingSettings}>
+                            Reset
+                          </Button>
+                        )}
+                        <Button onClick={handleSaveLimits} disabled={!limitsModified || savingSettings} loading={savingSettings}>
+                          <Save size={18} className="mr-2" />
+                          Save
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                  {settingsLoading ? (
+                    <div className="px-6 py-12 flex justify-center"><Spinner size="lg" /></div>
+                  ) : editedLimits ? (
+                    <div className="p-6 space-y-6">
+                      {/* Conversation History Messages */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-900 mb-1">Conversation History Messages</label>
+                        <input
+                          type="number"
+                          min="3"
+                          max="50"
+                          value={editedLimits.conversationHistoryMessages}
+                          onChange={(e) => {
+                            setEditedLimits({ ...editedLimits, conversationHistoryMessages: parseInt(e.target.value) || 5 });
+                            setLimitsModified(true);
+                          }}
+                          className="w-full max-w-xs px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                        <p className="mt-1 text-sm text-gray-500">
+                          Number of recent messages sent to the LLM for context (3-50).
+                        </p>
+                        <p className="mt-1 text-xs text-gray-400">
+                          Higher values allow skills like quizzes to maintain state across more turns, but increase token usage.
+                          Recommended: 15-20 for multi-turn skills like quiz_generator.
+                        </p>
+                      </div>
+
+                      {/* Last Updated */}
+                      {limitsSettings?.updatedAt && (
+                        <p className="text-xs text-gray-500">
+                          Last updated: {formatDate(limitsSettings.updatedAt)} by {limitsSettings.updatedBy}
                         </p>
                       )}
                     </div>

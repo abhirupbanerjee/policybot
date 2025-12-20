@@ -24,6 +24,8 @@ import {
   getSummarizationSettings,
   setSummarizationSettings,
   setSkillsSettings,
+  getLimitsSettings,
+  setLimitsSettings,
   getSettingMetadata,
   deleteSetting,
   MODEL_PRESETS,
@@ -85,6 +87,7 @@ export async function GET() {
     const rerankerSettings = getRerankerSettings();
     const memorySettings = getMemorySettings();
     const summarizationSettings = getSummarizationSettings();
+    const limitsSettings = getLimitsSettings();
 
     // Get metadata for last updated info
     const ragMeta = getSettingMetadata('rag-settings');
@@ -96,6 +99,7 @@ export async function GET() {
     const rerankerMeta = getSettingMetadata('reranker-settings');
     const memoryMeta = getSettingMetadata('memory-settings');
     const summarizationMeta = getSettingMetadata('summarization-settings');
+    const limitsMeta = getSettingMetadata('limits-settings');
 
     return NextResponse.json({
       rag: {
@@ -146,6 +150,11 @@ export async function GET() {
         ...summarizationSettings,
         updatedAt: summarizationMeta?.updatedAt || new Date().toISOString(),
         updatedBy: summarizationMeta?.updatedBy || 'system',
+      },
+      limits: {
+        ...limitsSettings,
+        updatedAt: limitsMeta?.updatedAt || new Date().toISOString(),
+        updatedBy: limitsMeta?.updatedBy || 'system',
       },
       uploadLimits,
       retentionSettings,
@@ -787,6 +796,23 @@ export async function PUT(request: NextRequest) {
           enabled,
           maxTotalTokens,
           debugMode,
+        }, user.email);
+        break;
+      }
+
+      case 'limits': {
+        const { conversationHistoryMessages } = settings;
+
+        // Validate conversationHistoryMessages
+        if (typeof conversationHistoryMessages !== 'number' || conversationHistoryMessages < 3 || conversationHistoryMessages > 50) {
+          return NextResponse.json<ApiError>(
+            { error: 'Conversation history messages must be between 3 and 50', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        result = setLimitsSettings({
+          conversationHistoryMessages,
         }, user.email);
         break;
       }

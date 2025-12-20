@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import type { Message, ToolCall } from '@/types';
-import { getLlmSettings, getEmbeddingSettings } from './db/config';
+import { getLlmSettings, getEmbeddingSettings, getLimitsSettings } from './db/config';
 import { getToolDefinitions, executeTool } from './tools';
 
 let openaiClient: OpenAI | null = null;
@@ -130,8 +130,10 @@ export async function generateResponseWithTools(
     { role: 'system', content: systemPrompt },
   ];
 
-  // Add conversation history (last 5 messages, including tool calls)
-  for (const msg of conversationHistory.slice(-5)) {
+  // Add conversation history (configurable limit, including tool calls)
+  const limitsSettings = getLimitsSettings();
+  const historyLimit = limitsSettings.conversationHistoryMessages;
+  for (const msg of conversationHistory.slice(-historyLimit)) {
     if (msg.role === 'tool') {
       messages.push({
         role: 'tool',
