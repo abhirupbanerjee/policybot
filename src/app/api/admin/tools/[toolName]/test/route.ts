@@ -111,6 +111,93 @@ async function testDocGen(): Promise<{
 }
 
 /**
+ * Test YouTube transcript extraction (Supadata API)
+ * Uses a known public video for testing
+ */
+async function testYouTube(config: Record<string, unknown>): Promise<{
+  success: boolean;
+  message: string;
+  latency?: number;
+}> {
+  const apiKey = config.apiKey as string;
+
+  if (!apiKey) {
+    // Check if fallback is enabled
+    const fallbackEnabled = config.fallbackEnabled !== false;
+    if (fallbackEnabled) {
+      return {
+        success: true,
+        message: 'No Supadata API key configured. Fallback to youtube-transcript npm is enabled (may be unreliable on cloud servers).',
+      };
+    }
+    return {
+      success: false,
+      message: 'No Supadata API key configured and fallback is disabled. Please set the API key from supadata.ai.',
+    };
+  }
+
+  const startTime = Date.now();
+
+  // Test with a known public video (Rick Astley - Never Gonna Give You Up)
+  // This video is known to have transcripts available
+  const testVideoId = 'dQw4w9WgXcQ';
+
+  try {
+    const url = new URL('https://api.supadata.ai/v1/youtube/transcript');
+    url.searchParams.set('videoId', testVideoId);
+    url.searchParams.set('text', 'true');
+
+    const response = await fetch(url.toString(), {
+      headers: { 'x-api-key': apiKey },
+    });
+
+    const latency = Date.now() - startTime;
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      const errorMessage = (errorData as { message?: string }).message || `HTTP ${response.status}`;
+
+      if (response.status === 401 || response.status === 403) {
+        return {
+          success: false,
+          message: 'Invalid API key. Please check your Supadata API key.',
+          latency,
+        };
+      }
+
+      return {
+        success: false,
+        message: `Supadata API error: ${errorMessage}`,
+        latency,
+      };
+    }
+
+    // Verify response has transcript content
+    const data = await response.json() as { content?: string };
+    if (!data.content) {
+      return {
+        success: false,
+        message: 'API returned empty transcript. Please verify your API key.',
+        latency,
+      };
+    }
+
+    return {
+      success: true,
+      message: `Supadata API connection successful (${latency}ms latency)`,
+      latency,
+    };
+  } catch (error) {
+    const latency = Date.now() - startTime;
+    return {
+      success: false,
+      message: `Connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      latency,
+    };
+  }
+}
+
+/**
  * POST /api/admin/tools/[toolName]/test
  * Test a tool's configuration and connection
  */
@@ -155,6 +242,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         break;
       case 'doc_gen':
         result = await testDocGen();
+        break;
+      case 'youtube':
+        result = await testYouTube(toolConfig);
         break;
       default:
         result = {
