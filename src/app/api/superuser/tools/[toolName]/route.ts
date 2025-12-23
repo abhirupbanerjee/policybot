@@ -77,12 +77,14 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           id: categoryConfig.id,
           isEnabled: categoryConfig.isEnabled,
           branding: categoryConfig.branding,
+          config: categoryConfig.config,
           updatedAt: categoryConfig.updatedAt,
           updatedBy: categoryConfig.updatedBy,
         } : null,
         effective: {
           enabled: effective.enabled,
           branding: effective.branding,
+          config: effective.config,
         },
       };
     });
@@ -114,7 +116,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
  * {
  *   categoryId: number,
  *   isEnabled?: boolean | null,  // null = inherit from global
- *   branding?: BrandingConfig | null  // null = inherit from global
+ *   branding?: BrandingConfig | null,  // null = inherit from global
+ *   config?: Record<string, unknown> | null  // Tool-specific config (e.g., templates for task_planner)
  * }
  */
 export async function PATCH(request: NextRequest, { params }: RouteParams) {
@@ -145,10 +148,11 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     // Parse request body
     const body = await request.json();
-    const { categoryId, isEnabled, branding } = body as {
+    const { categoryId, isEnabled, branding, config } = body as {
       categoryId: number;
       isEnabled?: boolean | null;
       branding?: BrandingConfig | null;
+      config?: Record<string, unknown> | null;
     };
 
     if (!categoryId || typeof categoryId !== 'number') {
@@ -164,12 +168,14 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     // Check if this is a "reset to inherit" operation
-    // If both isEnabled and branding are explicitly null, delete the override
+    // If all override fields are explicitly null, delete the override
     const shouldDelete =
       isEnabled === null &&
       branding === null &&
+      config === null &&
       body.hasOwnProperty('isEnabled') &&
-      body.hasOwnProperty('branding');
+      body.hasOwnProperty('branding') &&
+      body.hasOwnProperty('config');
 
     if (shouldDelete) {
       const deleted = deleteCategoryToolConfig(categoryId, toolName);
@@ -193,7 +199,11 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     // Update or create the category tool config
-    const updates: { isEnabled?: boolean | null; branding?: BrandingConfig | null } = {};
+    const updates: {
+      isEnabled?: boolean | null;
+      branding?: BrandingConfig | null;
+      config?: Record<string, unknown> | null;
+    } = {};
 
     if (body.hasOwnProperty('isEnabled')) {
       updates.isEnabled = isEnabled;
@@ -201,6 +211,10 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     if (body.hasOwnProperty('branding')) {
       updates.branding = branding;
+    }
+
+    if (body.hasOwnProperty('config')) {
+      updates.config = config;
     }
 
     const updated = upsertCategoryToolConfig(
@@ -221,12 +235,14 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         toolName: updated.toolName,
         isEnabled: updated.isEnabled,
         branding: updated.branding,
+        config: updated.config,
         updatedAt: updated.updatedAt,
         updatedBy: updated.updatedBy,
       },
       effective: {
         enabled: effective.enabled,
         branding: effective.branding,
+        config: effective.config,
       },
     });
   } catch (error) {

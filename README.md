@@ -68,7 +68,7 @@ Policy Bot is an **enterprise AI assistant platform** designed for organizations
 | **Category-Based Organization** | Organize documents and users by department (HR, Finance, IT, etc.) |
 | **Three-Tier Access Control** | Admin → SuperUser → User hierarchy with category-based permissions |
 | **Skills System** | Inject custom behaviors based on category context or keyword triggers |
-| **Tool Integrations** | Web search, external API queries, CSV data lookups, chart generation, OpenAI-style function calling |
+| **Tool Integrations** | Web search, external API queries, CSV data lookups, chart generation, task planning, YouTube transcripts, OpenAI-style function calling |
 | **User Memory** | Extract and recall user-specific facts across conversations |
 | **Thread Summarization** | Automatically summarize long conversations to maintain context |
 | **Local Data Sovereignty** | All data stored locally—SQLite, ChromaDB, filesystem—with full backup control |
@@ -419,7 +419,9 @@ policy-bot/
 │   │   ├── tools/
 │   │   │   ├── tavily.ts       # Tavily web search tool
 │   │   │   ├── chart-gen.ts    # Chart generator tool
-│   │   │   └── data-source.ts  # Data source query tool
+│   │   │   ├── data-source.ts  # Data source query tool
+│   │   │   ├── task-planner.ts # Task planner for multi-step workflows
+│   │   │   └── youtube.ts      # YouTube transcript extraction
 │   │   ├── chroma.ts           # ChromaDB client (category collections)
 │   │   ├── redis.ts            # Redis client (RAG + Tavily cache)
 │   │   ├── openai.ts           # OpenAI integration
@@ -534,6 +536,11 @@ Policy Bot uses SQLite for metadata storage with the following tables:
 
 ### Configuration Tables
 - **config** - Key-value settings storage
+- **tool_configs** - Global tool configurations
+- **category_tool_configs** - Category-specific tool overrides and templates
+
+### Feature Tables
+- **task_plans** - Multi-step task plans for complex workflows
 
 See [docs/DATABASE.md](docs/DATABASE.md) for complete schema details.
 
@@ -773,7 +780,7 @@ model_list:
 
 **Features & Configuration:**
 - [Memory, Skills & Functions](docs/Memory-Skill-Functions.md) - Skills system, tools, data sources, and function APIs
-- [Tools Reference](docs/Tools.md) - Web search, document generation, data sources, function APIs
+- [Tools Reference](docs/Tools.md) - Web search, document generation, data sources, function APIs, task planner, YouTube
 - [LiteLLM Guide](docs/liteLLM-implementation-guide.md) - Multi-provider LLM configuration
 
 **Deployment:**

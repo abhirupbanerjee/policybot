@@ -17,6 +17,7 @@ export interface CategoryToolConfig {
   toolName: string;
   isEnabled: boolean | null; // null = inherit from global
   branding: BrandingConfig | null;
+  config: Record<string, unknown> | null; // Tool-specific config overrides (e.g., templates for task_planner)
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
@@ -39,6 +40,7 @@ interface DbCategoryToolConfig {
   tool_name: string;
   is_enabled: number | null;
   branding_json: string | null;
+  config_json: string | null;
   created_at: string;
   updated_at: string;
   updated_by: string;
@@ -53,6 +55,7 @@ function mapDbToCategoryToolConfig(row: DbCategoryToolConfig): CategoryToolConfi
     toolName: row.tool_name,
     isEnabled: row.is_enabled === null ? null : row.is_enabled === 1,
     branding: row.branding_json ? JSON.parse(row.branding_json) : null,
+    config: row.config_json ? JSON.parse(row.config_json) : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     updatedBy: row.updated_by,
@@ -106,6 +109,7 @@ export function upsertCategoryToolConfig(
   updates: {
     isEnabled?: boolean | null;
     branding?: BrandingConfig | null;
+    config?: Record<string, unknown> | null;
   },
   updatedBy: string
 ): CategoryToolConfig {
@@ -115,14 +119,16 @@ export function upsertCategoryToolConfig(
     // Update existing
     const newEnabled = updates.isEnabled !== undefined ? updates.isEnabled : existing.isEnabled;
     const newBranding = updates.branding !== undefined ? updates.branding : existing.branding;
+    const newConfig = updates.config !== undefined ? updates.config : existing.config;
 
     execute(
       `UPDATE category_tool_configs
-       SET is_enabled = ?, branding_json = ?, updated_at = CURRENT_TIMESTAMP, updated_by = ?
+       SET is_enabled = ?, branding_json = ?, config_json = ?, updated_at = CURRENT_TIMESTAMP, updated_by = ?
        WHERE category_id = ? AND tool_name = ?`,
       [
         newEnabled === null ? null : newEnabled ? 1 : 0,
         newBranding ? JSON.stringify(newBranding) : null,
+        newConfig ? JSON.stringify(newConfig) : null,
         updatedBy,
         categoryId,
         toolName,
@@ -135,16 +141,18 @@ export function upsertCategoryToolConfig(
     const id = uuidv4();
     const isEnabled = updates.isEnabled ?? null;
     const branding = updates.branding ?? null;
+    const config = updates.config ?? null;
 
     execute(
-      `INSERT INTO category_tool_configs (id, category_id, tool_name, is_enabled, branding_json, updated_by)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO category_tool_configs (id, category_id, tool_name, is_enabled, branding_json, config_json, updated_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [
         id,
         categoryId,
         toolName,
         isEnabled === null ? null : isEnabled ? 1 : 0,
         branding ? JSON.stringify(branding) : null,
+        config ? JSON.stringify(config) : null,
         updatedBy,
       ]
     );
@@ -194,6 +202,7 @@ export function getEffectiveToolConfig(
 ): {
   enabled: boolean;
   branding: BrandingConfig | null;
+  config: Record<string, unknown> | null;
   globalConfig: ToolConfig | undefined;
   categoryOverride: CategoryToolConfig | undefined;
 } {
@@ -215,9 +224,19 @@ export function getEffectiveToolConfig(
     branding = categoryOverride.branding;
   }
 
+  // Resolve config: deep merge global + category override
+  let config: Record<string, unknown> | null = null;
+  if (globalConfig?.config) {
+    config = { ...globalConfig.config };
+  }
+  if (categoryOverride?.config) {
+    config = { ...(config || {}), ...categoryOverride.config };
+  }
+
   return {
     enabled,
     branding,
+    config,
     globalConfig,
     categoryOverride,
   };

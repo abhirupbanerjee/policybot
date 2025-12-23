@@ -2,12 +2,15 @@
  * Task Planner Tool
  *
  * Manages multi-step task plans for complex operations.
- * Supports predefined templates and custom task lists.
  * Persists task state to database for progress tracking.
+ *
+ * Templates can be defined per category via category_tool_configs.
+ * The LLM can use templates or provide explicit title/tasks.
  */
 
 import type { ToolDefinition, ValidationResult } from '../tools';
 import { getRequestContext } from '../request-context';
+import { getEffectiveToolConfig } from '../db/category-tool-config';
 import {
   createTaskPlan,
   getTaskPlan,
@@ -21,12 +24,27 @@ import {
   type TaskPlanStats,
 } from '../db/task-plans';
 
-// ===== Types =====
+// ===== Template Types =====
 
-interface TaskPlanTemplate {
-  title: string;
-  tasks: { id: number; description: string }[];
+interface TaskTemplate {
+  name: string;
+  description: string;
+  active: boolean;
+  placeholders: string[];
+  tasks: Array<{
+    id: number;
+    description: string;
+  }>;
+  createdBy?: string;
+  updatedBy?: string;
+  updatedAt?: string;
 }
+
+interface TaskPlannerCategoryConfig {
+  templates?: Record<string, TaskTemplate>;
+}
+
+// ===== Types =====
 
 interface TaskPlannerArgs {
   action:
@@ -39,12 +57,9 @@ interface TaskPlannerArgs {
     | 'complete_plan'
     | 'cancel_plan';
   // For create with template:
-  template?: 'soe_country_assessment' | 'soe_single_assessment' | 'custom';
-  template_variables?: {
-    country?: string;
-    soe_name?: string;
-  };
-  // For create with custom:
+  template?: string;
+  template_variables?: Record<string, string>;
+  // For create without template:
   title?: string;
   tasks?: { id: number; description: string }[];
   // For update actions:
@@ -64,42 +79,6 @@ interface TaskPlannerResponse {
   stats?: TaskPlanStats;
   error?: string;
 }
-
-// ===== Predefined Templates =====
-
-const TASK_TEMPLATES: Record<string, (vars: Record<string, string>) => TaskPlanTemplate> = {
-  soe_country_assessment: (vars) => ({
-    title: `${vars.country || 'Country'} SOE Assessment`,
-    tasks: [
-      { id: 1, description: `Identify major SOEs in ${vars.country || 'the country'}` },
-      { id: 2, description: 'Search fiscal impact data (2020-2024)' },
-      { id: 3, description: 'Apply Pareto filter - top 20% by impact' },
-      { id: 4, description: 'Confirm priority SOEs with user' },
-      { id: 5, description: 'Collect detailed data for priority SOEs' },
-      { id: 6, description: 'Assess SOEs using 6-dimension framework' },
-      { id: 7, description: 'Inter-SOE dependency analysis' },
-      { id: 8, description: 'Systemic risk assessment' },
-      { id: 9, description: 'Generate consolidated report' },
-    ],
-  }),
-
-  soe_single_assessment: (vars) => ({
-    title: `${vars.soe_name || 'SOE'} Assessment`,
-    tasks: [
-      { id: 1, description: 'Check restructuring history' },
-      { id: 2, description: 'Search financial data' },
-      { id: 3, description: 'Search operational metrics' },
-      { id: 4, description: 'Search governance/audit data' },
-      { id: 5, description: 'Search staffing data' },
-      { id: 6, description: 'Search inter-SOE relationships' },
-      { id: 7, description: 'Score all 6 dimensions' },
-      { id: 8, description: 'Evaluate 7 red flags' },
-      { id: 9, description: 'Calculate Health Index' },
-      { id: 10, description: 'Determine policy pathway' },
-      { id: 11, description: 'Generate detailed report' },
-    ],
-  }),
-};
 
 // ===== Formatting Functions =====
 
@@ -202,34 +181,93 @@ function formatPlanComplete(plan: TaskPlan, stats: TaskPlanStats, summary?: stri
   return lines.join('\n');
 }
 
+// ===== Helper Functions =====
+
+/**
+ * Replace {placeholder} tokens in text with provided values
+ */
+function replacePlaceholders(text: string, vars: Record<string, string>): string {
+  return text.replace(/\{(\w+)\}/g, (_, key) => vars[key] || `{${key}}`);
+}
+
+/**
+ * Get available templates for a category from config
+ */
+function getTemplatesForCategory(categoryId: number): Record<string, TaskTemplate> | null {
+  const { config } = getEffectiveToolConfig('task_planner', categoryId);
+  if (!config) return null;
+
+  const categoryConfig = config as TaskPlannerCategoryConfig;
+  return categoryConfig.templates || null;
+}
+
 // ===== Action Handlers =====
 
-function handleCreate(args: TaskPlannerArgs, threadId: string, userId: string): TaskPlannerResponse {
+function handleCreate(
+  args: TaskPlannerArgs,
+  threadId: string,
+  userId: string,
+  categoryId?: number
+): TaskPlannerResponse {
   let title: string;
   let tasks: { id: number; description: string }[];
 
-  // Use template if specified
-  if (args.template && args.template !== 'custom') {
-    const templateFn = TASK_TEMPLATES[args.template];
-    if (!templateFn) {
+  // If template specified, look it up from category config
+  if (args.template) {
+    if (!categoryId) {
       return {
         success: false,
-        message: `Unknown template: ${args.template}`,
-        display: `:x: Unknown template: ${args.template}`,
-        error: `Unknown template: ${args.template}`,
+        message: 'Template requires category context',
+        display: ':x: Template requires category context',
+        error: 'Template requires category context',
       };
     }
-    const template = templateFn(args.template_variables || {});
-    title = template.title;
-    tasks = template.tasks;
+
+    const templates = getTemplatesForCategory(categoryId);
+    if (!templates) {
+      return {
+        success: false,
+        message: 'No templates configured for this category',
+        display: ':x: No templates configured for this category',
+        error: 'No templates configured for this category',
+      };
+    }
+
+    const template = templates[args.template];
+    if (!template) {
+      const availableTemplates = Object.keys(templates).join(', ');
+      return {
+        success: false,
+        message: `Template not found: ${args.template}`,
+        display: `:x: Template not found: ${args.template}. Available: ${availableTemplates}`,
+        error: `Template not found: ${args.template}`,
+      };
+    }
+
+    if (!template.active) {
+      return {
+        success: false,
+        message: `Template is inactive: ${args.template}`,
+        display: `:x: Template is inactive: ${args.template}`,
+        error: `Template is inactive: ${args.template}`,
+      };
+    }
+
+    // Replace placeholders in task descriptions
+    const templateVars = args.template_variables || {};
+    tasks = template.tasks.map((t) => ({
+      id: t.id,
+      description: replacePlaceholders(t.description, templateVars),
+    }));
+    title = replacePlaceholders(template.name, templateVars);
   } else {
-    // Custom tasks
+    // Require explicit title and tasks
     if (!args.title || !args.tasks || args.tasks.length === 0) {
       return {
         success: false,
-        message: 'Custom plan requires title and tasks',
-        display: ':x: Custom plan requires title and tasks',
-        error: 'Custom plan requires title and tasks',
+        message: 'Plan requires title and tasks, or a template',
+        display: ':x: Plan requires title and tasks, or a template',
+        error: 'Plan requires title and tasks, or a template',
       };
     }
     title = args.title;
@@ -471,42 +509,14 @@ function handleCancelPlan(args: TaskPlannerArgs): TaskPlannerResponse {
 export const taskPlannerTool: ToolDefinition = {
   name: 'task_planner',
   displayName: 'Task Planner',
-  description: `Create and manage multi-step task plans for complex operations.
-
-USE THIS TOOL when the request requires:
-- Assessments across multiple entities (countries, SOEs, departments)
-- Sequential operations that benefit from progress tracking
-- Complex analysis with 3+ distinct steps
-
-DO NOT USE for:
-- Simple factual questions ("What is X?")
-- Single-step lookups
-- Questions that can be answered with one web search
-
-Available templates: soe_country_assessment, soe_single_assessment`,
+  description: 'Create and manage multi-step task plans for complex operations.',
   category: 'autonomous',
 
   definition: {
     type: 'function',
     function: {
       name: 'task_planner',
-      description: `Create and manage multi-step task plans for complex operations.
-
-USE THIS TOOL when the request requires:
-- Assessments across multiple entities (countries, SOEs, departments)
-- Sequential operations that benefit from progress tracking
-- Complex analysis with 3+ distinct steps
-
-DO NOT USE for:
-- Simple factual questions
-- Single-step lookups
-- Questions answerable with one web search
-
-Available templates:
-- soe_country_assessment: Full country SOE assessment with fiscal analysis
-- soe_single_assessment: Detailed single SOE health assessment
-
-When using templates, provide the template name and required variables.`,
+      description: 'Create and manage multi-step task plans for complex operations.',
       parameters: {
         type: 'object',
         properties: {
@@ -526,20 +536,16 @@ When using templates, provide the template name and required variables.`,
           },
           template: {
             type: 'string',
-            enum: ['soe_country_assessment', 'soe_single_assessment', 'custom'],
-            description: 'Predefined task template (or "custom" to provide tasks manually)',
+            description: 'Template name from category config (for create action)',
           },
           template_variables: {
             type: 'object',
-            properties: {
-              country: { type: 'string', description: 'Country name for country assessment' },
-              soe_name: { type: 'string', description: 'SOE name for single assessment' },
-            },
-            description: 'Variables to populate template',
+            additionalProperties: { type: 'string' },
+            description: 'Placeholder values for template (e.g., {"country": "Jamaica"})',
           },
           title: {
             type: 'string',
-            description: 'Plan title (for custom template)',
+            description: 'Plan title (required for create if no template)',
           },
           tasks: {
             type: 'array',
@@ -551,7 +557,7 @@ When using templates, provide the template name and required variables.`,
               },
               required: ['id', 'description'],
             },
-            description: 'List of tasks (for custom template)',
+            description: 'List of tasks (required for create if no template)',
           },
           plan_id: {
             type: 'string',
@@ -595,12 +601,13 @@ When using templates, provide the template name and required variables.`,
     const context = getRequestContext();
     const threadId = context.threadId || '';
     const userId = context.userId || '';
+    const categoryId = context.categoryId;
 
     let response: TaskPlannerResponse;
 
     switch (typedArgs.action) {
       case 'create':
-        response = handleCreate(typedArgs, threadId, userId);
+        response = handleCreate(typedArgs, threadId, userId, categoryId);
         break;
       case 'start_task':
         response = handleStartTask(typedArgs);

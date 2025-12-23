@@ -13,9 +13,11 @@ This document describes the AI tools system that extends the bot's capabilities 
 5. [Data Source Tool](#data-source-tool)
 6. [Chart Generator Tool](#chart-generator-tool)
 7. [Function API Tool](#function-api-tool)
-8. [Tool Configuration](#tool-configuration)
-9. [Category-Level Overrides](#category-level-overrides)
-10. [API Reference](#api-reference)
+8. [Task Planner Tool](#task-planner-tool)
+9. [YouTube Tool](#youtube-tool)
+10. [Tool Configuration](#tool-configuration)
+11. [Category-Level Overrides](#category-level-overrides)
+12. [API Reference](#api-reference)
 
 ---
 
@@ -58,6 +60,8 @@ Autonomous tools are sent to OpenAI as function definitions. The LLM decides whe
 - `data_source` - Query external APIs and CSV data with visualization
 - `chart_gen` - Generate charts from LLM-constructed data
 - `function_api` - Dynamic function calling with OpenAI-format schemas
+- `task_planner` - Manage multi-step task plans for complex operations
+- `youtube` - Extract transcripts from YouTube videos
 
 ### Processor Tools
 
@@ -87,10 +91,11 @@ interface WebSearchConfig {
   apiKey: string;              // Tavily API key (required)
   defaultTopic: 'general' | 'news' | 'finance';
   defaultSearchDepth: 'basic' | 'advanced';
-  maxResults: number;          // 1-10, default: 5
+  maxResults: number;          // 1-20, default: 10
   includeDomains: string[];    // Only search these domains
   excludeDomains: string[];    // Never search these domains
   cacheTTLSeconds: number;     // 60-2592000, default: 3600
+  includeAnswer: 'none' | 'basic' | 'advanced';  // AI-generated answer summary
 }
 ```
 
@@ -102,38 +107,60 @@ interface WebSearchConfig {
   "config": {
     "apiKey": "",
     "defaultTopic": "general",
-    "defaultSearchDepth": "basic",
-    "maxResults": 5,
+    "defaultSearchDepth": "advanced",
+    "maxResults": 10,
     "includeDomains": [],
     "excludeDomains": [],
-    "cacheTTLSeconds": 3600
+    "cacheTTLSeconds": 3600,
+    "includeAnswer": "basic"
   }
 }
 ```
 
 ### OpenAI Function Schema
 
+The LLM can optionally override search parameters per query, with admin config as defaults:
+
 ```json
 {
   "name": "web_search",
-  "description": "Search the web for current information on a topic. Use this when you need up-to-date information that may not be in the knowledge base.",
+  "description": "Search the web for current information, news, or data not available in the organizational knowledge base.",
   "parameters": {
     "type": "object",
     "properties": {
       "query": {
         "type": "string",
-        "description": "The search query"
+        "description": "Search query to find relevant web information"
       },
       "max_results": {
         "type": "number",
-        "description": "Maximum number of results to return",
-        "default": 5
+        "description": "Number of results (1-20). Use higher values for comprehensive research, lower for quick facts. Defaults to admin setting if not specified."
+      },
+      "search_depth": {
+        "type": "string",
+        "enum": ["basic", "advanced"],
+        "description": "Search depth: 'basic' for quick searches (3-5 results), 'advanced' for thorough research (10+ results). Defaults to admin setting."
+      },
+      "include_answer": {
+        "type": "string",
+        "enum": ["none", "basic", "advanced"],
+        "description": "Include AI-generated answer: 'none' = disabled, 'basic' = quick summary, 'advanced' = comprehensive analysis. Defaults to admin setting."
       }
     },
     "required": ["query"]
   }
 }
 ```
+
+### LLM Parameter Override
+
+The LLM can override these parameters per query while admin config serves as defaults:
+
+| Parameter | Admin Config | LLM Override | Resolution |
+|-----------|--------------|--------------|------------|
+| `max_results` | Default limit | Per-query limit | LLM override if provided, else admin default |
+| `search_depth` | Default depth | Per-query depth | LLM override if provided, else admin default |
+| `include_answer` | Default mode | Per-query mode | LLM override if provided, else admin default |
 
 ### Caching
 
@@ -859,6 +886,317 @@ interface FunctionExecutionResult {
 
 ---
 
+## Task Planner Tool
+
+### Purpose
+
+Enables the AI to create and manage multi-step task plans for complex operations that require sequential work, progress tracking, and structured execution. This tool is ideal for assessments, research projects, and any multi-phase workflow.
+
+### When to Use
+
+| Use Case | Example |
+|----------|---------|
+| **Multi-entity assessments** | "Assess all SOEs in Trinidad" |
+| **Sequential operations** | "Evaluate WASA's financial health using the 6-dimension framework" |
+| **Complex analysis** | "Conduct a comprehensive policy review for the energy sector" |
+
+### When NOT to Use
+
+- Simple factual questions ("What is the debt of WASA?")
+- Single-step lookups that can be answered with one web search
+- Questions that don't require progress tracking
+
+### Features
+
+- **Template-based creation**: Use predefined templates configured per category
+- **Custom task lists**: Create ad-hoc plans with explicit title and tasks
+- **Placeholder substitution**: Templates support `{variable}` placeholders
+- **Progress tracking**: Track task status (pending, in_progress, completed, failed, skipped)
+- **Database persistence**: Plans are stored and can be resumed
+
+### Configuration
+
+Task Planner has minimal global configuration. Templates are configured per category.
+
+```typescript
+interface TaskPlannerConfig {
+  // Currently no global settings - templates defined per category
+}
+```
+
+### Default Configuration
+
+```json
+{
+  "enabled": true,
+  "config": {}
+}
+```
+
+### Category Templates
+
+Templates are defined in `category_tool_configs.config_json` for each category:
+
+```typescript
+interface TaskPlannerCategoryConfig {
+  templates?: {
+    [templateKey: string]: {
+      name: string;             // Display name for LLM
+      description: string;      // When to use this template
+      active: boolean;          // Whether available for use
+      placeholders: string[];   // Variables like ["country", "soe_name"]
+      tasks: Array<{
+        id: number;
+        description: string;    // Can include {placeholders}
+      }>;
+      createdBy?: string;
+      updatedBy?: string;
+      updatedAt?: string;
+    };
+  };
+}
+```
+
+### Example Template Configuration
+
+```json
+{
+  "templates": {
+    "country_assessment": {
+      "name": "Country SOE Assessment",
+      "description": "Assess all SOEs in a country",
+      "active": true,
+      "placeholders": ["country"],
+      "tasks": [
+        { "id": 1, "description": "Identify major SOEs in {country}" },
+        { "id": 2, "description": "Search fiscal impact data (2020-2024)" },
+        { "id": 3, "description": "Apply Pareto filter - top 20% by impact" },
+        { "id": 4, "description": "Confirm priority SOEs with user" },
+        { "id": 5, "description": "Assess SOEs using 6-dimension framework" },
+        { "id": 6, "description": "Generate consolidated report" }
+      ]
+    }
+  }
+}
+```
+
+### OpenAI Function Schema
+
+```json
+{
+  "name": "task_planner",
+  "description": "Create and manage multi-step task plans for complex operations.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": ["create", "start_task", "complete_task", "fail_task", "skip_task", "get_status", "complete_plan", "cancel_plan"],
+        "description": "Action to perform on the task plan"
+      },
+      "template": {
+        "type": "string",
+        "description": "Template name from category config (for create action)"
+      },
+      "template_variables": {
+        "type": "object",
+        "additionalProperties": { "type": "string" },
+        "description": "Placeholder values for template (e.g., {\"country\": \"Jamaica\"})"
+      },
+      "title": {
+        "type": "string",
+        "description": "Plan title (required for create if no template)"
+      },
+      "tasks": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "number" },
+            "description": { "type": "string" }
+          },
+          "required": ["id", "description"]
+        },
+        "description": "List of tasks (required for create if no template)"
+      },
+      "plan_id": {
+        "type": "string",
+        "description": "Plan ID (required for all actions except create)"
+      },
+      "task_id": {
+        "type": "number",
+        "description": "Task ID to update (for task actions)"
+      },
+      "result": {
+        "type": "string",
+        "description": "Result summary (for complete_task)"
+      },
+      "error": {
+        "type": "string",
+        "description": "Error description (for fail_task)"
+      },
+      "reason": {
+        "type": "string",
+        "description": "Skip reason (for skip_task)"
+      },
+      "summary": {
+        "type": "string",
+        "description": "Overall summary (for complete_plan)"
+      }
+    },
+    "required": ["action"]
+  }
+}
+```
+
+### Task States
+
+| State | Description |
+|-------|-------------|
+| `pending` | Task not yet started |
+| `in_progress` | Currently being worked on |
+| `completed` | Successfully completed with result |
+| `failed` | Failed with error message |
+| `skipped` | Skipped with reason |
+
+### Plan States
+
+| State | Description |
+|-------|-------------|
+| `active` | Plan in progress |
+| `completed` | All tasks finished successfully |
+| `cancelled` | Plan cancelled by user/LLM |
+| `failed` | Plan failed (critical task failed) |
+
+### Admin UI
+
+Templates are managed in the Admin Dashboard under **Tools > Task Planner**:
+
+1. **Select category** - Choose which category to configure
+2. **View templates** - List of defined templates with status
+3. **Create template** - Define new template with tasks and placeholders
+4. **Edit template** - Modify template details, tasks, placeholders
+5. **Activate/Deactivate** - Toggle template availability (Admin only can deactivate)
+6. **Delete template** - Remove template (Admin only)
+
+### Permission Model
+
+| Role | Capabilities |
+|------|-------------|
+| **Admin** | Full control: add, edit, deactivate, delete templates for any category |
+| **Superuser** | Can add and edit templates for their assigned categories only |
+
+### Example Usage
+
+**User:** "Assess all SOEs in Jamaica"
+
+**AI calls task_planner with template:**
+```json
+{
+  "action": "create",
+  "template": "country_assessment",
+  "template_variables": { "country": "Jamaica" }
+}
+```
+
+**AI calls task_planner with custom tasks:**
+```json
+{
+  "action": "create",
+  "title": "Jamaica SOE Assessment",
+  "tasks": [
+    { "id": 1, "description": "Identify major SOEs in Jamaica" },
+    { "id": 2, "description": "Research fiscal data for 2020-2024" },
+    { "id": 3, "description": "Apply Pareto filter" }
+  ]
+}
+```
+
+**Progress update:**
+```json
+{
+  "action": "complete_task",
+  "plan_id": "abc-123",
+  "task_id": 1,
+  "result": "Identified 15 major SOEs including JUTC, NWC, and Petrojam"
+}
+```
+
+---
+
+## YouTube Tool
+
+### Purpose
+
+Enables the AI to extract transcripts from YouTube videos for analysis, summarization, or reference.
+
+### Features
+
+- **Transcript extraction**: Get full video transcripts
+- **Language support**: Preferred language configurable
+- **Fallback mechanism**: Uses youtube-transcript npm package if API unavailable
+
+### Configuration
+
+```typescript
+interface YouTubeConfig {
+  apiKey: string;              // YouTube Data API key (optional)
+  preferredLanguage: string;   // Default: 'en'
+  fallbackEnabled: boolean;    // Allow npm fallback, default: true
+}
+```
+
+### Default Configuration
+
+```json
+{
+  "enabled": false,
+  "config": {
+    "apiKey": "",
+    "preferredLanguage": "en",
+    "fallbackEnabled": true
+  }
+}
+```
+
+### OpenAI Function Schema
+
+```json
+{
+  "name": "youtube",
+  "description": "Extract transcript from a YouTube video for analysis or summarization.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "video_url": {
+        "type": "string",
+        "description": "YouTube video URL or video ID"
+      },
+      "language": {
+        "type": "string",
+        "description": "Preferred language code (e.g., 'en', 'es')"
+      }
+    },
+    "required": ["video_url"]
+  }
+}
+```
+
+### Example Usage
+
+**User:** "Summarize this video: https://youtube.com/watch?v=xyz123"
+
+**AI Response:**
+> Based on the video transcript, here are the key points:
+>
+> 1. Introduction to policy framework
+> 2. Implementation challenges
+> 3. Recommended solutions
+>
+> Source: YouTube video "Policy Implementation Guide"
+
+---
+
 ## Tool Configuration
 
 ### Database Schema
@@ -913,13 +1251,14 @@ Tools are managed in the Admin Dashboard under the **Tools** tab:
 
 ## Category-Level Overrides
 
-Superusers can configure tool settings per category they manage.
+Superusers and Admins can configure tool settings per category.
 
 ### Use Cases
 
 - Different branding per category (e.g., different logos for different departments)
 - Enable/disable tools for specific categories
 - Custom domain filters for web search per category
+- **Tool-specific configurations** (e.g., Task Planner templates per category)
 
 ### Database Schema
 
@@ -930,12 +1269,23 @@ CREATE TABLE category_tool_configs (
   tool_name TEXT NOT NULL,
   is_enabled INTEGER,         -- null = inherit from global
   branding_json TEXT,         -- Category-specific branding
+  config_json TEXT,           -- Tool-specific config overrides (e.g., templates)
   created_at DATETIME,
   updated_at DATETIME,
   updated_by TEXT NOT NULL,
   UNIQUE(category_id, tool_name)
 );
 ```
+
+### Config Field
+
+The `config_json` column stores tool-specific configuration overrides as JSON. This is used for:
+
+| Tool | Config Content |
+|------|----------------|
+| `task_planner` | Templates with placeholders and task lists |
+| `web_search` | Category-specific domain filters |
+| `doc_gen` | Category-specific branding overrides |
 
 ### Override Resolution
 
@@ -944,11 +1294,25 @@ function getEffectiveToolConfig(toolName: string, categoryId: number) {
   const categoryOverride = getCategoryToolConfig(categoryId, toolName);
   const globalConfig = getToolConfig(toolName);
 
-  return {
-    enabled: categoryOverride?.isEnabled ?? globalConfig?.isEnabled ?? false,
-    branding: categoryOverride?.branding ?? globalConfig?.branding ?? null,
-    // ... merge other settings
-  };
+  // Enabled: category override takes precedence
+  let enabled = globalConfig?.isEnabled ?? false;
+  if (categoryOverride?.isEnabled !== null && categoryOverride?.isEnabled !== undefined) {
+    enabled = categoryOverride.isEnabled;
+  }
+
+  // Branding: category override takes precedence
+  let branding = globalConfig?.config?.branding ?? null;
+  if (categoryOverride?.branding) {
+    branding = categoryOverride.branding;
+  }
+
+  // Config: deep merge global + category override
+  let config = globalConfig?.config ? { ...globalConfig.config } : null;
+  if (categoryOverride?.config) {
+    config = { ...(config || {}), ...categoryOverride.config };
+  }
+
+  return { enabled, branding, config, globalConfig, categoryOverride };
 }
 ```
 
@@ -965,6 +1329,16 @@ function getEffectiveToolConfig(toolName: string, categoryId: number) {
 | GET | `/api/admin/tools/{name}` | Get tool config + audit history |
 | PATCH | `/api/admin/tools/{name}` | Update tool configuration |
 | POST | `/api/admin/tools/{name}/test` | Test tool connectivity |
+
+### Task Planner Template Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/admin/tools/task-planner/templates?categoryId=X` | List templates for category |
+| POST | `/api/admin/tools/task-planner/templates` | Create new template |
+| GET | `/api/admin/tools/task-planner/templates/{key}?categoryId=X` | Get specific template |
+| PATCH | `/api/admin/tools/task-planner/templates/{key}` | Update template |
+| DELETE | `/api/admin/tools/task-planner/templates/{key}?categoryId=X` | Delete template (Admin only) |
 
 ### Superuser Endpoints
 

@@ -20,12 +20,14 @@ import {
   FileText,
   Database,
   Zap,
+  ListTodo,
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
 import Modal from '@/components/ui/Modal';
 import DataSourcesTab from './DataSourcesTab';
 import FunctionAPITab from './FunctionAPITab';
+import TaskPlannerTemplates from './TaskPlannerTemplates';
 
 // Tool interface matching API response
 interface Tool {
@@ -112,6 +114,8 @@ function getToolIcon(toolName: string) {
       return Database;
     case 'function_api':
       return Zap;
+    case 'task_planner':
+      return ListTodo;
     default:
       return Settings;
   }
@@ -959,6 +963,13 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false }: Tool
           <FunctionAPITab
             apiBasePath="/api/admin/function-apis"
             categoriesPath="/api/admin/categories"
+          />
+        );
+      case 'task_planner':
+        // Task planner has template management UI
+        return (
+          <TaskPlannerTemplates
+            isSuperuser={forSuperuser}
           />
         );
       default:
