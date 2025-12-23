@@ -5,6 +5,7 @@ import { dataSourceTool } from './tools/data-source';
 import { functionApiTool, getDynamicFunctionDefinitions, isFunctionAPIFunction } from './tools/function-api';
 import { youtubeToolDefinition } from './tools/youtube';
 import { chartGenTool } from './tools/chart-gen';
+import { taskPlannerTool } from './tools/task-planner';
 import { isToolEnabled as isToolEnabledDb, migrateTavilySettingsIfNeeded, ensureToolConfigsExist } from './db/tool-config';
 import { toolsLogger as logger } from './logger';
 
@@ -74,6 +75,7 @@ export const AVAILABLE_TOOLS: Record<string, ToolDefinition> = {
   function_api: functionApiTool,
   youtube: youtubeToolDefinition,
   chart_gen: chartGenTool,
+  task_planner: taskPlannerTool,
 };
 
 // ============ Initialization ============

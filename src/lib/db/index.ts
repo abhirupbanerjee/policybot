@@ -380,6 +380,43 @@ function runMigrations(database: Database.Database): void {
     `);
   }
 
+  // Check and add config_json column to category_tool_configs
+  const ctcColumns = database.pragma('table_info(category_tool_configs)') as { name: string }[];
+  const ctcColumnNames = ctcColumns.map((c) => c.name);
+
+  if (!ctcColumnNames.includes('config_json')) {
+    database.exec('ALTER TABLE category_tool_configs ADD COLUMN config_json TEXT');
+  }
+
+  // Check and create task_plans table for Task Planner tool
+  const taskPlansTableExists = database.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='task_plans'"
+  ).get();
+
+  if (!taskPlansTableExists) {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS task_plans (
+        id TEXT PRIMARY KEY,
+        thread_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        category_slug TEXT,
+        title TEXT,
+        tasks_json TEXT NOT NULL,
+        status TEXT DEFAULT 'active' CHECK (status IN ('active', 'completed', 'cancelled', 'failed')),
+        total_tasks INTEGER DEFAULT 0,
+        completed_tasks INTEGER DEFAULT 0,
+        failed_tasks INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        completed_at DATETIME,
+        FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_task_plans_thread ON task_plans(thread_id);
+      CREATE INDEX IF NOT EXISTS idx_task_plans_status ON task_plans(status);
+      CREATE INDEX IF NOT EXISTS idx_task_plans_user ON task_plans(user_id);
+    `);
+  }
+
   // Migration: Update file_type CHECK constraint to include 'md' format
   // SQLite doesn't allow modifying CHECK constraints, so we recreate the table
   try {
@@ -671,6 +708,7 @@ CREATE TABLE IF NOT EXISTS category_tool_configs (
   tool_name TEXT NOT NULL,
   is_enabled INTEGER,
   branding_json TEXT,
+  config_json TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_by TEXT NOT NULL,
@@ -679,6 +717,27 @@ CREATE TABLE IF NOT EXISTS category_tool_configs (
 );
 CREATE INDEX IF NOT EXISTS idx_category_tool_configs_category ON category_tool_configs(category_id);
 CREATE INDEX IF NOT EXISTS idx_category_tool_configs_tool ON category_tool_configs(tool_name);
+
+-- Task plans for Task Planner tool
+CREATE TABLE IF NOT EXISTS task_plans (
+  id TEXT PRIMARY KEY,
+  thread_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  category_slug TEXT,
+  title TEXT,
+  tasks_json TEXT NOT NULL,
+  status TEXT DEFAULT 'active' CHECK (status IN ('active', 'completed', 'cancelled', 'failed')),
+  total_tasks INTEGER DEFAULT 0,
+  completed_tasks INTEGER DEFAULT 0,
+  failed_tasks INTEGER DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  completed_at DATETIME,
+  FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_task_plans_thread ON task_plans(thread_id);
+CREATE INDEX IF NOT EXISTS idx_task_plans_status ON task_plans(status);
+CREATE INDEX IF NOT EXISTS idx_task_plans_user ON task_plans(user_id);
 
 -- Data API configurations
 CREATE TABLE IF NOT EXISTS data_api_configs (

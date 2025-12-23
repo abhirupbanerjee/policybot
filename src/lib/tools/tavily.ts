@@ -212,10 +212,10 @@ const webSearchConfigSchema = {
     maxResults: {
       type: 'number',
       title: 'Max Results',
-      description: 'Maximum results per query (1-10)',
+      description: 'Maximum results per query (1-20)',
       minimum: 1,
-      maximum: 10,
-      default: 5,
+      maximum: 20,
+      default: 10,
     },
     includeDomains: {
       type: 'array',
@@ -238,6 +238,13 @@ const webSearchConfigSchema = {
       minimum: 60,
       maximum: 2592000,
       default: 3600,
+    },
+    includeAnswer: {
+      type: 'string',
+      title: 'Include AI Answer',
+      description: 'Include AI-generated summary: none (disabled), basic (quick), or advanced (comprehensive)',
+      enum: ['none', 'basic', 'advanced'],
+      default: 'basic',
     },
   },
   required: ['defaultTopic', 'defaultSearchDepth', 'maxResults', 'cacheTTLSeconds'],
@@ -262,8 +269,16 @@ function validateWebSearchConfig(config: Record<string, unknown>): ValidationRes
   // Validate maxResults
   if (config.maxResults !== undefined) {
     const maxResults = config.maxResults as number;
-    if (typeof maxResults !== 'number' || maxResults < 1 || maxResults > 10) {
-      errors.push('maxResults must be a number between 1 and 10');
+    if (typeof maxResults !== 'number' || maxResults < 1 || maxResults > 20) {
+      errors.push('maxResults must be a number between 1 and 20');
+    }
+  }
+
+  // Validate includeAnswer
+  if (config.includeAnswer !== undefined) {
+    const validValues = ['none', 'basic', 'advanced'];
+    if (!validValues.includes(config.includeAnswer as string)) {
+      errors.push('includeAnswer must be one of: none, basic, advanced');
     }
   }
 
@@ -310,8 +325,17 @@ export const tavilyWebSearch: ToolDefinition = {
           },
           max_results: {
             type: 'number',
-            description: 'Number of results to return (1-10, default: 5)',
-            default: 5,
+            description: 'Number of results (1-20). Use higher values for comprehensive research, lower for quick facts. Defaults to admin setting if not specified.',
+          },
+          search_depth: {
+            type: 'string',
+            enum: ['basic', 'advanced'],
+            description: 'Search depth: "basic" for quick searches (3-5 results), "advanced" for thorough research (10+ results). Defaults to admin setting.',
+          },
+          include_answer: {
+            type: 'string',
+            enum: ['none', 'basic', 'advanced'],
+            description: 'Include AI-generated answer: "none" = disabled, "basic" = quick summary, "advanced" = comprehensive analysis. Defaults to admin setting.',
           },
         },
         required: ['query'],
@@ -324,16 +348,22 @@ export const tavilyWebSearch: ToolDefinition = {
   defaultConfig: {
     apiKey: '',
     defaultTopic: 'general',
-    defaultSearchDepth: 'basic',
-    maxResults: 5,
+    defaultSearchDepth: 'advanced',
+    maxResults: 10,
     includeDomains: [],
     excludeDomains: [],
     cacheTTLSeconds: 3600,
+    includeAnswer: 'basic',  // 'false' | 'basic' | 'advanced'
   },
 
   configSchema: webSearchConfigSchema,
 
-  execute: async (args: { query: string; max_results?: number }) => {
+  execute: async (args: {
+    query: string;
+    max_results?: number;
+    search_depth?: 'basic' | 'advanced';
+    include_answer?: 'none' | 'basic' | 'advanced';
+  }) => {
     // Get config from unified tool_configs table (with fallback to settings table)
     const { enabled, config: settings } = getWebSearchConfig();
 
@@ -357,8 +387,25 @@ export const tavilyWebSearch: ToolDefinition = {
       });
     }
 
-    // Check Redis cache first
-    const cacheKey = hashQuery(args.query);
+    // Resolve parameters: LLM override > admin default
+    const maxResults = Math.min(
+      args.max_results ?? settings.maxResults ?? 10,
+      20  // Hard cap
+    );
+    const searchDepth = args.search_depth ?? settings.defaultSearchDepth ?? 'basic';
+
+    // Handle include_answer: 'none' maps to false for API, 'basic'/'advanced' pass through
+    let includeAnswer: false | 'basic' | 'advanced' = false;
+    if (args.include_answer !== undefined) {
+      // LLM sends 'none' string, convert to boolean false for Tavily API
+      includeAnswer = args.include_answer === 'none' ? false : args.include_answer;
+    } else if (settings.includeAnswer !== undefined) {
+      // Settings uses 'none' | 'basic' | 'advanced', convert 'none' to false for API
+      includeAnswer = settings.includeAnswer === 'none' ? false : (settings.includeAnswer as 'basic' | 'advanced');
+    }
+
+    // Check Redis cache first (include params in cache key for varied searches)
+    const cacheKey = hashQuery(`${args.query}:${maxResults}:${searchDepth}:${includeAnswer}`);
     const cached = await getCachedQuery(`tavily:${cacheKey}`);
 
     if (cached) {
@@ -367,7 +414,7 @@ export const tavilyWebSearch: ToolDefinition = {
     }
 
     // Cache miss - call Tavily API
-    console.log('Web search cache miss - calling Tavily:', args.query);
+    console.log('Web search cache miss - calling Tavily:', args.query, { maxResults, searchDepth, includeAnswer });
 
     try {
       const response = await fetch('https://api.tavily.com/search', {
@@ -376,10 +423,10 @@ export const tavilyWebSearch: ToolDefinition = {
         body: JSON.stringify({
           api_key: apiKey,
           query: args.query,
-          max_results: Math.min(args.max_results || settings.maxResults, 10),
-          search_depth: settings.defaultSearchDepth,
+          max_results: maxResults,
+          search_depth: searchDepth,
           topic: settings.defaultTopic,
-          include_answer: false,
+          include_answer: includeAnswer,
           include_raw_content: false,
           include_domains: settings.includeDomains.length > 0
             ? settings.includeDomains

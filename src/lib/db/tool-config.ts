@@ -307,11 +307,12 @@ export const TOOL_DEFAULTS: Record<string, { enabled: boolean; config: Record<st
     config: {
       apiKey: '',
       defaultTopic: 'general',
-      defaultSearchDepth: 'basic',
-      maxResults: 5,
+      defaultSearchDepth: 'advanced',
+      maxResults: 10,
       includeDomains: [],
       excludeDomains: [],
       cacheTTLSeconds: 3600,
+      includeAnswer: 'basic',  // 'false' | 'basic' | 'advanced'
     },
   },
   data_viz: {
@@ -375,6 +376,10 @@ export const TOOL_DEFAULTS: Record<string, { enabled: boolean; config: Record<st
       defaultChartType: 'bar',
       enabledChartTypes: ['bar', 'line', 'pie', 'area', 'scatter', 'radar', 'table'],
     },
+  },
+  task_planner: {
+    enabled: true,
+    config: {},
   },
 };
 

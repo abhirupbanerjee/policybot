@@ -39,10 +39,11 @@ export interface TavilySettings {
   enabled: boolean;
   defaultTopic: 'general' | 'news' | 'finance';
   defaultSearchDepth: 'basic' | 'advanced';
-  maxResults: number;
+  maxResults: number;  // Admin default (1-20)
   includeDomains: string[];
   excludeDomains: string[];
   cacheTTLSeconds: number;
+  includeAnswer?: 'none' | 'basic' | 'advanced';  // 'none' = disabled, 'basic' = quick answer, 'advanced' = comprehensive
 }
 
 export interface UploadLimits {
