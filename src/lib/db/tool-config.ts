@@ -368,6 +368,14 @@ export const TOOL_DEFAULTS: Record<string, { enabled: boolean; config: Record<st
       fallbackEnabled: true,  // Allow youtube-transcript npm fallback
     },
   },
+  chart_gen: {
+    enabled: true,
+    config: {
+      maxDataRows: 500,
+      defaultChartType: 'bar',
+      enabledChartTypes: ['bar', 'line', 'pie', 'area', 'scatter', 'radar', 'table'],
+    },
+  },
 };
 
 /**

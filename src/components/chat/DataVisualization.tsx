@@ -83,6 +83,10 @@ interface DataVisualizationProps {
   fields?: string[];
   /** Title for the chart */
   title?: string;
+  /** Notes about data sources/methodology (displayed in collapsible section) */
+  notes?: string;
+  /** Series display mode for multi-series charts */
+  seriesMode?: 'grouped' | 'stacked' | 'auto';
 }
 
 // ===== Constants =====
@@ -698,11 +702,14 @@ export default function DataVisualization({
   cached,
   fields,
   title,
+  notes,
+  // seriesMode is available in props but not yet implemented for stacking control
 }: DataVisualizationProps) {
   const [chartType, setChartType] = useState<ChartType>(initialChartType);
   const [showRawData, setShowRawData] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [showNotes, setShowNotes] = useState(false);
   const chartRef = useRef<HTMLDivElement>(null);
 
   // Delay chart rendering until after hydration to avoid SSR mismatch
@@ -969,6 +976,24 @@ export default function DataVisualization({
           {showRawData && (
             <div className="mt-2 bg-white rounded-lg p-3 max-h-64 overflow-auto">
               <DataTable data={data} maxRows={50} />
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Notes Section (collapsible accordion) */}
+      {notes && (
+        <div className="mt-3 border border-blue-200 rounded-lg overflow-hidden">
+          <button
+            onClick={() => setShowNotes(!showNotes)}
+            className="w-full flex items-center justify-between gap-2 px-3 py-2 bg-blue-50 hover:bg-blue-100 text-sm text-blue-700 transition-colors"
+          >
+            <span className="font-medium">Data Notes</span>
+            {showNotes ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+          </button>
+          {showNotes && (
+            <div className="px-3 py-2 bg-white text-sm text-gray-600">
+              {notes}
             </div>
           )}
         </div>

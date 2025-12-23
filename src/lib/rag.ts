@@ -448,7 +448,7 @@ function extractGeneratedDocumentsFromHistory(
 }
 
 /**
- * Extract visualizations from tool call history (data_source tool)
+ * Extract visualizations from tool call history (data_source or chart_gen tool)
  */
 function extractVisualizationsFromHistory(
   history: OpenAI.Chat.ChatCompletionMessageParam[]
@@ -461,7 +461,7 @@ function extractVisualizationsFromHistory(
         const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
         const toolResult = JSON.parse(content);
 
-        // Check if this is a successful data_source result with visualization hint
+        // Check if this is a successful data_source or chart_gen result with visualization hint
         if (toolResult.success && toolResult.data && toolResult.visualizationHint) {
           const hint = toolResult.visualizationHint;
           const metadata = toolResult.metadata;
@@ -475,10 +475,14 @@ function extractVisualizationsFromHistory(
             sourceName: metadata?.source,
             cached: metadata?.cached,
             fields: metadata?.fields,
+            // chart_gen specific fields
+            title: toolResult.chartTitle,
+            notes: toolResult.notes,
+            seriesMode: toolResult.seriesMode,
           });
         }
       } catch {
-        // Ignore JSON parse errors - not a data_source result
+        // Ignore JSON parse errors - not a data_source/chart_gen result
       }
     }
   }

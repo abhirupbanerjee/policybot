@@ -102,7 +102,7 @@ export interface GeneratedDocumentInfo {
   expiresAt: string | null;
 }
 
-// Visualization data extracted from data_source tool
+// Visualization data extracted from data_source or chart_gen tool
 export interface MessageVisualization {
   chartType: 'bar' | 'line' | 'pie' | 'area' | 'scatter' | 'radar' | 'table';
   data: Record<string, unknown>[];
@@ -113,6 +113,10 @@ export interface MessageVisualization {
   cached?: boolean;
   fields?: string[];
   title?: string;
+  /** Notes about data sources/methodology (from chart_gen) */
+  notes?: string;
+  /** Series display mode for multi-series charts (from chart_gen) */
+  seriesMode?: 'grouped' | 'stacked' | 'auto';
 }
 
 export interface Source {
