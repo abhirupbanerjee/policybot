@@ -14,6 +14,25 @@ const LEGACY_COLLECTION_NAME = process.env.CHROMA_COLLECTION_NAME || 'organizati
 // Global collection for documents that should be searchable from all categories
 const GLOBAL_COLLECTION_NAME = 'global_documents';
 
+// Category collection prefix
+const CATEGORY_PREFIX = 'category_';
+
+/**
+ * Collection name helpers to centralize naming conventions
+ */
+export const collectionNames = {
+  /** Get collection name for a category slug */
+  forCategory: (slug: string): string => `${CATEGORY_PREFIX}${slug}`,
+  /** Extract category slug from collection name */
+  toSlug: (collectionName: string): string => collectionName.replace(CATEGORY_PREFIX, ''),
+  /** Check if a collection name is a category collection */
+  isCategory: (name: string): boolean => name.startsWith(CATEGORY_PREFIX),
+  /** Global documents collection name */
+  global: GLOBAL_COLLECTION_NAME,
+  /** Legacy collection name */
+  legacy: LEGACY_COLLECTION_NAME,
+} as const;
+
 let client: ChromaClient | null = null;
 
 // Cache for collections
@@ -68,20 +87,19 @@ export async function getGlobalCollection(): Promise<Collection> {
  * Create a collection for a new category
  */
 export async function createCategoryCollection(categorySlug: string): Promise<Collection> {
-  const collectionName = `category_${categorySlug}`;
-  return getCollectionByName(collectionName);
+  return getCollectionByName(collectionNames.forCategory(categorySlug));
 }
 
 /**
  * Delete a category collection
  */
 export async function deleteCategoryCollection(categorySlug: string): Promise<void> {
-  const collectionName = `category_${categorySlug}`;
+  const name = collectionNames.forCategory(categorySlug);
   const chromaClient = await getChromaClient();
 
   try {
-    await chromaClient.deleteCollection({ name: collectionName });
-    collectionCache.delete(collectionName);
+    await chromaClient.deleteCollection({ name });
+    collectionCache.delete(name);
   } catch {
     // Collection may not exist, ignore error
   }
@@ -95,8 +113,8 @@ export async function listCategoryCollections(): Promise<string[]> {
   const collections = await chromaClient.listCollections();
   // ChromaDB returns array of collection names as strings
   return (collections as string[])
-    .filter(name => name.startsWith('category_'))
-    .map(name => name.replace('category_', ''));
+    .filter(collectionNames.isCategory)
+    .map(collectionNames.toSlug);
 }
 
 // ============ Document Operations ============
@@ -146,13 +164,12 @@ export async function addDocumentsToCategories(
 ): Promise<void> {
   // Add to each category collection
   for (const slug of categorySlugs) {
-    const collectionName = `category_${slug}`;
-    await addDocumentsToCollection(collectionName, ids, embeddings, documents, metadatas);
+    await addDocumentsToCollection(collectionNames.forCategory(slug), ids, embeddings, documents, metadatas);
   }
 
   // If global, also add to global collection
   if (isGlobal) {
-    await addDocumentsToCollection(GLOBAL_COLLECTION_NAME, ids, embeddings, documents, metadatas);
+    await addDocumentsToCollection(collectionNames.global, ids, embeddings, documents, metadatas);
   }
 }
 
@@ -166,13 +183,12 @@ export async function addGlobalDocuments(
   metadatas: ChunkMetadata[]
 ): Promise<void> {
   // Add to global collection
-  await addDocumentsToCollection(GLOBAL_COLLECTION_NAME, ids, embeddings, documents, metadatas);
+  await addDocumentsToCollection(collectionNames.global, ids, embeddings, documents, metadatas);
 
   // Also add to all existing category collections
   const categorySlugs = await listCategoryCollections();
   for (const slug of categorySlugs) {
-    const collectionName = `category_${slug}`;
-    await addDocumentsToCollection(collectionName, ids, embeddings, documents, metadatas);
+    await addDocumentsToCollection(collectionNames.forCategory(slug), ids, embeddings, documents, metadatas);
   }
 }
 
@@ -255,8 +271,8 @@ export async function queryCategories(
 }> {
   // Query all specified categories + global collection
   const collectionsToQuery = [
-    ...categorySlugs.map(slug => `category_${slug}`),
-    GLOBAL_COLLECTION_NAME,
+    ...categorySlugs.map(collectionNames.forCategory),
+    collectionNames.global,
   ];
 
   console.log('[ChromaDB] queryCategories called:', {
@@ -344,7 +360,7 @@ export async function deleteDocumentsFromAllCollections(ids: string[]): Promise<
 
   // Delete from global collection
   try {
-    await deleteDocumentsFromCollection(GLOBAL_COLLECTION_NAME, ids);
+    await deleteDocumentsFromCollection(collectionNames.global, ids);
   } catch {
     // May not exist
   }
@@ -353,7 +369,7 @@ export async function deleteDocumentsFromAllCollections(ids: string[]): Promise<
   const categorySlugs = await listCategoryCollections();
   for (const slug of categorySlugs) {
     try {
-      await deleteDocumentsFromCollection(`category_${slug}`, ids);
+      await deleteDocumentsFromCollection(collectionNames.forCategory(slug), ids);
     } catch {
       // May not exist in this collection
     }
@@ -361,7 +377,7 @@ export async function deleteDocumentsFromAllCollections(ids: string[]): Promise<
 
   // Also delete from legacy collection
   try {
-    await deleteDocumentsFromCollection(LEGACY_COLLECTION_NAME, ids);
+    await deleteDocumentsFromCollection(collectionNames.legacy, ids);
   } catch {
     // May not exist
   }
@@ -386,7 +402,7 @@ export async function deleteDocumentsByFilterFromCategories(
 ): Promise<void> {
   for (const slug of categorySlugs) {
     try {
-      const collection = await getCollectionByName(`category_${slug}`);
+      const collection = await getCollectionByName(collectionNames.forCategory(slug));
       await collection.delete({ where: whereFilter });
     } catch {
       // Collection may not exist
@@ -420,7 +436,7 @@ export async function getCollectionCount(collectionName: string): Promise<number
  * Get document count for a category
  */
 export async function getCategoryDocumentCount(categorySlug: string): Promise<number> {
-  return getCollectionCount(`category_${categorySlug}`);
+  return getCollectionCount(collectionNames.forCategory(categorySlug));
 }
 
 /**

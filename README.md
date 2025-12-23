@@ -30,7 +30,7 @@ Policy Bot is an **enterprise AI assistant platform** designed for organizations
 │  │ • Finance       │  │ • Category-     │  │ • Data Sources  │                        │
 │  │ • Procurement   │  │   triggered     │  │ • Function APIs │                        │
 │  │ • Operations    │  │ • Keyword-      │  │ • Document RAG  │                        │
-│  │ • IT            │  │   triggered     │  │ • Visualizations│                        │
+│  │ • IT            │  │   triggered     │  │ • Chart Gen     │                        │
 │  └────────┬────────┘  └────────┬────────┘  └────────┬────────┘                        │
 │           └────────────────────┼────────────────────┘                                 │
 │                                ▼                                                      │
@@ -68,7 +68,7 @@ Policy Bot is an **enterprise AI assistant platform** designed for organizations
 | **Category-Based Organization** | Organize documents and users by department (HR, Finance, IT, etc.) |
 | **Three-Tier Access Control** | Admin → SuperUser → User hierarchy with category-based permissions |
 | **Skills System** | Inject custom behaviors based on category context or keyword triggers |
-| **Tool Integrations** | Web search, external API queries, CSV data lookups, OpenAI-style function calling |
+| **Tool Integrations** | Web search, external API queries, CSV data lookups, chart generation, OpenAI-style function calling |
 | **User Memory** | Extract and recall user-specific facts across conversations |
 | **Thread Summarization** | Automatically summarize long conversations to maintain context |
 | **Local Data Sovereignty** | All data stored locally—SQLite, ChromaDB, filesystem—with full backup control |
@@ -417,7 +417,9 @@ policy-bot/
 │   │   ├── rag.ts              # RAG pipeline with web search
 │   │   ├── tools.ts            # Generic tool framework
 │   │   ├── tools/
-│   │   │   └── tavily.ts       # Tavily web search tool
+│   │   │   ├── tavily.ts       # Tavily web search tool
+│   │   │   ├── chart-gen.ts    # Chart generator tool
+│   │   │   └── data-source.ts  # Data source query tool
 │   │   ├── chroma.ts           # ChromaDB client (category collections)
 │   │   ├── redis.ts            # Redis client (RAG + Tavily cache)
 │   │   ├── openai.ts           # OpenAI integration

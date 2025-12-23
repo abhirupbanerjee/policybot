@@ -10,10 +10,12 @@ This document describes the AI tools system that extends the bot's capabilities 
 2. [Tool Categories](#tool-categories)
 3. [Web Search Tool](#web-search-tool)
 4. [Document Generator Tool](#document-generator-tool)
-5. [Data Visualization Tool](#data-visualization-tool)
-6. [Tool Configuration](#tool-configuration)
-7. [Category-Level Overrides](#category-level-overrides)
-8. [API Reference](#api-reference)
+5. [Data Source Tool](#data-source-tool)
+6. [Chart Generator Tool](#chart-generator-tool)
+7. [Function API Tool](#function-api-tool)
+8. [Tool Configuration](#tool-configuration)
+9. [Category-Level Overrides](#category-level-overrides)
+10. [API Reference](#api-reference)
 
 ---
 
@@ -54,6 +56,7 @@ Autonomous tools are sent to OpenAI as function definitions. The LLM decides whe
 - `web_search` - Search the web for current information
 - `doc_gen` - Generate formatted documents (PDF, DOCX, Markdown)
 - `data_source` - Query external APIs and CSV data with visualization
+- `chart_gen` - Generate charts from LLM-constructed data
 - `function_api` - Dynamic function calling with OpenAI-format schemas
 
 ### Processor Tools
@@ -530,6 +533,164 @@ interface DataQueryResponse {
 
 ---
 
+## Chart Generator Tool
+
+### Purpose
+
+Enables the AI to generate interactive charts from data it constructs itself (from knowledge base, web search results, or reasoning/analysis). Unlike the Data Source tool which queries pre-configured data sources, Chart Generator allows the LLM to build and visualize ad-hoc datasets.
+
+### When to Use
+
+| Use Case | Example |
+|----------|---------|
+| **Synthesized data** | "Chart the top SOEs in Trinidad by fiscal risk" |
+| **Comparative analysis** | "Show a bar chart comparing GDP growth across Caribbean nations" |
+| **Aggregated research** | "Visualize the distribution of policy violations by department" |
+
+### When NOT to Use
+
+- When a configured `data_source` can provide the data (use that instead)
+- For simple lists or tables (use markdown formatting)
+- When data exceeds 500 rows
+
+### Configuration
+
+```typescript
+interface ChartGenConfig {
+  maxDataRows: number;           // 10-1000, default: 500
+  defaultChartType: ChartType;   // Fallback when auto-detection is unclear
+  enabledChartTypes: ChartType[]; // Available chart types
+}
+```
+
+### Default Configuration
+
+```json
+{
+  "enabled": true,
+  "config": {
+    "maxDataRows": 500,
+    "defaultChartType": "bar",
+    "enabledChartTypes": ["bar", "line", "pie", "area", "scatter", "radar", "table"]
+  }
+}
+```
+
+### OpenAI Function Schema
+
+```json
+{
+  "name": "chart_gen",
+  "description": "Generate an interactive chart from structured data you have constructed.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "title": {
+        "type": "string",
+        "description": "Descriptive chart title (e.g., 'Trinidad & Tobago SOEs - Fiscal Risk Assessment 2024')"
+      },
+      "data": {
+        "type": "array",
+        "items": { "type": "object" },
+        "description": "Array of data objects with consistent keys. Maximum 500 rows."
+      },
+      "x_field": {
+        "type": "string",
+        "description": "Field name for X-axis (categories/labels). Must exist in data objects."
+      },
+      "y_fields": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Field name(s) for Y-axis values. Multiple fields create grouped/stacked charts."
+      },
+      "recommended_chart": {
+        "type": "string",
+        "enum": ["bar", "line", "pie", "area", "scatter", "radar", "table", "auto"],
+        "description": "Recommended chart type. Use 'auto' to let system decide."
+      },
+      "series_mode": {
+        "type": "string",
+        "enum": ["grouped", "stacked", "auto"],
+        "description": "How to display multiple y_fields: grouped (side-by-side) or stacked."
+      },
+      "notes": {
+        "type": "string",
+        "description": "Optional notes about data sources, methodology, or caveats."
+      }
+    },
+    "required": ["title", "data", "x_field", "y_fields"]
+  }
+}
+```
+
+### Chart Type Auto-Selection
+
+When `recommended_chart` is set to `auto`, the system selects based on data characteristics:
+
+| Criteria | Selected Chart |
+|----------|----------------|
+| Multiple y_fields | Bar (grouped/stacked) |
+| Date/time x_field | Line |
+| 2-8 categories, ≤20 rows | Pie |
+| 3+ metrics, ≤10 rows | Radar |
+| Categorical x_field | Bar |
+| Fallback | Default from config |
+
+### Response Format
+
+```typescript
+interface ChartGenResponse {
+  success: boolean;
+  data: Record<string, unknown>[];
+  metadata: {
+    source: "LLM Generated";
+    sourceType: "chart_gen";
+    recordCount: number;
+    fields: string[];
+    executionTimeMs: number;
+    cached: false;
+  };
+  visualizationHint: {
+    chartType: ChartType;
+    xField: string;
+    yField: string;
+  };
+  chartTitle: string;
+  notes?: string;
+  seriesMode?: "grouped" | "stacked" | "auto";
+}
+```
+
+### Notes Display
+
+Notes are displayed in a collapsible accordion below the chart, allowing users to see data provenance, methodology, or caveats without cluttering the visualization.
+
+### Example Usage
+
+**User:** "Create a chart showing the top 5 Caribbean countries by GDP"
+
+**AI calls chart_gen tool:**
+```json
+{
+  "title": "Top 5 Caribbean Countries by GDP (2024)",
+  "data": [
+    {"country": "Trinidad & Tobago", "gdp_billions": 28.1},
+    {"country": "Jamaica", "gdp_billions": 17.1},
+    {"country": "Bahamas", "gdp_billions": 14.3},
+    {"country": "Barbados", "gdp_billions": 5.6},
+    {"country": "Suriname", "gdp_billions": 3.8}
+  ],
+  "x_field": "country",
+  "y_fields": ["gdp_billions"],
+  "recommended_chart": "bar",
+  "notes": "Data sourced from IMF World Economic Outlook, October 2024. GDP in current USD billions."
+}
+```
+
+**Result:** Interactive bar chart with country names on X-axis, GDP values on Y-axis, and collapsible notes section showing data source attribution.
+
+---
+
 ## Function API Tool
 
 ### Purpose
@@ -857,6 +1018,7 @@ Response:
 | `src/lib/tools/tavily.ts` | Web search implementation |
 | `src/lib/tools/docgen.ts` | Document generator implementation |
 | `src/lib/tools/data-source.ts` | Data source tool implementation |
+| `src/lib/tools/chart-gen.ts` | Chart generator tool implementation |
 | `src/lib/tools/function-api.ts` | Function API tool implementation |
 | `src/lib/docgen/pdf-builder.ts` | PDF generation |
 | `src/lib/docgen/docx-builder.ts` | DOCX generation |
@@ -870,4 +1032,5 @@ Response:
 | `src/lib/db/function-api-config.ts` | Function API CRUD operations |
 | `src/lib/db/category-tool-config.ts` | Category overrides |
 | `src/types/data-sources.ts` | Data source type definitions |
+| `src/types/chart-gen.ts` | Chart generator type definitions |
 | `src/types/function-api.ts` | Function API type definitions |

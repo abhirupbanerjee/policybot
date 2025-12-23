@@ -69,11 +69,11 @@ export interface ThreadWithMessages extends Thread {
 
 // Tool call types for OpenAI function calling
 export interface ToolCall {
-  id: string;
-  type: 'function';
-  function: {
-    name: string;
-    arguments: string; // JSON string
+  readonly id: string;
+  readonly type: 'function';
+  readonly function: {
+    readonly name: string;
+    readonly arguments: string; // JSON string
   };
 }
 
@@ -120,10 +120,10 @@ export interface MessageVisualization {
 }
 
 export interface Source {
-  documentName: string;
-  pageNumber: number;
-  chunkText: string;
-  score: number;
+  readonly documentName: string;
+  readonly pageNumber: number;
+  readonly chunkText: string;
+  readonly score: number;
 }
 
 // ============ Document Types ============
@@ -156,13 +156,13 @@ export interface DocumentChunk {
 }
 
 export interface ChunkMetadata {
-  documentId: string;
-  documentName: string;
-  pageNumber: number;
-  chunkIndex: number;
-  source: 'global' | 'user';
-  threadId?: string;
-  userId?: string;
+  readonly documentId: string;
+  readonly documentName: string;
+  readonly pageNumber: number;
+  readonly chunkIndex: number;
+  readonly source: 'global' | 'user';
+  readonly threadId?: string;
+  readonly userId?: string;
 }
 
 // ============ API Request Types ============
@@ -300,12 +300,12 @@ export interface RAGContext {
 }
 
 export interface RetrievedChunk {
-  id: string;
-  text: string;
-  documentName: string;
-  pageNumber: number;
-  score: number;
-  source: 'global' | 'user';
+  readonly id: string;
+  readonly text: string;
+  readonly documentName: string;
+  readonly pageNumber: number;
+  readonly score: number;
+  readonly source: 'global' | 'user';
 }
 
 export interface RAGResponse {
@@ -331,10 +331,10 @@ export interface Session {
 // ============ Web Search Types ============
 
 export interface WebSearchResult {
-  title: string;
-  url: string;
-  content: string;
-  score?: number;
+  readonly title: string;
+  readonly url: string;
+  readonly content: string;
+  readonly score?: number;
 }
 
 export interface TavilySearchResponse {

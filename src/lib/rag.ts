@@ -17,6 +17,13 @@ import { getCategoryIdsBySlugs } from './db/categories';
 import { resolveSkills } from './skills/resolver';
 import { rerankChunks } from './reranker';
 import { getAvailableDataSourcesDescription } from './tools/data-source';
+import { ragLogger as logger } from './logger';
+import {
+  MAX_QUERY_EXPANSIONS,
+  MAX_USER_DOC_CHUNKS,
+  MAX_USER_CHUNKS_RETURNED,
+  CHUNK_PREVIEW_LENGTH,
+} from './constants';
 import type { Message, Source, RetrievedChunk, RAGResponse, GeneratedDocumentInfo, MessageVisualization } from '@/types';
 
 /**
@@ -47,7 +54,7 @@ async function expandQueries(originalQuery: string, enabled: boolean): Promise<s
     }
   }
 
-  return queries.slice(0, 3); // Limit to 3 query variations
+  return queries.slice(0, MAX_QUERY_EXPANSIONS);
 }
 
 /**
@@ -72,11 +79,26 @@ function deduplicateChunks(chunks: RetrievedChunk[]): RetrievedChunk[] {
 /**
  * Build context from knowledge base documents
  *
- * @param queryEmbedding - Primary query embedding
- * @param userDocPaths - Paths to user-uploaded documents
- * @param additionalEmbeddings - Additional embeddings from query expansion
+ * Retrieves relevant document chunks from ChromaDB using vector similarity search.
+ * Supports multi-category search, query expansion, and user document processing.
+ *
+ * @param queryEmbedding - Primary query embedding vector (3072 dimensions for text-embedding-3-large)
+ * @param userDocPaths - Paths to user-uploaded documents for additional context (default: [])
+ * @param additionalEmbeddings - Additional embeddings from query expansion (default: [])
  * @param settings - RAG settings (optional, fetched from config if not provided)
- * @param categorySlugs - Category slugs to search (if empty, uses legacy collection)
+ * @param categorySlugs - Category slugs to search (if empty, uses global/legacy collection)
+ * @returns Object containing globalChunks from knowledge base and userChunks from uploads
+ *
+ * @example
+ * ```typescript
+ * const { globalChunks, userChunks } = await buildContext(
+ *   queryEmbedding,
+ *   ['/path/to/user/doc.pdf'],
+ *   additionalEmbeddings,
+ *   undefined,
+ *   ['hr', 'finance']
+ * );
+ * ```
  */
 export async function buildContext(
   queryEmbedding: number[],
@@ -89,7 +111,7 @@ export async function buildContext(
   const ragSettings = settings || getRagSettings();
   const { topKChunks, maxContextChunks, similarityThreshold } = ragSettings;
 
-  console.log('[RAG] buildContext called with:', {
+  logger.debug('buildContext called', {
     categorySlugs,
     topKChunks,
     maxContextChunks,
@@ -109,18 +131,18 @@ export async function buildContext(
     // Use category-based search if categories specified, otherwise query global + legacy
     if (categorySlugs && categorySlugs.length > 0) {
       // Query across all specified categories + global collection
-      console.log('[RAG] Querying categories:', categorySlugs);
+      logger.debug('Querying categories', { categorySlugs });
       results = await queryCategories(categorySlugs, embedding, topKChunks);
     } else {
       // No categories: query both global_documents and legacy collection
-      console.log('[RAG] No categories - querying global + legacy collections');
+      logger.debug('No categories - querying global + legacy collections');
       // queryCategories with empty array will query global_documents collection
       results = await queryCategories([], embedding, topKChunks);
     }
 
-    console.log('[RAG] Query returned:', {
+    logger.debug('Query returned', {
       documentCount: results.documents.length,
-      ids: results.ids.slice(0, 3),
+      sampleIds: results.ids.slice(0, 3),
     });
 
     const chunks: RetrievedChunk[] = results.documents.map((doc, i) => ({
@@ -141,7 +163,7 @@ export async function buildContext(
     .filter(chunk => chunk.score >= similarityThreshold)
     .slice(0, maxContextChunks);
 
-  console.log('[RAG] After filtering:', {
+  logger.debug('After filtering', {
     beforeDedup: allGlobalChunks.length,
     afterDedup: beforeFilter.length,
     afterThresholdFilter: globalChunks.length,
@@ -162,7 +184,7 @@ export async function buildContext(
       const chunks = await chunkText(text, 'user-temp', filename, 'user', undefined, undefined, pages);
 
       // Get embeddings for user document chunks
-      const chunkTexts = chunks.slice(0, 10).map(c => c.text); // Limit to first 10 chunks
+      const chunkTexts = chunks.slice(0, MAX_USER_DOC_CHUNKS).map(c => c.text);
       if (chunkTexts.length > 0) {
         const chunkEmbeddings = await createEmbeddings(chunkTexts);
 
@@ -182,14 +204,14 @@ export async function buildContext(
         }
       }
     } catch (error) {
-      console.error(`Failed to process user document: ${docPath}`, error);
+      logger.error(`Failed to process user document: ${docPath}`, error);
     }
   }
 
   // Sort user chunks by relevance
   userChunks.sort((a, b) => b.score - a.score);
 
-  return { globalChunks, userChunks: userChunks.slice(0, 5) };
+  return { globalChunks, userChunks: userChunks.slice(0, MAX_USER_CHUNKS_RETURNED) };
 }
 
 /**
@@ -243,7 +265,7 @@ function extractSources(globalChunks: RetrievedChunk[], userChunks: RetrievedChu
   return allChunks.map(chunk => ({
     documentName: chunk.documentName,
     pageNumber: chunk.pageNumber,
-    chunkText: chunk.text.substring(0, 200) + (chunk.text.length > 200 ? '...' : ''),
+    chunkText: chunk.text.substring(0, CHUNK_PREVIEW_LENGTH) + (chunk.text.length > CHUNK_PREVIEW_LENGTH ? '...' : ''),
     score: chunk.score,
   }));
 }
@@ -251,10 +273,28 @@ function extractSources(globalChunks: RetrievedChunk[], userChunks: RetrievedChu
 /**
  * Main RAG query function
  *
+ * Executes a complete RAG pipeline: query expansion, embedding, retrieval,
+ * reranking, and LLM response generation with tool support.
+ *
  * @param userMessage - The user's question
- * @param conversationHistory - Previous messages in the conversation
- * @param userDocPaths - Paths to user-uploaded documents
+ * @param conversationHistory - Previous messages in the conversation (default: [])
+ * @param userDocPaths - Paths to user-uploaded documents for context (default: [])
  * @param categorySlugs - Category slugs to search (if empty, uses legacy collection)
+ * @param memoryContext - Optional user memory context to inject into prompt
+ * @param summaryContext - Optional thread summary context for long conversations
+ * @returns Promise with answer, sources, generated documents, and visualizations
+ *
+ * @example
+ * ```typescript
+ * const response = await ragQuery(
+ *   "What is the leave policy?",
+ *   conversationHistory,
+ *   [],
+ *   ["hr", "policies"]
+ * );
+ * console.log(response.answer);
+ * console.log(response.sources);
+ * ```
  */
 export async function ragQuery(
   userMessage: string,
@@ -396,14 +436,14 @@ function extractWebSourcesFromHistory(
             webSources.push({
               documentName: `[WEB] ${result.title || result.url}`,
               pageNumber: 0, // N/A for web results
-              chunkText: result.content?.substring(0, 200) || '',
+              chunkText: result.content?.substring(0, CHUNK_PREVIEW_LENGTH) || '',
               score: result.score || 0,
             });
           }
         }
       } catch (error) {
         // Ignore JSON parse errors
-        console.warn('Failed to parse tool result as web search:', error);
+        logger.warn('Failed to parse tool result as web search', { error });
       }
     }
   }

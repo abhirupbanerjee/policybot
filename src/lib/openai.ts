@@ -2,18 +2,14 @@ import OpenAI from 'openai';
 import type { Message, ToolCall } from '@/types';
 import { getLlmSettings, getEmbeddingSettings, getLimitsSettings } from './db/config';
 import { getToolDefinitions, executeTool } from './tools';
+import { toolsLogger as logger } from './logger';
+import {
+  TOOL_CAPABLE_MODELS,
+  MAX_TOOL_CALL_ITERATIONS,
+  DEFAULT_CONVERSATION_HISTORY_LIMIT,
+} from './constants';
 
 let openaiClient: OpenAI | null = null;
-
-// Models with reliable function/tool calling support
-const TOOL_CAPABLE_MODELS = new Set([
-  // OpenAI - GPT-4.1 Family
-  'gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano', 'gpt-3.5-turbo',
-  // Mistral - Mistral 3 Family
-  'mistral-large-3', 'mistral-medium-3.1', 'mistral-small-3.2', 'ministral-8b', 'ministral-3b',
-  // Ollama (with native tool support)
-  'ollama-llama3.2', 'ollama-llama3.1', 'ollama-mistral', 'ollama-qwen2.5',
-]);
 
 function getOpenAI(): OpenAI {
   if (!openaiClient) {
@@ -72,8 +68,8 @@ export async function generateResponse(
     { role: 'system', content: systemPrompt },
   ];
 
-  // Add conversation history (last 5 messages)
-  const recentHistory = conversationHistory.slice(-5);
+  // Add conversation history (last N messages)
+  const recentHistory = conversationHistory.slice(-DEFAULT_CONVERSATION_HISTORY_LIMIT);
   for (const msg of recentHistory) {
     // Skip tool messages in non-tool-calling flow
     if (msg.role === 'tool') continue;
@@ -122,7 +118,7 @@ export async function generateResponseWithTools(
   const effectiveEnableTools = enableTools && modelSupportsTools;
 
   if (enableTools && !modelSupportsTools) {
-    console.warn(`Model ${llmSettings.model} does not support tools, disabling`);
+    logger.warn(`Model ${llmSettings.model} does not support tools, disabling`);
   }
 
   // Build messages array
@@ -174,13 +170,12 @@ export async function generateResponseWithTools(
   let response = await openai.chat.completions.create(completionParams);
   let responseMessage = response.choices[0].message;
 
-  // Tool call loop (max 3 iterations to prevent runaway)
+  // Tool call loop (max iterations to prevent runaway)
   let iterations = 0;
-  const MAX_ITERATIONS = 3;
 
-  while (responseMessage.tool_calls && iterations < MAX_ITERATIONS) {
+  while (responseMessage.tool_calls && iterations < MAX_TOOL_CALL_ITERATIONS) {
     iterations++;
-    console.log(`Tool call iteration ${iterations}/${MAX_ITERATIONS}`);
+    logger.debug(`Tool call iteration ${iterations}/${MAX_TOOL_CALL_ITERATIONS}`);
 
     // Add assistant's tool call message
     messages.push({
@@ -191,7 +186,7 @@ export async function generateResponseWithTools(
 
     // Execute each tool call
     for (const toolCall of responseMessage.tool_calls) {
-      console.log(`Executing tool: ${toolCall.function.name}`);
+      logger.debug(`Executing tool: ${toolCall.function.name}`);
 
       const result = await executeTool(
         toolCall.function.name,
@@ -213,8 +208,8 @@ export async function generateResponseWithTools(
     responseMessage = response.choices[0].message;
   }
 
-  if (iterations >= MAX_ITERATIONS && responseMessage.tool_calls) {
-    console.warn('Max tool call iterations reached');
+  if (iterations >= MAX_TOOL_CALL_ITERATIONS && responseMessage.tool_calls) {
+    logger.warn('Max tool call iterations reached');
   }
 
   return {

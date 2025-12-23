@@ -6,6 +6,7 @@ import { functionApiTool, getDynamicFunctionDefinitions, isFunctionAPIFunction }
 import { youtubeToolDefinition } from './tools/youtube';
 import { chartGenTool } from './tools/chart-gen';
 import { isToolEnabled as isToolEnabledDb, migrateTavilySettingsIfNeeded, ensureToolConfigsExist } from './db/tool-config';
+import { toolsLogger as logger } from './logger';
 
 // ============ Types ============
 
@@ -95,9 +96,9 @@ export function initializeTools(): void {
     ensureToolConfigsExist();
 
     toolsInitialized = true;
-    console.log('[Tools] Tools system initialized');
+    logger.info('Tools system initialized');
   } catch (error) {
-    console.error('[Tools] Failed to initialize tools system:', error);
+    logger.error('Failed to initialize tools system', error);
   }
 }
 
@@ -178,9 +179,30 @@ export function getAllTools(): ToolDefinition[] {
 
 /**
  * Execute a tool by name with arguments
- * @param name - Tool name (e.g., 'web_search') or dynamic function name
- * @param args - JSON string of tool arguments
- * @returns JSON string result
+ *
+ * Handles both standard registered tools and dynamic function API tools.
+ * Returns JSON-formatted results or error objects. Never throws exceptions.
+ *
+ * @param name - Tool name (e.g., 'web_search') or dynamic function name from function_api
+ * @param args - JSON string of tool arguments matching the tool's parameter schema
+ * @returns JSON string result - either success data or error object with errorCode
+ *
+ * @example
+ * ```typescript
+ * // Execute web search
+ * const result = await executeTool('web_search', JSON.stringify({
+ *   query: 'latest news',
+ *   max_results: 5
+ * }));
+ *
+ * // Parse result
+ * const data = JSON.parse(result);
+ * if (data.error) {
+ *   console.error(data.errorCode, data.error);
+ * } else {
+ *   console.log(data.results);
+ * }
+ * ```
  */
 export async function executeTool(name: string, args: string): Promise<string> {
   initializeTools();
@@ -205,7 +227,7 @@ export async function executeTool(name: string, args: string): Promise<string> {
       // Pass the function name to the function_api tool
       return await tool.execute(parsedArgs, name);
     } catch (error) {
-      console.error(`Function API execution error [${name}]:`, error);
+      logger.error(`Function API execution error [${name}]`, error);
       return JSON.stringify({
         error: error instanceof Error ? error.message : 'Unknown error',
         errorCode: 'EXECUTION_ERROR',
@@ -232,7 +254,7 @@ export async function executeTool(name: string, args: string): Promise<string> {
     const parsedArgs = JSON.parse(args);
     return await tool.execute(parsedArgs);
   } catch (error) {
-    console.error(`Tool execution error [${name}]:`, error);
+    logger.error(`Tool execution error [${name}]`, error);
     return JSON.stringify({
       error: error instanceof Error ? error.message : 'Unknown error',
       errorCode: 'EXECUTION_ERROR',
