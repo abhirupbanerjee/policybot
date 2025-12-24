@@ -6,7 +6,7 @@
  */
 
 import { execute, queryOne, queryAll } from './index';
-import { getSystemPrompt } from './config';
+import { getSystemPrompt, getTokenLimitsSettings } from './config';
 import { getCategoryById } from './categories';
 
 // ============ Types ============
@@ -32,12 +32,51 @@ export interface CategoryPromptRow {
   updated_by: string;
 }
 
-// Maximum combined prompt length (global + category)
+// ============ Dynamic Limit Getters ============
+
+/**
+ * Get the maximum combined prompt length (global + category) in characters
+ * Dynamically calculated from token limits (~4 chars per token)
+ */
+export function getMaxCombinedPromptLength(): number {
+  const settings = getTokenLimitsSettings();
+  return (settings.systemPromptMaxTokens + settings.categoryPromptMaxTokens) * 4;
+}
+
+/**
+ * Get maximum number of starter prompts per category
+ */
+export function getMaxStarterPrompts(): number {
+  return getTokenLimitsSettings().maxStartersPerCategory;
+}
+
+/**
+ * Get maximum starter label length in characters
+ */
+export function getMaxStarterLabelLength(): number {
+  return getTokenLimitsSettings().starterLabelMaxChars;
+}
+
+/**
+ * Get maximum starter prompt length in characters
+ */
+export function getMaxStarterPromptLength(): number {
+  return getTokenLimitsSettings().starterPromptMaxChars;
+}
+
+// ============ Legacy Constants (Deprecated) ============
+// Kept for backward compatibility - use dynamic getters instead
+
+/** @deprecated Use getMaxCombinedPromptLength() instead */
 export const MAX_COMBINED_PROMPT_LENGTH = 8000;
 
-// Starter prompts validation constants
+/** @deprecated Use getMaxStarterPrompts() instead */
 export const MAX_STARTER_PROMPTS = 6;
+
+/** @deprecated Use getMaxStarterLabelLength() instead */
 export const MAX_STARTER_LABEL_LENGTH = 30;
+
+/** @deprecated Use getMaxStarterPromptLength() instead */
 export const MAX_STARTER_PROMPT_LENGTH = 500;
 
 // ============ Read Operations ============
@@ -119,11 +158,12 @@ export function getResolvedSystemPrompt(categoryId?: number): string {
 
 /**
  * Get available character limit for category addendum
- * Calculated as: MAX_COMBINED_PROMPT_LENGTH - global prompt length
+ * Calculated as: max combined prompt length - global prompt length
  */
 export function getAvailableCharLimit(): number {
   const globalPrompt = getSystemPrompt();
-  const available = MAX_COMBINED_PROMPT_LENGTH - globalPrompt.length;
+  const maxCombined = getMaxCombinedPromptLength();
+  const available = maxCombined - globalPrompt.length;
   return Math.max(0, available);
 }
 
@@ -139,6 +179,7 @@ export function getPromptCharacterInfo(categoryId?: number): {
 } {
   const globalPrompt = getSystemPrompt();
   const globalLength = globalPrompt.length;
+  const maxCombined = getMaxCombinedPromptLength();
 
   let categoryLength = 0;
   if (categoryId) {
@@ -149,14 +190,14 @@ export function getPromptCharacterInfo(categoryId?: number): {
   // Account for separator text length
   const separatorLength = categoryLength > 0 ? '\n\n--- Category-Specific Guidelines ---\n\n'.length : 0;
   const combinedLength = globalLength + separatorLength + categoryLength;
-  const availableForCategory = MAX_COMBINED_PROMPT_LENGTH - globalLength - separatorLength;
+  const availableForCategory = maxCombined - globalLength - separatorLength;
 
   return {
     globalLength,
     categoryLength,
     combinedLength,
     availableForCategory: Math.max(0, availableForCategory),
-    maxCombined: MAX_COMBINED_PROMPT_LENGTH,
+    maxCombined,
   };
 }
 
@@ -266,22 +307,25 @@ export function validatePromptAddendum(content: string): string[] {
  */
 export function validateStarterPrompts(starters: StarterPrompt[]): string[] {
   const errors: string[] = [];
+  const maxStarters = getMaxStarterPrompts();
+  const maxLabelLength = getMaxStarterLabelLength();
+  const maxPromptLength = getMaxStarterPromptLength();
 
-  if (starters.length > MAX_STARTER_PROMPTS) {
-    errors.push(`Maximum ${MAX_STARTER_PROMPTS} starter prompts allowed`);
+  if (starters.length > maxStarters) {
+    errors.push(`Maximum ${maxStarters} starter prompts allowed`);
   }
 
   starters.forEach((starter, index) => {
     if (!starter.label || starter.label.trim().length === 0) {
       errors.push(`Starter ${index + 1}: Label is required`);
-    } else if (starter.label.length > MAX_STARTER_LABEL_LENGTH) {
-      errors.push(`Starter ${index + 1}: Label exceeds ${MAX_STARTER_LABEL_LENGTH} characters`);
+    } else if (starter.label.length > maxLabelLength) {
+      errors.push(`Starter ${index + 1}: Label exceeds ${maxLabelLength} characters`);
     }
 
     if (!starter.prompt || starter.prompt.trim().length === 0) {
       errors.push(`Starter ${index + 1}: Prompt is required`);
-    } else if (starter.prompt.length > MAX_STARTER_PROMPT_LENGTH) {
-      errors.push(`Starter ${index + 1}: Prompt exceeds ${MAX_STARTER_PROMPT_LENGTH} characters`);
+    } else if (starter.prompt.length > maxPromptLength) {
+      errors.push(`Starter ${index + 1}: Prompt exceeds ${maxPromptLength} characters`);
     }
   });
 

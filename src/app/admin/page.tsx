@@ -172,6 +172,20 @@ interface LimitsSettings {
   updatedBy?: string;
 }
 
+interface TokenLimitsSettings {
+  promptOptimizationMaxTokens: number;
+  skillsMaxTotalTokens: number;
+  memoryExtractionMaxTokens: number;
+  summaryMaxTokens: number;
+  systemPromptMaxTokens: number;
+  categoryPromptMaxTokens: number;
+  starterLabelMaxChars: number;
+  starterPromptMaxChars: number;
+  maxStartersPerCategory: number;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
 interface ModelTokenLimitsState {
   limits: Record<string, number | 'default'>;
   updatedAt?: string;
@@ -403,6 +417,9 @@ export default function AdminPage() {
   const [memoryModified, setMemoryModified] = useState(false);
   const [summarizationModified, setSummarizationModified] = useState(false);
   const [limitsModified, setLimitsModified] = useState(false);
+  const [tokenLimitsSettings, setTokenLimitsSettingsState] = useState<TokenLimitsSettings | null>(null);
+  const [editedTokenLimits, setEditedTokenLimits] = useState<Omit<TokenLimitsSettings, 'updatedAt' | 'updatedBy'> | null>(null);
+  const [tokenLimitsModified, setTokenLimitsModified] = useState(false);
   const [rerankerStatus, setRerankerStatus] = useState<RerankerProviderStatus[]>([]);
   const [rerankerStatusLoading, setRerankerStatusLoading] = useState(true);
 
@@ -603,6 +620,20 @@ export default function AdminPage() {
         setModelTokenLimits(data.modelTokenLimits);
         setEditedModelTokens(data.modelTokenLimits.limits || {});
       }
+      if (data.tokenLimits) {
+        setTokenLimitsSettingsState(data.tokenLimits);
+        setEditedTokenLimits({
+          promptOptimizationMaxTokens: data.tokenLimits.promptOptimizationMaxTokens,
+          skillsMaxTotalTokens: data.tokenLimits.skillsMaxTotalTokens,
+          memoryExtractionMaxTokens: data.tokenLimits.memoryExtractionMaxTokens,
+          summaryMaxTokens: data.tokenLimits.summaryMaxTokens,
+          systemPromptMaxTokens: data.tokenLimits.systemPromptMaxTokens,
+          categoryPromptMaxTokens: data.tokenLimits.categoryPromptMaxTokens,
+          starterLabelMaxChars: data.tokenLimits.starterLabelMaxChars,
+          starterPromptMaxChars: data.tokenLimits.starterPromptMaxChars,
+          maxStartersPerCategory: data.tokenLimits.maxStartersPerCategory,
+        });
+      }
       if (data.embedding) {
         setEmbeddingSettings(data.embedding);
       }
@@ -619,6 +650,7 @@ export default function AdminPage() {
       setMemoryModified(false);
       setSummarizationModified(false);
       setLimitsModified(false);
+      setTokenLimitsModified(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load settings');
     } finally {
@@ -1946,6 +1978,49 @@ export default function AdminPage() {
         conversationHistoryMessages: limitsSettings.conversationHistoryMessages,
       });
       setLimitsModified(false);
+    }
+  };
+
+  const handleSaveTokenLimits = async () => {
+    if (!editedTokenLimits || !tokenLimitsModified) return;
+    setSavingSettings(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/admin/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'token-limits', settings: editedTokenLimits }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to save token limits settings');
+      }
+
+      const data = await response.json();
+      setTokenLimitsSettingsState(data.tokenLimits);
+      setTokenLimitsModified(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save token limits settings');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const handleResetTokenLimits = () => {
+    if (tokenLimitsSettings) {
+      setEditedTokenLimits({
+        promptOptimizationMaxTokens: tokenLimitsSettings.promptOptimizationMaxTokens,
+        skillsMaxTotalTokens: tokenLimitsSettings.skillsMaxTotalTokens,
+        memoryExtractionMaxTokens: tokenLimitsSettings.memoryExtractionMaxTokens,
+        summaryMaxTokens: tokenLimitsSettings.summaryMaxTokens,
+        systemPromptMaxTokens: tokenLimitsSettings.systemPromptMaxTokens,
+        categoryPromptMaxTokens: tokenLimitsSettings.categoryPromptMaxTokens,
+        starterLabelMaxChars: tokenLimitsSettings.starterLabelMaxChars,
+        starterPromptMaxChars: tokenLimitsSettings.starterPromptMaxChars,
+        maxStartersPerCategory: tokenLimitsSettings.maxStartersPerCategory,
+      });
+      setTokenLimitsModified(false);
     }
   };
 
@@ -3482,15 +3557,11 @@ export default function AdminPage() {
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">Prompt Optimization Max Tokens</label>
-                        <input
-                          type="number"
-                          min="100"
-                          max="8000"
-                          value={editedLlm.promptOptimizationMaxTokens}
-                          onChange={(e) => handleLlmChange('promptOptimizationMaxTokens', parseInt(e.target.value) || 2000)}
-                          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                        />
-                        <p className="mt-1 text-xs text-gray-500">Max tokens for prompt optimization LLM calls (100-8000)</p>
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg font-medium text-gray-900">{editedLlm.promptOptimizationMaxTokens.toLocaleString()}</span>
+                          <span className="text-xs text-gray-400">tokens</span>
+                        </div>
+                        <p className="mt-1 text-xs text-blue-500">Configure in Settings → Limits → Token Limits</p>
                       </div>
                       {llmSettings && (
                           <p className="text-xs text-gray-500 pt-4 border-t">
@@ -4181,18 +4252,11 @@ export default function AdminPage() {
                         {/* Extraction Max Tokens */}
                         <div>
                           <label className="block text-sm font-medium text-gray-900 mb-1">Extraction Max Tokens</label>
-                          <input
-                            type="number"
-                            min="100"
-                            max="8000"
-                            value={editedMemory.extractionMaxTokens}
-                            onChange={(e) => {
-                              setEditedMemory({ ...editedMemory, extractionMaxTokens: parseInt(e.target.value) || 1000 });
-                              setMemoryModified(true);
-                            }}
-                            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          />
-                          <p className="mt-1 text-xs text-gray-500">Max tokens for LLM fact extraction (100-8000)</p>
+                          <div className="flex items-center gap-2">
+                            <span className="text-lg font-medium text-gray-900">{editedMemory.extractionMaxTokens.toLocaleString()}</span>
+                            <span className="text-xs text-gray-400">tokens</span>
+                          </div>
+                          <p className="mt-1 text-xs text-blue-500">Configure in Settings → Limits → Token Limits</p>
                         </div>
                       </div>
 
@@ -4309,19 +4373,11 @@ export default function AdminPage() {
                         {/* Summary Max Tokens */}
                         <div>
                           <label className="block text-sm font-medium text-gray-900 mb-1">Summary Max Tokens</label>
-                          <input
-                            type="number"
-                            min="500"
-                            max="8000"
-                            step="100"
-                            value={editedSummarization.summaryMaxTokens}
-                            onChange={(e) => {
-                              setEditedSummarization({ ...editedSummarization, summaryMaxTokens: parseInt(e.target.value) || 2000 });
-                              setSummarizationModified(true);
-                            }}
-                            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                          />
-                          <p className="mt-1 text-xs text-gray-500">Maximum tokens for generated summaries</p>
+                          <div className="flex items-center gap-2">
+                            <span className="text-lg font-medium text-gray-900">{editedSummarization.summaryMaxTokens.toLocaleString()}</span>
+                            <span className="text-xs text-gray-400">tokens</span>
+                          </div>
+                          <p className="mt-1 text-xs text-blue-500">Configure in Settings → Limits → Token Limits</p>
                         </div>
                       </div>
 
@@ -4355,6 +4411,7 @@ export default function AdminPage() {
 
               {/* Limits Section */}
               {settingsSection === 'limits' && (
+                <div className="space-y-6">
                 <div className="bg-white rounded-lg border shadow-sm">
                   <div className="px-6 py-4 border-b">
                     <div className="flex items-center justify-between">
@@ -4410,6 +4467,251 @@ export default function AdminPage() {
                       )}
                     </div>
                   ) : null}
+                </div>
+                {/* Token Limits Card */}
+                <div className="bg-white rounded-lg border shadow-sm">
+                  <div className="px-6 py-4 border-b">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h2 className="font-semibold text-gray-900">Token Limits</h2>
+                        <p className="text-sm text-gray-500">Configure token budgets for various LLM operations</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {tokenLimitsModified && (
+                          <Button variant="secondary" onClick={handleResetTokenLimits} disabled={savingSettings}>
+                            Reset
+                          </Button>
+                        )}
+                        <Button onClick={handleSaveTokenLimits} disabled={!tokenLimitsModified || savingSettings} loading={savingSettings}>
+                          <Save size={18} className="mr-2" />
+                          Save
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                  {settingsLoading ? (
+                    <div className="px-6 py-12 flex justify-center"><Spinner size="lg" /></div>
+                  ) : editedTokenLimits ? (
+                    <div className="p-6">
+                      {/* Token Limits Table */}
+                      <div className="overflow-x-auto">
+                        <table className="w-full">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Setting</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Value</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Range</th>
+                              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                            </tr>
+                          </thead>
+                          <tbody className="bg-white divide-y divide-gray-200">
+                            {/* Prompt Optimization */}
+                            <tr>
+                              <td className="px-4 py-3 text-sm font-medium text-gray-900">Prompt Optimization</td>
+                              <td className="px-4 py-3">
+                                <input
+                                  type="number"
+                                  min="100"
+                                  max="8000"
+                                  value={editedTokenLimits.promptOptimizationMaxTokens}
+                                  onChange={(e) => {
+                                    setEditedTokenLimits({ ...editedTokenLimits, promptOptimizationMaxTokens: parseInt(e.target.value) || 2000 });
+                                    setTokenLimitsModified(true);
+                                  }}
+                                  className="w-24 px-2 py-1 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                />
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-500">100-8,000</td>
+                              <td className="px-4 py-3 text-sm text-gray-500">Max tokens for LLM calls that optimize/rewrite user queries</td>
+                            </tr>
+                            {/* Skills Max Total */}
+                            <tr>
+                              <td className="px-4 py-3 text-sm font-medium text-gray-900">Skills Max Total</td>
+                              <td className="px-4 py-3">
+                                <input
+                                  type="number"
+                                  min="500"
+                                  max="20000"
+                                  value={editedTokenLimits.skillsMaxTotalTokens}
+                                  onChange={(e) => {
+                                    setEditedTokenLimits({ ...editedTokenLimits, skillsMaxTotalTokens: parseInt(e.target.value) || 3000 });
+                                    setTokenLimitsModified(true);
+                                  }}
+                                  className="w-24 px-2 py-1 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                />
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-500">500-20,000</td>
+                              <td className="px-4 py-3 text-sm text-gray-500">Combined token budget for all active skill prompts</td>
+                            </tr>
+                            {/* Memory Extraction */}
+                            <tr>
+                              <td className="px-4 py-3 text-sm font-medium text-gray-900">Memory Extraction</td>
+                              <td className="px-4 py-3">
+                                <input
+                                  type="number"
+                                  min="100"
+                                  max="8000"
+                                  value={editedTokenLimits.memoryExtractionMaxTokens}
+                                  onChange={(e) => {
+                                    setEditedTokenLimits({ ...editedTokenLimits, memoryExtractionMaxTokens: parseInt(e.target.value) || 1000 });
+                                    setTokenLimitsModified(true);
+                                  }}
+                                  className="w-24 px-2 py-1 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                />
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-500">100-8,000</td>
+                              <td className="px-4 py-3 text-sm text-gray-500">Max tokens for LLM calls that extract user facts from conversations</td>
+                            </tr>
+                            {/* Summary Max */}
+                            <tr>
+                              <td className="px-4 py-3 text-sm font-medium text-gray-900">Summary Max</td>
+                              <td className="px-4 py-3">
+                                <input
+                                  type="number"
+                                  min="100"
+                                  max="10000"
+                                  value={editedTokenLimits.summaryMaxTokens}
+                                  onChange={(e) => {
+                                    setEditedTokenLimits({ ...editedTokenLimits, summaryMaxTokens: parseInt(e.target.value) || 2000 });
+                                    setTokenLimitsModified(true);
+                                  }}
+                                  className="w-24 px-2 py-1 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                />
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-500">100-10,000</td>
+                              <td className="px-4 py-3 text-sm text-gray-500">Max tokens for auto-generated conversation summaries</td>
+                            </tr>
+                            {/* System Prompt */}
+                            <tr>
+                              <td className="px-4 py-3 text-sm font-medium text-gray-900">System Prompt</td>
+                              <td className="px-4 py-3">
+                                <input
+                                  type="number"
+                                  min="500"
+                                  max="4000"
+                                  value={editedTokenLimits.systemPromptMaxTokens}
+                                  onChange={(e) => {
+                                    setEditedTokenLimits({ ...editedTokenLimits, systemPromptMaxTokens: parseInt(e.target.value) || 2000 });
+                                    setTokenLimitsModified(true);
+                                  }}
+                                  className="w-24 px-2 py-1 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                />
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-500">500-4,000</td>
+                              <td className="px-4 py-3 text-sm text-gray-500">Max tokens for the global system prompt</td>
+                            </tr>
+                            {/* Category Prompt */}
+                            <tr>
+                              <td className="px-4 py-3 text-sm font-medium text-gray-900">Category Prompt</td>
+                              <td className="px-4 py-3">
+                                <input
+                                  type="number"
+                                  min="250"
+                                  max="2000"
+                                  value={editedTokenLimits.categoryPromptMaxTokens}
+                                  onChange={(e) => {
+                                    setEditedTokenLimits({ ...editedTokenLimits, categoryPromptMaxTokens: parseInt(e.target.value) || 500 });
+                                    setTokenLimitsModified(true);
+                                  }}
+                                  className="w-24 px-2 py-1 border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                />
+                              </td>
+                              <td className="px-4 py-3 text-sm text-gray-500">250-2,000</td>
+                              <td className="px-4 py-3 text-sm text-gray-500">Max tokens for category-specific instructions</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* Starter Prompt Limits */}
+                      <div className="mt-6 pt-6 border-t">
+                        <h3 className="font-medium text-gray-900 mb-4">Starter Prompt Limits</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Max Starters per Category</label>
+                            <input
+                              type="number"
+                              min="3"
+                              max="10"
+                              value={editedTokenLimits.maxStartersPerCategory}
+                              onChange={(e) => {
+                                setEditedTokenLimits({ ...editedTokenLimits, maxStartersPerCategory: parseInt(e.target.value) || 6 });
+                                setTokenLimitsModified(true);
+                              }}
+                              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            />
+                            <p className="mt-1 text-xs text-gray-500">3-10 starter buttons per category</p>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Label Max Characters</label>
+                            <input
+                              type="number"
+                              min="20"
+                              max="50"
+                              value={editedTokenLimits.starterLabelMaxChars}
+                              onChange={(e) => {
+                                setEditedTokenLimits({ ...editedTokenLimits, starterLabelMaxChars: parseInt(e.target.value) || 30 });
+                                setTokenLimitsModified(true);
+                              }}
+                              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            />
+                            <p className="mt-1 text-xs text-gray-500">20-50 chars for button labels</p>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Prompt Max Characters</label>
+                            <input
+                              type="number"
+                              min="200"
+                              max="1000"
+                              value={editedTokenLimits.starterPromptMaxChars}
+                              onChange={(e) => {
+                                setEditedTokenLimits({ ...editedTokenLimits, starterPromptMaxChars: parseInt(e.target.value) || 500 });
+                                setTokenLimitsModified(true);
+                              }}
+                              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            />
+                            <p className="mt-1 text-xs text-gray-500">200-1,000 chars for prompt text</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Total Context Token Budget Summary */}
+                      <div className="mt-6 pt-6 border-t bg-gray-50 -mx-6 -mb-6 px-6 py-4 rounded-b-lg">
+                        <h3 className="font-medium text-gray-900 mb-3">Total Context Token Budget</h3>
+                        <div className="space-y-2 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">System Prompt:</span>
+                            <span className="font-medium">{editedTokenLimits.systemPromptMaxTokens.toLocaleString()} tokens</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Category Prompt:</span>
+                            <span className="font-medium">{editedTokenLimits.categoryPromptMaxTokens.toLocaleString()} tokens</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-gray-600">Skills:</span>
+                            <span className="font-medium">{editedTokenLimits.skillsMaxTotalTokens.toLocaleString()} tokens</span>
+                          </div>
+                          <div className="flex justify-between pt-2 border-t border-gray-200">
+                            <span className="text-gray-900 font-medium">Total Context:</span>
+                            <span className="font-bold text-blue-600">
+                              {(editedTokenLimits.systemPromptMaxTokens + editedTokenLimits.categoryPromptMaxTokens + editedTokenLimits.skillsMaxTotalTokens).toLocaleString()} tokens
+                            </span>
+                          </div>
+                        </div>
+                        <p className="mt-3 text-xs text-gray-500">
+                          Note: Memory ({editedTokenLimits.memoryExtractionMaxTokens.toLocaleString()}) and Summary ({editedTokenLimits.summaryMaxTokens.toLocaleString()}) tokens are for separate LLM calls, not added to context.
+                        </p>
+                      </div>
+
+                      {/* Last Updated */}
+                      {tokenLimitsSettings?.updatedAt && (
+                        <p className="text-xs text-gray-500 mt-4">
+                          Last updated: {formatDate(tokenLimitsSettings.updatedAt)} by {tokenLimitsSettings.updatedBy}
+                        </p>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
                 </div>
               )}
             </div>

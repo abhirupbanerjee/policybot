@@ -467,13 +467,11 @@ export default function SkillsTab({ isSuperuser = false }: SkillsTabProps) {
             </label>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Max Total Tokens</label>
-              <input
-                type="number"
-                value={settings.maxTotalTokens}
-                onChange={(e) => setSettings({ ...settings, maxTotalTokens: parseInt(e.target.value) || 3000 })}
-                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-              />
-              <p className="text-xs text-gray-500 mt-1">Maximum combined tokens for all activated skills</p>
+              <div className="flex items-center gap-2">
+                <span className="text-lg font-medium text-gray-900">{settings.maxTotalTokens.toLocaleString()}</span>
+                <span className="text-xs text-gray-400">tokens</span>
+              </div>
+              <p className="text-xs text-blue-500 mt-1">Configure in Settings → Limits → Token Limits</p>
             </div>
             <label className="flex items-center gap-3">
               <input

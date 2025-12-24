@@ -28,6 +28,8 @@ import {
   setLimitsSettings,
   getModelTokenLimits,
   setModelTokenLimit,
+  getTokenLimitsSettings,
+  setTokenLimitsSettings,
   getSettingMetadata,
   deleteSetting,
   MODEL_PRESETS,
@@ -91,6 +93,7 @@ export async function GET() {
     const summarizationSettings = getSummarizationSettings();
     const limitsSettings = getLimitsSettings();
     const modelTokenLimits = getModelTokenLimits();
+    const tokenLimitsSettings = getTokenLimitsSettings();
 
     // Get metadata for last updated info
     const ragMeta = getSettingMetadata('rag-settings');
@@ -104,6 +107,7 @@ export async function GET() {
     const summarizationMeta = getSettingMetadata('summarization-settings');
     const limitsMeta = getSettingMetadata('limits-settings');
     const modelTokensMeta = getSettingMetadata('model-token-limits');
+    const tokenLimitsMeta = getSettingMetadata('token-limits-settings');
 
     return NextResponse.json({
       rag: {
@@ -164,6 +168,11 @@ export async function GET() {
         limits: modelTokenLimits,
         updatedAt: modelTokensMeta?.updatedAt || new Date().toISOString(),
         updatedBy: modelTokensMeta?.updatedBy || 'system',
+      },
+      tokenLimits: {
+        ...tokenLimitsSettings,
+        updatedAt: tokenLimitsMeta?.updatedAt || new Date().toISOString(),
+        updatedBy: tokenLimitsMeta?.updatedBy || 'system',
       },
       uploadLimits,
       retentionSettings,
@@ -842,6 +851,115 @@ export async function PUT(request: NextRequest) {
           conversationHistoryMessages,
         }, user.email);
         break;
+      }
+
+      case 'token-limits': {
+        const {
+          promptOptimizationMaxTokens,
+          skillsMaxTotalTokens,
+          memoryExtractionMaxTokens,
+          summaryMaxTokens,
+          systemPromptMaxTokens,
+          categoryPromptMaxTokens,
+          starterLabelMaxChars,
+          starterPromptMaxChars,
+          maxStartersPerCategory,
+        } = settings;
+
+        // Validate promptOptimizationMaxTokens
+        if (typeof promptOptimizationMaxTokens !== 'number' || promptOptimizationMaxTokens < 100 || promptOptimizationMaxTokens > 8000) {
+          return NextResponse.json<ApiError>(
+            { error: 'Prompt optimization max tokens must be between 100 and 8,000', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Validate skillsMaxTotalTokens
+        if (typeof skillsMaxTotalTokens !== 'number' || skillsMaxTotalTokens < 500 || skillsMaxTotalTokens > 20000) {
+          return NextResponse.json<ApiError>(
+            { error: 'Skills max total tokens must be between 500 and 20,000', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Validate memoryExtractionMaxTokens
+        if (typeof memoryExtractionMaxTokens !== 'number' || memoryExtractionMaxTokens < 100 || memoryExtractionMaxTokens > 8000) {
+          return NextResponse.json<ApiError>(
+            { error: 'Memory extraction max tokens must be between 100 and 8,000', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Validate summaryMaxTokens
+        if (typeof summaryMaxTokens !== 'number' || summaryMaxTokens < 100 || summaryMaxTokens > 10000) {
+          return NextResponse.json<ApiError>(
+            { error: 'Summary max tokens must be between 100 and 10,000', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Validate systemPromptMaxTokens
+        if (typeof systemPromptMaxTokens !== 'number' || systemPromptMaxTokens < 500 || systemPromptMaxTokens > 4000) {
+          return NextResponse.json<ApiError>(
+            { error: 'System prompt max tokens must be between 500 and 4,000', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Validate categoryPromptMaxTokens
+        if (typeof categoryPromptMaxTokens !== 'number' || categoryPromptMaxTokens < 250 || categoryPromptMaxTokens > 2000) {
+          return NextResponse.json<ApiError>(
+            { error: 'Category prompt max tokens must be between 250 and 2,000', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Validate starterLabelMaxChars
+        if (typeof starterLabelMaxChars !== 'number' || starterLabelMaxChars < 20 || starterLabelMaxChars > 50) {
+          return NextResponse.json<ApiError>(
+            { error: 'Starter label max chars must be between 20 and 50', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Validate starterPromptMaxChars
+        if (typeof starterPromptMaxChars !== 'number' || starterPromptMaxChars < 200 || starterPromptMaxChars > 1000) {
+          return NextResponse.json<ApiError>(
+            { error: 'Starter prompt max chars must be between 200 and 1,000', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Validate maxStartersPerCategory
+        if (typeof maxStartersPerCategory !== 'number' || maxStartersPerCategory < 3 || maxStartersPerCategory > 10) {
+          return NextResponse.json<ApiError>(
+            { error: 'Max starters per category must be between 3 and 10', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        result = setTokenLimitsSettings({
+          promptOptimizationMaxTokens,
+          skillsMaxTotalTokens,
+          memoryExtractionMaxTokens,
+          summaryMaxTokens,
+          systemPromptMaxTokens,
+          categoryPromptMaxTokens,
+          starterLabelMaxChars,
+          starterPromptMaxChars,
+          maxStartersPerCategory,
+        }, user.email);
+
+        // Return with metadata
+        const meta = getSettingMetadata('token-limits-settings');
+        return NextResponse.json({
+          success: true,
+          tokenLimits: {
+            ...result,
+            updatedAt: meta?.updatedAt || new Date().toISOString(),
+            updatedBy: meta?.updatedBy || user.email,
+          },
+        });
       }
 
       case 'model-tokens': {

@@ -110,6 +110,27 @@ export interface LimitsSettings {
 }
 
 /**
+ * Consolidated token limits settings
+ * All token/prompt limits in one place for easier management
+ */
+export interface TokenLimitsSettings {
+  // LLM response limits (moved from various settings)
+  promptOptimizationMaxTokens: number;  // 100-8000: Max tokens for prompt optimization LLM calls
+  skillsMaxTotalTokens: number;         // 500-20000: Combined budget for all active skill prompts
+  memoryExtractionMaxTokens: number;    // 100-8000: Max tokens for fact extraction LLM calls
+  summaryMaxTokens: number;             // 100-10000: Max tokens for auto-generated summaries
+
+  // System/Category prompts (context limits)
+  systemPromptMaxTokens: number;        // 500-4000: Max tokens for global system prompt
+  categoryPromptMaxTokens: number;      // 250-2000: Max tokens for category addendum
+
+  // Starter prompts (keep as chars - UI display limits)
+  starterLabelMaxChars: number;         // 20-50: Max chars for starter button labels
+  starterPromptMaxChars: number;        // 200-1000: Max chars for starter prompt text
+  maxStartersPerCategory: number;       // 3-10: Max starter buttons per category
+}
+
+/**
  * Per-model token limits configuration
  * Allows admin to override default maxTokens for specific models
  */
@@ -219,7 +240,8 @@ export type SettingKey =
   | 'summarization-settings'
   | 'skills-settings'
   | 'limits-settings'
-  | 'model-token-limits';
+  | 'model-token-limits'
+  | 'token-limits-settings';
 
 // ============ Generic Operations ============
 
@@ -508,6 +530,41 @@ export function getLimitsSettings(): LimitsSettings {
 }
 
 /**
+ * Get consolidated token limits settings
+ * Priority: SQLite > legacy settings locations > hardcoded defaults
+ *
+ * This consolidates all token/prompt limits in one place.
+ * Falls back to reading from legacy locations for backward compatibility.
+ */
+export function getTokenLimitsSettings(): TokenLimitsSettings {
+  const dbSettings = getSetting<TokenLimitsSettings>('token-limits-settings');
+  if (dbSettings) return dbSettings;
+
+  // Fall back to legacy locations for backward compatibility
+  const llmSettings = getLlmSettings();
+  const skillsSettings = getSkillsSettings();
+  const memorySettings = getMemorySettings();
+  const summarizationSettings = getSummarizationSettings();
+
+  return {
+    // From legacy settings
+    promptOptimizationMaxTokens: llmSettings.promptOptimizationMaxTokens || 2000,
+    skillsMaxTotalTokens: skillsSettings.maxTotalTokens || 3000,
+    memoryExtractionMaxTokens: memorySettings.extractionMaxTokens || 1000,
+    summaryMaxTokens: summarizationSettings.summaryMaxTokens || 2000,
+
+    // New settings with defaults (previously hardcoded as chars, now tokens)
+    systemPromptMaxTokens: 2000,      // ~8000 chars / 4
+    categoryPromptMaxTokens: 500,     // Portion of combined limit
+
+    // Starter prompt limits (keep as chars)
+    starterLabelMaxChars: 30,
+    starterPromptMaxChars: 500,
+    maxStartersPerCategory: 6,
+  };
+}
+
+/**
  * Get model token limits
  * Returns the admin-configured per-model token limits
  */
@@ -675,6 +732,32 @@ export function setLimitsSettings(settings: Partial<LimitsSettings>, updatedBy?:
   const current = getLimitsSettings();
   const updated = { ...current, ...settings };
   setSetting('limits-settings', updated, updatedBy);
+  return updated;
+}
+
+/**
+ * Update consolidated token limits settings
+ * Also syncs to legacy settings locations for backward compatibility
+ */
+export function setTokenLimitsSettings(settings: Partial<TokenLimitsSettings>, updatedBy?: string): TokenLimitsSettings {
+  const current = getTokenLimitsSettings();
+  const updated = { ...current, ...settings };
+  setSetting('token-limits-settings', updated, updatedBy);
+
+  // Sync to legacy settings for backward compatibility
+  if (settings.promptOptimizationMaxTokens !== undefined) {
+    setLlmSettings({ promptOptimizationMaxTokens: settings.promptOptimizationMaxTokens }, updatedBy);
+  }
+  if (settings.skillsMaxTotalTokens !== undefined) {
+    setSkillsSettings({ maxTotalTokens: settings.skillsMaxTotalTokens }, updatedBy);
+  }
+  if (settings.memoryExtractionMaxTokens !== undefined) {
+    setMemorySettings({ extractionMaxTokens: settings.memoryExtractionMaxTokens }, updatedBy);
+  }
+  if (settings.summaryMaxTokens !== undefined) {
+    setSummarizationSettings({ summaryMaxTokens: settings.summaryMaxTokens }, updatedBy);
+  }
+
   return updated;
 }
 
