@@ -107,6 +107,14 @@ export interface LimitsSettings {
   conversationHistoryMessages: number;  // Number of recent messages sent to LLM (default: 5)
 }
 
+/**
+ * Per-model token limits configuration
+ * Allows admin to override default maxTokens for specific models
+ */
+export interface ModelTokenLimits {
+  [modelId: string]: number | 'default';  // number = custom limit, 'default' = use preset value
+}
+
 // Available icon options for branding
 export const BRANDING_ICONS = [
   { key: 'government', label: 'Government', lucideIcon: 'Landmark' },
@@ -207,7 +215,8 @@ export type SettingKey =
   | 'memory-settings'
   | 'summarization-settings'
   | 'skills-settings'
-  | 'limits-settings';
+  | 'limits-settings'
+  | 'model-token-limits';
 
 // ============ Generic Operations ============
 
@@ -495,6 +504,39 @@ export function getLimitsSettings(): LimitsSettings {
   };
 }
 
+/**
+ * Get model token limits
+ * Returns the admin-configured per-model token limits
+ */
+export function getModelTokenLimits(): ModelTokenLimits {
+  const dbSettings = getSetting<ModelTokenLimits>('model-token-limits');
+  return dbSettings || {};
+}
+
+/**
+ * Get the effective max tokens for a specific model
+ * Priority: Admin override > Model preset > Default fallback
+ */
+export function getEffectiveMaxTokens(model: string): number {
+  // Check for admin override
+  const tokenLimits = getModelTokenLimits();
+  const override = tokenLimits[model];
+
+  if (typeof override === 'number') {
+    return override;
+  }
+
+  // Fall back to model preset
+  const presets = getModelPresets();
+  const preset = presets.find(p => p.id === model);
+  if (preset) {
+    return preset.llmSettings.maxTokens;
+  }
+
+  // Default fallback
+  return 2000;
+}
+
 // ============ Typed Setters ============
 
 /**
@@ -631,6 +673,31 @@ export function setLimitsSettings(settings: Partial<LimitsSettings>, updatedBy?:
   const updated = { ...current, ...settings };
   setSetting('limits-settings', updated, updatedBy);
   return updated;
+}
+
+/**
+ * Update a single model's token limit
+ */
+export function setModelTokenLimit(model: string, limit: number | 'default', updatedBy?: string): ModelTokenLimits {
+  const current = getModelTokenLimits();
+
+  if (limit === 'default') {
+    // Remove the override to use preset default
+    delete current[model];
+  } else {
+    current[model] = limit;
+  }
+
+  setSetting('model-token-limits', current, updatedBy);
+  return current;
+}
+
+/**
+ * Update all model token limits at once
+ */
+export function setModelTokenLimits(limits: ModelTokenLimits, updatedBy?: string): ModelTokenLimits {
+  setSetting('model-token-limits', limits, updatedBy);
+  return limits;
 }
 
 // ============ Default System Prompt ============

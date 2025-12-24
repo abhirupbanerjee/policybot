@@ -1,6 +1,6 @@
 import OpenAI from 'openai';
 import type { Message, ToolCall } from '@/types';
-import { getLlmSettings, getEmbeddingSettings, getLimitsSettings } from './db/config';
+import { getLlmSettings, getEmbeddingSettings, getLimitsSettings, getEffectiveMaxTokens } from './db/config';
 import { getToolDefinitions, executeTool } from './tools';
 import { resolveToolRouting } from './tool-routing';
 import { toolsLogger as logger } from './logger';
@@ -176,12 +176,15 @@ export async function generateResponseWithTools(
     }
   }
 
+  // Get effective max tokens (uses per-model override if configured, otherwise preset default)
+  const effectiveMaxTokens = getEffectiveMaxTokens(llmSettings.model);
+
   const completionParams: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
     model: llmSettings.model,
     messages,
     tools,
     tool_choice: tools?.length ? toolChoice : undefined,
-    max_tokens: llmSettings.maxTokens,
+    max_tokens: effectiveMaxTokens,
     temperature: llmSettings.temperature,
   };
 

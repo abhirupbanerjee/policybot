@@ -170,6 +170,12 @@ interface LimitsSettings {
   updatedBy?: string;
 }
 
+interface ModelTokenLimitsState {
+  limits: Record<string, number | 'default'>;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
 interface StarterPrompt {
   label: string;
   prompt: string;
@@ -365,6 +371,9 @@ export default function AdminPage() {
   const [editedSummarization, setEditedSummarization] = useState<Omit<SummarizationSettings, 'updatedAt' | 'updatedBy'> | null>(null);
   const [limitsSettings, setLimitsSettingsState] = useState<LimitsSettings | null>(null);
   const [editedLimits, setEditedLimits] = useState<Omit<LimitsSettings, 'updatedAt' | 'updatedBy'> | null>(null);
+  const [modelTokenLimits, setModelTokenLimits] = useState<ModelTokenLimitsState | null>(null);
+  const [editedModelTokens, setEditedModelTokens] = useState<Record<string, number | 'default'>>({});
+  const [savingModelTokens, setSavingModelTokens] = useState(false);
   const [embeddingSettings, setEmbeddingSettings] = useState<EmbeddingSettings | null>(null);
   const [transcriptionModel, setTranscriptionModel] = useState<string>('whisper-1');
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
@@ -583,6 +592,10 @@ export default function AdminPage() {
         setEditedLimits({
           conversationHistoryMessages: data.limits.conversationHistoryMessages,
         });
+      }
+      if (data.modelTokenLimits) {
+        setModelTokenLimits(data.modelTokenLimits);
+        setEditedModelTokens(data.modelTokenLimits.limits || {});
       }
       if (data.embedding) {
         setEmbeddingSettings(data.embedding);
@@ -1554,6 +1567,49 @@ export default function AdminPage() {
       });
       setLlmModified(false);
     }
+  };
+
+  // Model token limit handlers
+  const handleModelTokenChange = (model: string, value: number | 'default') => {
+    setEditedModelTokens(prev => ({
+      ...prev,
+      [model]: value
+    }));
+  };
+
+  const handleSaveModelToken = async (model: string) => {
+    setSavingModelTokens(true);
+    setError(null);
+
+    try {
+      const value = editedModelTokens[model];
+      const response = await fetch('/api/admin/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          type: 'model-tokens',
+          settings: { model, limit: value ?? 'default' }
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to save model token limit');
+      }
+
+      const result = await response.json();
+      setModelTokenLimits(result.settings);
+      setEditedModelTokens(result.settings.limits || {});
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save model token limit');
+    } finally {
+      setSavingModelTokens(false);
+    }
+  };
+
+  const handleResetModelToken = (model: string) => {
+    // Reset to default by setting value to 'default'
+    handleModelTokenChange(model, 'default');
   };
 
   // Preset handlers
@@ -3323,6 +3379,109 @@ export default function AdminPage() {
                       {llmSettings && (
                           <p className="text-xs text-gray-500 pt-4 border-t">
                             Last updated: {formatDate(llmSettings.updatedAt)} by {llmSettings.updatedBy}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Per-Model Token Limits Card */}
+                  <div className="bg-white rounded-lg border shadow-sm">
+                    <div className="px-6 py-4 border-b">
+                      <div>
+                        <h2 className="font-semibold text-gray-900">Per-Model Token Limits</h2>
+                        <p className="text-sm text-gray-500">Override default max tokens for specific models</p>
+                      </div>
+                    </div>
+                    {settingsLoading ? (
+                      <div className="px-6 py-12 flex justify-center"><Spinner size="lg" /></div>
+                    ) : (
+                      <div className="p-6">
+                        <div className="overflow-x-auto">
+                          <table className="min-w-full divide-y divide-gray-200">
+                            <thead>
+                              <tr>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Model</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Default</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Custom Limit</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-200">
+                              {modelPresets.filter(Boolean).map((preset) => {
+                                const modelId = preset.model;
+                                const presetDefault = preset.llmSettings?.maxTokens ?? 3000;
+                                const currentValue = editedModelTokens[modelId];
+                                const isCustom = currentValue !== undefined && currentValue !== 'default';
+                                const savedValue = modelTokenLimits?.limits?.[modelId];
+                                const isModified = currentValue !== (savedValue ?? 'default');
+
+                                return (
+                                  <tr key={modelId} className="hover:bg-gray-50">
+                                    <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                                      {preset.name}
+                                      <span className="text-xs text-gray-400 ml-2">({modelId})</span>
+                                    </td>
+                                    <td className="px-4 py-3 text-sm text-gray-500">
+                                      {presetDefault.toLocaleString()}
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      <div className="flex items-center gap-2">
+                                        <input
+                                          type="number"
+                                          min="100"
+                                          max="16000"
+                                          value={isCustom ? currentValue : ''}
+                                          placeholder={presetDefault.toString()}
+                                          onChange={(e) => {
+                                            const val = e.target.value;
+                                            if (val === '') {
+                                              handleModelTokenChange(modelId, 'default');
+                                            } else {
+                                              handleModelTokenChange(modelId, parseInt(val) || presetDefault);
+                                            }
+                                          }}
+                                          className="w-24 px-2 py-1 text-sm border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        />
+                                        {isCustom && (
+                                          <span className="text-xs text-blue-600 font-medium">Custom</span>
+                                        )}
+                                      </div>
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      <div className="flex items-center gap-2">
+                                        {isModified && (
+                                          <Button
+                                            size="sm"
+                                            onClick={() => handleSaveModelToken(modelId)}
+                                            disabled={savingModelTokens}
+                                            loading={savingModelTokens}
+                                          >
+                                            <Save size={14} className="mr-1" />
+                                            Save
+                                          </Button>
+                                        )}
+                                        {isCustom && (
+                                          <Button
+                                            size="sm"
+                                            variant="secondary"
+                                            onClick={() => handleResetModelToken(modelId)}
+                                            disabled={savingModelTokens}
+                                          >
+                                            Reset
+                                          </Button>
+                                        )}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                        {modelTokenLimits?.updatedAt && (
+                          <p className="text-xs text-gray-500 mt-4 pt-4 border-t">
+                            Last updated: {formatDate(modelTokenLimits.updatedAt)} by {modelTokenLimits.updatedBy}
                           </p>
                         )}
                       </div>

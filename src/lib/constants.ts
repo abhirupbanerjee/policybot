@@ -46,18 +46,22 @@ export const TOOL_CAPABLE_MODELS = new Set([
   'gpt-4.1',
   'gpt-4.1-mini',
   'gpt-4.1-nano',
-  'gpt-3.5-turbo',
   // Mistral - Mistral 3 Family
   'mistral-large-3',
   'mistral-medium-3.1',
   'mistral-small-3.2',
   'ministral-8b',
   'ministral-3b',
+  // Google - Gemini Family
+  'gemini-2.5-pro',
+  'gemini-2.5-flash',
+  'gemini-2.5-flash-lite',
   // Ollama (with native tool support)
   'ollama-llama3.2',
-  'ollama-llama3.1',
   'ollama-mistral',
   'ollama-qwen2.5',
+  'ollama-gemma3',
+  'ollama-gpt-oss',
 ]);
 
 // ============ Ingestion Constants ============
