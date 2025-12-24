@@ -227,6 +227,9 @@ export async function extractFacts(
       apiKey: apiKey || '',
     });
 
+    // Get memory settings for configurable max tokens
+    const memorySettings = getMemorySettings();
+
     const response = await client.chat.completions.create({
       model: llmSettings.model,
       messages: [
@@ -240,7 +243,7 @@ export async function extractFacts(
         },
       ],
       temperature: 0.3,
-      max_tokens: 1000,
+      max_tokens: memorySettings.extractionMaxTokens ?? 1000,
     });
 
     const content = response.choices[0]?.message?.content?.trim() || '[]';

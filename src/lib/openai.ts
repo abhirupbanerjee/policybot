@@ -89,10 +89,13 @@ export async function generateResponse(
 
   const openai = getOpenAI();
 
+  // Get effective max tokens (uses per-model override if configured, otherwise preset default)
+  const effectiveMaxTokens = getEffectiveMaxTokens(llmSettings.model);
+
   const response = await openai.chat.completions.create({
     model: llmSettings.model,
     messages,
-    max_tokens: llmSettings.maxTokens,
+    max_tokens: effectiveMaxTokens,
     temperature: llmSettings.temperature,
   });
 

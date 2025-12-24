@@ -32,6 +32,7 @@ export interface LlmConfig {
   model: string;
   temperature: number;
   maxTokens: number;
+  promptOptimizationMaxTokens: number;
 }
 
 export interface RagConfig {
@@ -84,6 +85,7 @@ export interface MemoryConfig {
   extractionThreshold: number;
   maxFactsPerCategory: number;
   autoExtractOnThreadEnd: boolean;
+  extractionMaxTokens: number;
 }
 
 export interface SummarizationConfig {
@@ -392,6 +394,7 @@ function getHardcodedDefaults(): AppConfig {
       model: 'gpt-4.1-mini',
       temperature: 0.2,
       maxTokens: 2000,
+      promptOptimizationMaxTokens: 2000,
     },
     rag: {
       topKChunks: 15,
@@ -437,6 +440,7 @@ function getHardcodedDefaults(): AppConfig {
       extractionThreshold: 5,
       maxFactsPerCategory: 20,
       autoExtractOnThreadEnd: true,
+      extractionMaxTokens: 1000,
     },
     summarization: {
       enabled: false,

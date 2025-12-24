@@ -32,6 +32,7 @@ export interface LlmSettings {
   model: string;
   temperature: number;
   maxTokens: number;
+  promptOptimizationMaxTokens: number;  // Max tokens for prompt optimization LLM call (default: 2000)
 }
 
 export interface TavilySettings {
@@ -87,6 +88,7 @@ export interface MemorySettings {
   extractionThreshold: number;    // Minimum messages before extracting facts
   maxFactsPerCategory: number;    // Maximum facts stored per user+category
   autoExtractOnThreadEnd: boolean; // Auto-extract facts when thread ends
+  extractionMaxTokens: number;    // Max tokens for fact extraction LLM call (default: 1000)
 }
 
 export interface SummarizationSettings {
@@ -154,6 +156,7 @@ function configToPreset(id: string, config: ModelPresetConfig): ModelPreset {
       model: id,
       temperature: config.temperature,
       maxTokens: config.maxTokens,
+      promptOptimizationMaxTokens: 2000, // Default for prompt optimization
     },
     ragSettings: {
       topKChunks: config.topKChunks,

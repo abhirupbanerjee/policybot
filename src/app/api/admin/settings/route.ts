@@ -292,7 +292,7 @@ export async function PUT(request: NextRequest) {
 
       case 'llm': {
         // Validate LLM settings
-        const { model, temperature, maxTokens } = settings;
+        const { model, temperature, maxTokens, promptOptimizationMaxTokens } = settings;
 
         if (!model || !getAvailableModels().some(m => m.id === model)) {
           return NextResponse.json<ApiError>(
@@ -315,10 +315,18 @@ export async function PUT(request: NextRequest) {
           );
         }
 
+        if (typeof promptOptimizationMaxTokens !== 'number' || promptOptimizationMaxTokens < 100 || promptOptimizationMaxTokens > 8000) {
+          return NextResponse.json<ApiError>(
+            { error: 'Prompt optimization max tokens must be between 100 and 8000', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
         result = setLlmSettings({
           model,
           temperature,
           maxTokens,
+          promptOptimizationMaxTokens,
         }, user.email);
         break;
       }
@@ -668,6 +676,7 @@ export async function PUT(request: NextRequest) {
           extractionThreshold,
           maxFactsPerCategory,
           autoExtractOnThreadEnd,
+          extractionMaxTokens,
         } = settings;
 
         // Validate enabled flag
@@ -702,11 +711,20 @@ export async function PUT(request: NextRequest) {
           );
         }
 
+        // Validate extractionMaxTokens
+        if (typeof extractionMaxTokens !== 'number' || extractionMaxTokens < 100 || extractionMaxTokens > 8000) {
+          return NextResponse.json<ApiError>(
+            { error: 'Extraction max tokens must be between 100 and 8000', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
         result = setMemorySettings({
           enabled,
           extractionThreshold,
           maxFactsPerCategory,
           autoExtractOnThreadEnd,
+          extractionMaxTokens,
         }, user.email);
         break;
       }

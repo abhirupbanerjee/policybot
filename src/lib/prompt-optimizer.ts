@@ -92,7 +92,7 @@ export async function optimizeCategoryPrompt(
         content: prompt,
       },
     ],
-    max_tokens: 2000,
+    max_tokens: llmSettings.promptOptimizationMaxTokens ?? 2000,
     temperature: 0.3, // Lower temperature for more consistent outputs
   });
 

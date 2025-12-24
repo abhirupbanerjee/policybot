@@ -59,6 +59,7 @@ interface LLMSettings {
   model: string;
   temperature: number;
   maxTokens: number;
+  promptOptimizationMaxTokens: number;
   updatedAt: string;
   updatedBy: string;
 }
@@ -150,6 +151,7 @@ interface MemorySettings {
   extractionThreshold: number;
   maxFactsPerCategory: number;
   autoExtractOnThreadEnd: boolean;
+  extractionMaxTokens: number;
   updatedAt?: string;
   updatedBy?: string;
 }
@@ -541,6 +543,7 @@ export default function AdminPage() {
           model: data.llm.model,
           temperature: data.llm.temperature,
           maxTokens: data.llm.maxTokens,
+          promptOptimizationMaxTokens: data.llm.promptOptimizationMaxTokens,
         });
       }
       if (data.acronyms) {
@@ -575,6 +578,7 @@ export default function AdminPage() {
           extractionThreshold: data.memory.extractionThreshold,
           maxFactsPerCategory: data.memory.maxFactsPerCategory,
           autoExtractOnThreadEnd: data.memory.autoExtractOnThreadEnd,
+          extractionMaxTokens: data.memory.extractionMaxTokens,
         });
       }
       if (data.summarization) {
@@ -1564,6 +1568,7 @@ export default function AdminPage() {
         model: llmSettings.model,
         temperature: llmSettings.temperature,
         maxTokens: llmSettings.maxTokens,
+        promptOptimizationMaxTokens: llmSettings.promptOptimizationMaxTokens,
       });
       setLlmModified(false);
     }
@@ -1588,7 +1593,7 @@ export default function AdminPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           type: 'model-tokens',
-          settings: { model, limit: value ?? 'default' }
+          settings: { model, maxTokens: value ?? 'default' }
         }),
       });
 
@@ -1598,8 +1603,8 @@ export default function AdminPage() {
       }
 
       const result = await response.json();
-      setModelTokenLimits(result.settings);
-      setEditedModelTokens(result.settings.limits || {});
+      setModelTokenLimits(result.modelTokenLimits);
+      setEditedModelTokens(result.modelTokenLimits.limits || {});
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save model token limit');
     } finally {
@@ -1859,6 +1864,7 @@ export default function AdminPage() {
         extractionThreshold: memorySettings.extractionThreshold,
         maxFactsPerCategory: memorySettings.maxFactsPerCategory,
         autoExtractOnThreadEnd: memorySettings.autoExtractOnThreadEnd,
+        extractionMaxTokens: memorySettings.extractionMaxTokens,
       });
       setMemoryModified(false);
     }
@@ -3376,6 +3382,18 @@ export default function AdminPage() {
                         />
                         <p className="mt-1 text-xs text-gray-500">Maximum length of generated responses (100-16000)</p>
                       </div>
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">Prompt Optimization Max Tokens</label>
+                        <input
+                          type="number"
+                          min="100"
+                          max="8000"
+                          value={editedLlm.promptOptimizationMaxTokens}
+                          onChange={(e) => handleLlmChange('promptOptimizationMaxTokens', parseInt(e.target.value) || 2000)}
+                          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                        <p className="mt-1 text-xs text-gray-500">Max tokens for prompt optimization LLM calls (100-8000)</p>
+                      </div>
                       {llmSettings && (
                           <p className="text-xs text-gray-500 pt-4 border-t">
                             Last updated: {formatDate(llmSettings.updatedAt)} by {llmSettings.updatedBy}
@@ -4060,6 +4078,23 @@ export default function AdminPage() {
                             className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                           />
                           <p className="mt-1 text-xs text-gray-500">Maximum facts stored per category (5-100)</p>
+                        </div>
+
+                        {/* Extraction Max Tokens */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-900 mb-1">Extraction Max Tokens</label>
+                          <input
+                            type="number"
+                            min="100"
+                            max="8000"
+                            value={editedMemory.extractionMaxTokens}
+                            onChange={(e) => {
+                              setEditedMemory({ ...editedMemory, extractionMaxTokens: parseInt(e.target.value) || 1000 });
+                              setMemoryModified(true);
+                            }}
+                            className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          />
+                          <p className="mt-1 text-xs text-gray-500">Max tokens for LLM fact extraction (100-8000)</p>
                         </div>
                       </div>
 
