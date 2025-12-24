@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Upload, RefreshCw, Trash2, FileText, AlertCircle, Users, UserPlus, Shield, User, Settings, Save, FolderOpen, Plus, Edit2, BarChart3, Database, HardDrive, Globe, Tag, Landmark, DollarSign, Activity, Layers, Server, ScrollText, ChevronUp, ChevronDown, ChevronsUpDown, Search, X, LayoutDashboard, Cpu, Mic, Sparkles, Download, Wand2, CheckCircle, Youtube } from 'lucide-react';
+import { ArrowLeft, Upload, RefreshCw, Trash2, FileText, AlertCircle, Users, UserPlus, Shield, User, Settings, Save, FolderOpen, Plus, Edit2, BarChart3, Database, HardDrive, Globe, Tag, Landmark, DollarSign, Activity, Layers, Server, ScrollText, ChevronUp, ChevronDown, ChevronsUpDown, Search, X, LayoutDashboard, Cpu, Mic, Sparkles, Download, Wand2, CheckCircle, Youtube, Filter, SortAsc } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import Spinner from '@/components/ui/Spinner';
@@ -265,10 +265,12 @@ export default function AdminPage() {
   const [deleting, setDeleting] = useState(false);
   const [reindexing, setReindexing] = useState<string | null>(null);
 
-  // Document search and sort state
+  // Document search, filter, and sort state
   const [docSearchTerm, setDocSearchTerm] = useState('');
   const [docSortKey, setDocSortKey] = useState<keyof GlobalDocument | null>(null);
   const [docSortDirection, setDocSortDirection] = useState<SortDirection>(null);
+  const [docCategoryFilter, setDocCategoryFilter] = useState<number | 'all' | 'global' | 'uncategorized'>('all');
+  const [docSortOption, setDocSortOption] = useState<'newest' | 'oldest' | 'largest' | 'smallest' | 'a-z' | 'z-a'>('newest');
 
   // Upload modal state
   const [showUploadModal, setShowUploadModal] = useState(false);
@@ -1985,6 +1987,18 @@ export default function AdminPage() {
   const filteredAndSortedDocs = useMemo(() => {
     let result = [...documents];
 
+    // Apply category filter
+    if (docCategoryFilter !== 'all') {
+      if (docCategoryFilter === 'global') {
+        result = result.filter(doc => doc.isGlobal);
+      } else if (docCategoryFilter === 'uncategorized') {
+        result = result.filter(doc => !doc.isGlobal && (!doc.categories || doc.categories.length === 0));
+      } else {
+        // Filter by specific category ID
+        result = result.filter(doc => doc.categories?.some(c => c.id === docCategoryFilter));
+      }
+    }
+
     // Apply fuzzy search
     if (docSearchTerm.trim()) {
       result = result
@@ -2001,8 +2015,28 @@ export default function AdminPage() {
         .map(r => r.doc);
     }
 
-    // Apply sorting
-    if (docSortKey && docSortDirection) {
+    // Apply sorting from dropdown (takes precedence over column header sort)
+    if (docSortOption && !docSearchTerm.trim()) {
+      result.sort((a, b) => {
+        switch (docSortOption) {
+          case 'newest':
+            return new Date(b.uploadedAt).getTime() - new Date(a.uploadedAt).getTime();
+          case 'oldest':
+            return new Date(a.uploadedAt).getTime() - new Date(b.uploadedAt).getTime();
+          case 'largest':
+            return b.size - a.size;
+          case 'smallest':
+            return a.size - b.size;
+          case 'a-z':
+            return a.filename.toLowerCase().localeCompare(b.filename.toLowerCase());
+          case 'z-a':
+            return b.filename.toLowerCase().localeCompare(a.filename.toLowerCase());
+          default:
+            return 0;
+        }
+      });
+    } else if (docSortKey && docSortDirection) {
+      // Apply column header sorting only if dropdown sort is not being used
       result.sort((a, b) => {
         let aVal: string | number | Date | undefined;
         let bVal: string | number | Date | undefined;
@@ -2048,7 +2082,7 @@ export default function AdminPage() {
     }
 
     return result;
-  }, [documents, docSearchTerm, docSortKey, docSortDirection]);
+  }, [documents, docSearchTerm, docSortKey, docSortDirection, docCategoryFilter, docSortOption]);
 
   // Dashboard services filter and search
   const filteredDashboardServices = useMemo(() => {
@@ -2616,16 +2650,17 @@ export default function AdminPage() {
                   </Button>
                 </div>
               </div>
-              {/* Search bar */}
+              {/* Search, Filter, and Sort controls */}
               {documents.length > 0 && (
-                <div className="mt-4">
-                  <div className="relative max-w-md">
+                <div className="mt-4 flex flex-wrap items-center gap-3">
+                  {/* Search bar */}
+                  <div className="relative flex-1 min-w-[200px] max-w-md">
                     <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
                     <input
                       type="text"
                       value={docSearchTerm}
                       onChange={(e) => setDocSearchTerm(e.target.value)}
-                      placeholder="Search documents by name, category, or status..."
+                      placeholder="Search documents..."
                       className="w-full pl-9 pr-8 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                     />
                     {docSearchTerm && (
@@ -2637,6 +2672,60 @@ export default function AdminPage() {
                       </button>
                     )}
                   </div>
+
+                  {/* Category Filter */}
+                  <div className="flex items-center gap-2">
+                    <Filter size={16} className="text-gray-400" />
+                    <select
+                      value={docCategoryFilter === 'all' ? 'all' : docCategoryFilter === 'global' ? 'global' : docCategoryFilter === 'uncategorized' ? 'uncategorized' : String(docCategoryFilter)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === 'all' || val === 'global' || val === 'uncategorized') {
+                          setDocCategoryFilter(val);
+                        } else {
+                          setDocCategoryFilter(parseInt(val, 10));
+                        }
+                      }}
+                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                    >
+                      <option value="all">All Categories</option>
+                      <option value="global">Global</option>
+                      <option value="uncategorized">Uncategorized</option>
+                      {categories.map(cat => (
+                        <option key={cat.id} value={cat.id}>{cat.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Sort Dropdown */}
+                  <div className="flex items-center gap-2">
+                    <SortAsc size={16} className="text-gray-400" />
+                    <select
+                      value={docSortOption}
+                      onChange={(e) => setDocSortOption(e.target.value as typeof docSortOption)}
+                      className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                    >
+                      <option value="newest">Newest First</option>
+                      <option value="oldest">Oldest First</option>
+                      <option value="largest">Largest First</option>
+                      <option value="smallest">Smallest First</option>
+                      <option value="a-z">Name (A-Z)</option>
+                      <option value="z-a">Name (Z-A)</option>
+                    </select>
+                  </div>
+
+                  {/* Clear filters button */}
+                  {(docCategoryFilter !== 'all' || docSearchTerm) && (
+                    <button
+                      onClick={() => {
+                        setDocCategoryFilter('all');
+                        setDocSearchTerm('');
+                      }}
+                      className="px-3 py-2 text-sm text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+                    >
+                      Clear filters
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -2654,8 +2743,17 @@ export default function AdminPage() {
                 <Search className="w-12 h-12 text-gray-300 mx-auto mb-4" />
                 <h3 className="text-lg font-medium text-gray-900 mb-2">No matching documents</h3>
                 <p className="text-gray-500 mb-4">
-                  Try adjusting your search term
+                  Try adjusting your search or filter criteria
                 </p>
+                <button
+                  onClick={() => {
+                    setDocCategoryFilter('all');
+                    setDocSearchTerm('');
+                  }}
+                  className="text-blue-600 hover:text-blue-700 text-sm font-medium"
+                >
+                  Clear all filters
+                </button>
               </div>
             ) : (
               <div className="overflow-x-auto">
