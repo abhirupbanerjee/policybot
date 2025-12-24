@@ -15,6 +15,8 @@ import {
   Variable,
   Save,
   X,
+  Upload,
+  FileJson,
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
@@ -83,8 +85,19 @@ export default function TaskPlannerTemplates({
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<TaskTemplate | null>(null);
   const [formData, setFormData] = useState<TemplateFormData>(initialFormData);
+
+  // Import state
+  const [importJson, setImportJson] = useState('');
+  const [importOverwrite, setImportOverwrite] = useState(false);
+  const [importResult, setImportResult] = useState<{
+    imported: string[];
+    skipped: string[];
+    errors: Array<{ key: string; error: string }>;
+    summary: { total: number; imported: number; skipped: number; failed: number };
+  } | null>(null);
 
   // Preview state
   const [previewVars, setPreviewVars] = useState<Record<string, string>>({});
@@ -281,6 +294,73 @@ export default function TaskPlannerTemplates({
     } finally {
       setSaving(false);
     }
+  };
+
+  // Import templates from JSON
+  const handleImport = async () => {
+    if (!selectedCategoryId) return;
+
+    // Parse and validate JSON
+    let templates;
+    try {
+      const parsed = JSON.parse(importJson);
+      // Handle both array format and object with templates key
+      templates = Array.isArray(parsed) ? parsed : parsed.templates;
+      if (!Array.isArray(templates)) {
+        setError('JSON must be an array of templates or an object with a "templates" array');
+        return;
+      }
+    } catch {
+      setError('Invalid JSON format');
+      return;
+    }
+
+    setSaving(true);
+    setError(null);
+    setImportResult(null);
+    try {
+      const res = await fetch('/api/admin/tools/task-planner/templates', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          categoryId: selectedCategoryId,
+          templates,
+          overwrite: importOverwrite,
+        }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to import templates');
+      }
+
+      setImportResult(data);
+      if (data.summary.imported > 0) {
+        setSuccess(`Imported ${data.summary.imported} template(s) successfully`);
+        fetchTemplates();
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to import templates');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Handle file upload for import
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const content = e.target?.result as string;
+      setImportJson(content);
+      setImportResult(null);
+    };
+    reader.readAsText(file);
+    // Reset input so same file can be selected again
+    event.target.value = '';
   };
 
   // Open edit modal
@@ -578,17 +658,32 @@ export default function TaskPlannerTemplates({
             Define reusable task plan templates for each category
           </p>
         </div>
-        <Button
-          variant="primary"
-          onClick={() => {
-            setFormData(initialFormData);
-            setShowCreateModal(true);
-          }}
-          disabled={!selectedCategoryId}
-        >
-          <Plus size={16} className="mr-1" />
-          Add Template
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setImportJson('');
+              setImportOverwrite(false);
+              setImportResult(null);
+              setShowImportModal(true);
+            }}
+            disabled={!selectedCategoryId}
+          >
+            <Upload size={16} className="mr-1" />
+            Import JSON
+          </Button>
+          <Button
+            variant="primary"
+            onClick={() => {
+              setFormData(initialFormData);
+              setShowCreateModal(true);
+            }}
+            disabled={!selectedCategoryId}
+          >
+            <Plus size={16} className="mr-1" />
+            Add Template
+          </Button>
+        </div>
       </div>
 
       {/* Status messages */}
@@ -841,6 +936,160 @@ export default function TaskPlannerTemplates({
               {saving ? <Spinner size="sm" /> : <Trash2 size={16} className="mr-1" />}
               Delete
             </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Import Modal */}
+      <Modal
+        isOpen={showImportModal}
+        onClose={() => {
+          setShowImportModal(false);
+          setImportJson('');
+          setImportResult(null);
+        }}
+        title="Import Templates from JSON"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-gray-600">
+            Import multiple templates at once by uploading a JSON file or pasting JSON content.
+            The JSON should be an array of template objects.
+          </p>
+
+          {/* File upload */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Upload JSON File
+            </label>
+            <label className="flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-blue-400 hover:bg-blue-50 transition-colors">
+              <FileJson size={20} className="text-gray-400" />
+              <span className="text-sm text-gray-600">Click to select a .json file</span>
+              <input
+                type="file"
+                accept=".json,application/json"
+                onChange={handleFileUpload}
+                className="hidden"
+              />
+            </label>
+          </div>
+
+          {/* JSON textarea */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">
+              Or paste JSON content
+            </label>
+            <textarea
+              value={importJson}
+              onChange={(e) => {
+                setImportJson(e.target.value);
+                setImportResult(null);
+              }}
+              placeholder={`[
+  {
+    "key": "template_key",
+    "name": "Template Name",
+    "description": "When to use this template",
+    "placeholders": ["variable1"],
+    "tasks": [
+      {"id": 1, "description": "First task with {variable1}"},
+      {"id": 2, "description": "Second task"}
+    ]
+  }
+]`}
+              rows={10}
+              className="w-full px-3 py-2 border rounded-lg font-mono text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            />
+          </div>
+
+          {/* Overwrite option */}
+          <label className="flex items-center gap-2 text-sm">
+            <input
+              type="checkbox"
+              checked={importOverwrite}
+              onChange={(e) => setImportOverwrite(e.target.checked)}
+              className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+            />
+            <span className="text-gray-700">
+              Overwrite existing templates with the same key
+            </span>
+          </label>
+
+          {/* Import results */}
+          {importResult && (
+            <div className="p-3 bg-gray-50 rounded-lg text-sm">
+              <div className="font-medium text-gray-700 mb-2">Import Results:</div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <CheckCircle size={14} className="text-green-500" />
+                  <span>Imported: {importResult.summary.imported}</span>
+                  {importResult.imported.length > 0 && (
+                    <span className="text-gray-500">
+                      ({importResult.imported.join(', ')})
+                    </span>
+                  )}
+                </div>
+                {importResult.summary.skipped > 0 && (
+                  <div className="flex items-center gap-2 text-yellow-700">
+                    <AlertCircle size={14} />
+                    <span>Skipped (already exist): {importResult.summary.skipped}</span>
+                    <span className="text-gray-500">
+                      ({importResult.skipped.join(', ')})
+                    </span>
+                  </div>
+                )}
+                {importResult.summary.failed > 0 && (
+                  <div className="text-red-600">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle size={14} />
+                      <span>Failed: {importResult.summary.failed}</span>
+                    </div>
+                    <ul className="ml-6 mt-1 list-disc">
+                      {importResult.errors.map((err, idx) => (
+                        <li key={idx}>
+                          <code>{err.key}</code>: {err.error}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Actions */}
+          <div className="flex justify-end gap-2 pt-4 border-t">
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setShowImportModal(false);
+                setImportJson('');
+                setImportResult(null);
+              }}
+            >
+              {importResult ? 'Close' : 'Cancel'}
+            </Button>
+            {!importResult && (
+              <Button
+                variant="primary"
+                onClick={handleImport}
+                disabled={saving || !importJson.trim()}
+              >
+                {saving ? <Spinner size="sm" /> : <Upload size={16} className="mr-1" />}
+                Import Templates
+              </Button>
+            )}
+            {importResult && importResult.summary.imported > 0 && (
+              <Button
+                variant="primary"
+                onClick={() => {
+                  setShowImportModal(false);
+                  setImportJson('');
+                  setImportResult(null);
+                }}
+              >
+                Done
+              </Button>
+            )}
           </div>
         </div>
       </Modal>

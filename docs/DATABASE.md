@@ -347,6 +347,28 @@ CREATE TABLE IF NOT EXISTS category_tool_configs (
 CREATE INDEX IF NOT EXISTS idx_category_tool_configs_category ON category_tool_configs(category_id);
 CREATE INDEX IF NOT EXISTS idx_category_tool_configs_tool ON category_tool_configs(tool_name);
 
+-- ============ Tool Routing Rules ============
+
+CREATE TABLE IF NOT EXISTS tool_routing_rules (
+  id TEXT PRIMARY KEY,
+  tool_name TEXT NOT NULL,
+  rule_name TEXT NOT NULL,
+  rule_type TEXT NOT NULL CHECK (rule_type IN ('keyword', 'regex')),
+  patterns TEXT NOT NULL,           -- JSON array: ["chart", "graph", "visualize"]
+  force_mode TEXT NOT NULL DEFAULT 'required'
+    CHECK (force_mode IN ('required', 'preferred', 'suggested')),
+  priority INTEGER DEFAULT 100,     -- Lower = higher priority
+  category_ids TEXT DEFAULT NULL,   -- JSON array, NULL = all categories
+  is_active INTEGER DEFAULT 1,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  created_by TEXT NOT NULL,
+  updated_by TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_tool_routing_rules_tool ON tool_routing_rules(tool_name);
+CREATE INDEX IF NOT EXISTS idx_tool_routing_rules_active ON tool_routing_rules(is_active);
+
 -- ============ Data Sources ============
 
 -- API Data Source Configurations
@@ -896,6 +918,34 @@ Category-level tool configuration overrides.
 | created_at | DATETIME | Creation timestamp |
 | updated_at | DATETIME | Last update timestamp |
 | updated_by | TEXT | Email of last updater |
+
+### tool_routing_rules
+
+Keyword and regex-based routing rules that force specific tools when patterns match user messages.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | TEXT | UUID primary key |
+| tool_name | TEXT | Target tool name (e.g., `chart_gen`, `task_planner`) |
+| rule_name | TEXT | Descriptive name for the rule |
+| rule_type | TEXT | `keyword` (word boundary matching) or `regex` |
+| patterns | TEXT | JSON array of patterns to match (e.g., `["chart", "graph"]`) |
+| force_mode | TEXT | `required` (force specific tool), `preferred` (force tool use), `suggested` (hint) |
+| priority | INTEGER | Lower = higher priority, determines order of matching |
+| category_ids | TEXT | JSON array of category IDs (NULL = applies to all categories) |
+| is_active | INTEGER | 1=enabled, 0=disabled |
+| created_at | DATETIME | Creation timestamp |
+| updated_at | DATETIME | Last update timestamp |
+| created_by | TEXT | Email of admin who created |
+| updated_by | TEXT | Email of last updater |
+
+**Force Mode Behavior:**
+
+| Mode | OpenAI `tool_choice` | Effect |
+|------|---------------------|--------|
+| `required` | `{type: 'function', function: {name: '...'}}` | Forces specific tool to be called |
+| `preferred` | `'required'` | LLM must use some tool, but can choose which |
+| `suggested` | `'auto'` | Hint only, LLM decides |
 
 ### data_api_configs
 

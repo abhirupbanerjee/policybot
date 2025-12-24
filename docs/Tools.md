@@ -15,9 +15,10 @@ This document describes the AI tools system that extends the bot's capabilities 
 7. [Function API Tool](#function-api-tool)
 8. [Task Planner Tool](#task-planner-tool)
 9. [YouTube Tool](#youtube-tool)
-10. [Tool Configuration](#tool-configuration)
-11. [Category-Level Overrides](#category-level-overrides)
-12. [API Reference](#api-reference)
+10. [Tool Routing](#tool-routing)
+11. [Tool Configuration](#tool-configuration)
+12. [Category-Level Overrides](#category-level-overrides)
+13. [API Reference](#api-reference)
 
 ---
 
@@ -1197,6 +1198,190 @@ interface YouTubeConfig {
 
 ---
 
+## Tool Routing
+
+### Purpose
+
+Tool Routing enables automatic forcing of specific tool calls based on keyword or regex pattern matching in user messages. This ensures that tools like `chart_gen` and `task_planner` are reliably invoked when users request visualizations or multi-step assessments, rather than leaving the decision entirely to the LLM.
+
+### Problem Solved
+
+Without Tool Routing, the LLM may:
+- Write prose about creating a chart instead of actually calling the `chart_gen` tool
+- Ask for confirmation before generating charts
+- Describe assessment steps instead of creating a task plan with `task_planner`
+
+Tool Routing forces `tool_choice` in the OpenAI API when patterns match, ensuring deterministic tool invocation.
+
+### How It Works
+
+```
+User Message: "Create a chart showing sales by region"
+         ↓
+┌─────────────────────────────────────────────────────┐
+│              Tool Routing Engine                     │
+│  1. Match against active routing rules               │
+│  2. "chart" keyword matches chart_gen rule          │
+│  3. Rule has forceMode: "required"                  │
+└─────────────────────────────────────────────────────┘
+         ↓
+OpenAI API called with:
+  tool_choice: { type: "function", function: { name: "chart_gen" } }
+         ↓
+LLM MUST call chart_gen tool (cannot generate prose instead)
+```
+
+### Force Modes
+
+| Mode | `tool_choice` Value | Effect |
+|------|---------------------|--------|
+| **required** | `{type: "function", function: {name: "X"}}` | Force this specific tool |
+| **preferred** | `"required"` | Force some tool call (LLM picks which) |
+| **suggested** | `"auto"` | Hint but don't force |
+
+### Rule Types
+
+| Type | Description | Example |
+|------|-------------|---------|
+| **keyword** | Word boundary matching (case-insensitive) | `chart` matches "create a chart" |
+| **regex** | Regular expression matching | `\bvisuali[sz]e\b` matches "visualize" or "visualise" |
+
+### Database Schema
+
+```sql
+CREATE TABLE tool_routing_rules (
+  id TEXT PRIMARY KEY,
+  tool_name TEXT NOT NULL,
+  rule_name TEXT NOT NULL,
+  rule_type TEXT NOT NULL CHECK (rule_type IN ('keyword', 'regex')),
+  patterns TEXT NOT NULL,           -- JSON array: ["chart", "graph", "visualize"]
+  force_mode TEXT NOT NULL DEFAULT 'required'
+    CHECK (force_mode IN ('required', 'preferred', 'suggested')),
+  priority INTEGER DEFAULT 100,     -- Lower = higher priority
+  category_ids TEXT DEFAULT NULL,   -- JSON array, NULL = all categories
+  is_active INTEGER DEFAULT 1,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  created_by TEXT NOT NULL,
+  updated_by TEXT NOT NULL
+);
+```
+
+### Default Routing Rules
+
+The system seeds these default rules on first access:
+
+| Tool | Rule Name | Patterns | Force Mode |
+|------|-----------|----------|------------|
+| `chart_gen` | Chart Visualization Keywords | chart, graph, plot, visualize, visualization, bar chart, pie chart, line graph, histogram, create a chart, show me a chart, generate a chart, draw a graph | required |
+| `task_planner` | Assessment and Planning Keywords | initiate, assessment, evaluate all, assess all, review all, step by step, create a plan, multi-step, assessment plan, task plan, structured workflow | required |
+| `doc_gen` | Document Generation Keywords | generate report, create pdf, export to pdf, download as pdf, save as pdf, formal document, create document, word document, docx | required |
+| `web_search` | Web Search Keywords | search the web, look up online, find online, latest news, current information, recent updates, search online | preferred |
+
+### Multi-Match Resolution
+
+When multiple rules match:
+
+1. Rules are sorted by `priority` (lower = higher priority)
+2. If multiple `required` rules match different tools → `tool_choice: "required"` (LLM picks)
+3. If single `required` rule matches → `tool_choice: {type: "function", function: {name: "X"}}`
+4. If only `preferred` rules match → `tool_choice: "required"`
+5. If only `suggested` rules match → `tool_choice: "auto"`
+
+### Category Filtering
+
+Rules can be scoped to specific categories:
+- `categoryIds: null` → Rule applies to all categories
+- `categoryIds: [1, 2, 3]` → Rule only applies when user is in one of these categories
+
+### Admin UI
+
+Tool Routing is managed in the Admin Dashboard under **Tools > Tool Routing**:
+
+1. **View rules** - List of all rules grouped by tool
+2. **Create rule** - Define new routing rule with patterns
+3. **Edit rule** - Modify patterns, force mode, priority
+4. **Enable/Disable** - Toggle individual rules
+5. **Delete rule** - Remove routing rule
+6. **Test panel** - Enter a message to see which rules match and the resulting `tool_choice`
+
+### API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/admin/tool-routing` | List all routing rules |
+| POST | `/api/admin/tool-routing` | Create new rule |
+| GET | `/api/admin/tool-routing/{id}` | Get rule by ID |
+| PATCH | `/api/admin/tool-routing/{id}` | Update rule |
+| DELETE | `/api/admin/tool-routing/{id}` | Delete rule |
+| POST | `/api/admin/tool-routing/test` | Test routing with a message |
+
+### Example: Create Routing Rule
+
+```bash
+curl -X POST https://policybot.example.com/api/admin/tool-routing \
+  -H "Content-Type: application/json" \
+  -H "Cookie: next-auth.session-token=..." \
+  -d '{
+    "toolName": "chart_gen",
+    "ruleName": "Custom Chart Keywords",
+    "ruleType": "keyword",
+    "patterns": ["diagram", "infographic", "data viz"],
+    "forceMode": "required",
+    "priority": 50,
+    "categoryIds": [1, 2],
+    "isActive": true
+  }'
+```
+
+### Example: Test Routing
+
+```bash
+curl -X POST https://policybot.example.com/api/admin/tool-routing/test \
+  -H "Content-Type: application/json" \
+  -H "Cookie: next-auth.session-token=..." \
+  -d '{
+    "message": "Create a chart showing quarterly revenue",
+    "categoryIds": [1]
+  }'
+```
+
+Response:
+```json
+{
+  "message": "Create a chart showing quarterly revenue",
+  "categoryIds": [1],
+  "matches": [
+    {
+      "ruleName": "Chart Visualization Keywords",
+      "toolName": "chart_gen",
+      "pattern": "chart",
+      "forceMode": "required"
+    }
+  ],
+  "finalToolChoice": "function:chart_gen"
+}
+```
+
+### Description Override
+
+In addition to keyword routing, admins can customize tool descriptions sent to the LLM. This is done in **Tools > Tools Management** by expanding a tool and editing the "LLM Prompt Instructions" section.
+
+Custom descriptions can make tools more prescriptive, telling the LLM exactly when and how to use them. For example, adding "ALWAYS call this tool instead of describing steps" to the task_planner description.
+
+### Implementation Files
+
+| File | Purpose |
+|------|---------|
+| `src/types/tool-routing.ts` | Type definitions |
+| `src/lib/db/tool-routing.ts` | Database CRUD operations |
+| `src/lib/tool-routing.ts` | Routing engine |
+| `src/lib/openai.ts` | Integration with OpenAI API |
+| `src/app/api/admin/tool-routing/` | API endpoints |
+| `src/components/admin/ToolRoutingTab.tsx` | Admin UI |
+
+---
+
 ## Tool Configuration
 
 ### Database Schema
@@ -1405,6 +1590,9 @@ Response:
 | `src/lib/db/data-sources.ts` | Data source CRUD operations |
 | `src/lib/db/function-api-config.ts` | Function API CRUD operations |
 | `src/lib/db/category-tool-config.ts` | Category overrides |
+| `src/lib/db/tool-routing.ts` | Tool routing CRUD operations |
+| `src/lib/tool-routing.ts` | Tool routing engine |
 | `src/types/data-sources.ts` | Data source type definitions |
 | `src/types/chart-gen.ts` | Chart generator type definitions |
 | `src/types/function-api.ts` | Function API type definitions |
+| `src/types/tool-routing.ts` | Tool routing type definitions |

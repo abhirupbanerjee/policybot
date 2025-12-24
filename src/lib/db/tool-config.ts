@@ -16,6 +16,7 @@ export interface ToolConfig {
   toolName: string;
   isEnabled: boolean;
   config: Record<string, unknown>;
+  descriptionOverride: string | null;
   createdAt: string;
   updatedAt: string;
   updatedBy: string;
@@ -37,6 +38,7 @@ interface DbToolConfig {
   tool_name: string;
   is_enabled: number;
   config_json: string;
+  description_override: string | null;
   created_at: string;
   updated_at: string;
   updated_by: string;
@@ -60,6 +62,7 @@ function mapDbToToolConfig(row: DbToolConfig): ToolConfig {
     toolName: row.tool_name,
     isEnabled: row.is_enabled === 1,
     config: JSON.parse(row.config_json),
+    descriptionOverride: row.description_override,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     updatedBy: row.updated_by,
@@ -145,6 +148,7 @@ export function updateToolConfig(
   updates: {
     isEnabled?: boolean;
     config?: Record<string, unknown>;
+    descriptionOverride?: string | null;
   },
   updatedBy: string
 ): ToolConfig | undefined {
@@ -155,13 +159,17 @@ export function updateToolConfig(
   const newConfig = updates.config ?? existing.config;
   const newConfigJson = JSON.stringify(newConfig);
   const oldConfigJson = JSON.stringify(existing.config);
+  // Handle descriptionOverride: undefined means keep existing, null means clear it
+  const newDescriptionOverride = updates.descriptionOverride !== undefined
+    ? updates.descriptionOverride
+    : existing.descriptionOverride;
 
   return transaction(() => {
     execute(
       `UPDATE tool_configs
-       SET is_enabled = ?, config_json = ?, updated_at = CURRENT_TIMESTAMP, updated_by = ?
+       SET is_enabled = ?, config_json = ?, description_override = ?, updated_at = CURRENT_TIMESTAMP, updated_by = ?
        WHERE tool_name = ?`,
-      [newEnabled ? 1 : 0, newConfigJson, updatedBy, toolName]
+      [newEnabled ? 1 : 0, newConfigJson, newDescriptionOverride, updatedBy, toolName]
     );
 
     // Record audit entry
@@ -407,5 +415,15 @@ export function resetToolToDefaults(toolName: string, updatedBy: string): ToolCo
   return updateToolConfig(toolName, {
     isEnabled: defaults.enabled,
     config: defaults.config,
+    descriptionOverride: null,  // Clear any description override on reset
   }, updatedBy);
+}
+
+/**
+ * Get the description override for a tool (if any)
+ * Used by getToolDefinitions() to apply admin-customized descriptions
+ */
+export function getDescriptionOverride(toolName: string): string | null {
+  const config = getToolConfig(toolName);
+  return config?.descriptionOverride ?? null;
 }

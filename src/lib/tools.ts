@@ -6,7 +6,7 @@ import { functionApiTool, getDynamicFunctionDefinitions, isFunctionAPIFunction }
 import { youtubeToolDefinition } from './tools/youtube';
 import { chartGenTool } from './tools/chart-gen';
 import { taskPlannerTool } from './tools/task-planner';
-import { isToolEnabled as isToolEnabledDb, migrateTavilySettingsIfNeeded, ensureToolConfigsExist } from './db/tool-config';
+import { isToolEnabled as isToolEnabledDb, migrateTavilySettingsIfNeeded, ensureToolConfigsExist, getDescriptionOverride } from './db/tool-config';
 import { toolsLogger as logger } from './logger';
 
 // ============ Types ============
@@ -118,6 +118,7 @@ export function isToolEnabled(name: string): boolean {
 /**
  * Get all tool definitions for OpenAI API
  * Only returns definitions for enabled autonomous tools
+ * Applies admin-configured description overrides when available
  * @param categoryIds - Optional category IDs to include dynamic function definitions
  */
 export function getToolDefinitions(categoryIds?: number[]): OpenAI.Chat.ChatCompletionTool[] {
@@ -133,7 +134,23 @@ export function getToolDefinitions(categoryIds?: number[]): OpenAI.Chat.ChatComp
     if (tool.name === 'function_api') continue;
 
     if (tool.definition) {
-      tools.push(tool.definition);
+      // Check for admin-configured description override
+      const descriptionOverride = getDescriptionOverride(tool.name);
+
+      if (descriptionOverride) {
+        // Create a copy with the overridden description
+        const overriddenTool: OpenAI.Chat.ChatCompletionTool = {
+          ...tool.definition,
+          function: {
+            ...tool.definition.function,
+            description: descriptionOverride,
+          },
+        };
+        tools.push(overriddenTool);
+        logger.debug('Applied description override', { tool: tool.name });
+      } else {
+        tools.push(tool.definition);
+      }
     }
   }
 

@@ -180,6 +180,7 @@ function runMigrations(database: Database.Database): void {
         tool_name TEXT UNIQUE NOT NULL,
         is_enabled INTEGER DEFAULT 0,
         config_json TEXT NOT NULL,
+        description_override TEXT,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_by TEXT NOT NULL
@@ -386,6 +387,44 @@ function runMigrations(database: Database.Database): void {
 
   if (!ctcColumnNames.includes('config_json')) {
     database.exec('ALTER TABLE category_tool_configs ADD COLUMN config_json TEXT');
+  }
+
+  // Check and add description_override column to tool_configs (for admin-editable tool descriptions)
+  const toolConfigsColumns = database.pragma('table_info(tool_configs)') as { name: string }[];
+  const toolConfigsColumnNames = toolConfigsColumns.map((c) => c.name);
+
+  if (!toolConfigsColumnNames.includes('description_override')) {
+    database.exec('ALTER TABLE tool_configs ADD COLUMN description_override TEXT');
+  }
+
+  // Check and create tool_routing_rules table for keyword-based tool routing
+  const toolRoutingRulesTableExists = database.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='tool_routing_rules'"
+  ).get();
+
+  if (!toolRoutingRulesTableExists) {
+    database.exec(`
+      CREATE TABLE IF NOT EXISTS tool_routing_rules (
+        id TEXT PRIMARY KEY,
+        tool_name TEXT NOT NULL,
+        rule_name TEXT NOT NULL,
+        rule_type TEXT NOT NULL CHECK (rule_type IN ('keyword', 'regex')),
+        patterns TEXT NOT NULL,
+        force_mode TEXT NOT NULL DEFAULT 'required'
+          CHECK (force_mode IN ('required', 'preferred', 'suggested')),
+        priority INTEGER DEFAULT 100,
+        category_ids TEXT DEFAULT NULL,
+        is_active INTEGER DEFAULT 1,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        created_by TEXT NOT NULL,
+        updated_by TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_tool_routing_rules_tool ON tool_routing_rules(tool_name);
+      CREATE INDEX IF NOT EXISTS idx_tool_routing_rules_active ON tool_routing_rules(is_active);
+      CREATE INDEX IF NOT EXISTS idx_tool_routing_rules_priority ON tool_routing_rules(priority);
+    `);
   }
 
   // Check and create task_plans table for Task Planner tool
@@ -683,6 +722,7 @@ CREATE TABLE IF NOT EXISTS tool_configs (
   tool_name TEXT UNIQUE NOT NULL,
   is_enabled INTEGER DEFAULT 0,
   config_json TEXT NOT NULL,
+  description_override TEXT,
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   updated_by TEXT NOT NULL

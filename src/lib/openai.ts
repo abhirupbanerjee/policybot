@@ -2,6 +2,7 @@ import OpenAI from 'openai';
 import type { Message, ToolCall } from '@/types';
 import { getLlmSettings, getEmbeddingSettings, getLimitsSettings } from './db/config';
 import { getToolDefinitions, executeTool } from './tools';
+import { resolveToolRouting } from './tool-routing';
 import { toolsLogger as logger } from './logger';
 import {
   TOOL_CAPABLE_MODELS,
@@ -158,10 +159,28 @@ export async function generateResponseWithTools(
 
   // Prepare completion params - pass categoryIds for dynamic Function API tools
   const tools = effectiveEnableTools ? getToolDefinitions(categoryIds) : undefined;
-  const completionParams = {
+
+  // Apply tool routing to determine tool_choice
+  let toolChoice: 'auto' | 'required' | { type: 'function'; function: { name: string } } | undefined;
+
+  if (effectiveEnableTools && tools && tools.length > 0) {
+    const routing = resolveToolRouting(userMessage, categoryIds || []);
+
+    if (routing.matches.length > 0) {
+      toolChoice = routing.toolChoice;
+      logger.info('Tool routing applied', {
+        matches: routing.matches.map((m) => `${m.toolName}:${m.matchedPattern}`),
+        toolChoice:
+          typeof toolChoice === 'object' ? toolChoice.function.name : toolChoice,
+      });
+    }
+  }
+
+  const completionParams: OpenAI.Chat.ChatCompletionCreateParamsNonStreaming = {
     model: llmSettings.model,
     messages,
     tools,
+    tool_choice: tools?.length ? toolChoice : undefined,
     max_tokens: llmSettings.maxTokens,
     temperature: llmSettings.temperature,
   };

@@ -169,6 +169,12 @@ When `AUTH_DISABLED=true` in environment:
 | PUT | `/api/admin/function-apis/{id}` | Yes | Admin | Update Function API |
 | DELETE | `/api/admin/function-apis/{id}` | Yes | Admin | Delete Function API |
 | POST | `/api/admin/function-apis/{id}/test` | Yes | Admin | Test Function API |
+| GET | `/api/admin/tool-routing` | Yes | Admin | List all routing rules |
+| POST | `/api/admin/tool-routing` | Yes | Admin | Create routing rule |
+| GET | `/api/admin/tool-routing/{id}` | Yes | Admin | Get routing rule by ID |
+| PATCH | `/api/admin/tool-routing/{id}` | Yes | Admin | Update routing rule |
+| DELETE | `/api/admin/tool-routing/{id}` | Yes | Admin | Delete routing rule |
+| POST | `/api/admin/tool-routing/test` | Yes | Admin | Test routing with message |
 
 ---
 
@@ -3321,6 +3327,319 @@ curl -X DELETE "https://policybot.abhirup.app/api/superuser/users?userEmail=user
   };
 }
 ```
+
+---
+
+### 23. Admin - Tool Routing
+
+Manage keyword and regex-based routing rules that force specific tools to be called when patterns match user messages.
+
+#### `GET /api/admin/tool-routing`
+
+List all routing rules with optional seeding of defaults.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Example Request**:
+
+```bash
+curl -X GET https://policybot.abhirup.app/api/admin/tool-routing \
+  -H "Cookie: next-auth.session-token=abc123..."
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  rules: Array<{
+    id: string;
+    toolName: string;
+    ruleName: string;
+    ruleType: 'keyword' | 'regex';
+    patterns: string[];
+    forceMode: 'required' | 'preferred' | 'suggested';
+    priority: number;
+    categoryIds: number[] | null;
+    isActive: boolean;
+    createdAt: string;
+    updatedAt: string;
+    createdBy: string;
+    updatedBy: string;
+  }>;
+  count: number;
+}
+```
+
+**Notes**:
+- Default routing rules are automatically seeded on first access if none exist
+- Rules are returned sorted by priority (lower = higher priority)
+
+---
+
+#### `POST /api/admin/tool-routing`
+
+Create a new routing rule.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Request Body**:
+
+```typescript
+{
+  toolName: string;     // Required: target tool name (e.g., "chart_gen")
+  ruleName: string;     // Required: descriptive rule name
+  ruleType: 'keyword' | 'regex';  // Required
+  patterns: string[];   // Required: array of patterns to match
+  forceMode?: 'required' | 'preferred' | 'suggested';  // Default: 'required'
+  priority?: number;    // Default: 100 (lower = higher priority)
+  categoryIds?: number[];  // Optional: limit to specific categories
+  isActive?: boolean;   // Default: true
+}
+```
+
+**Example Request**:
+
+```bash
+curl -X POST https://policybot.abhirup.app/api/admin/tool-routing \
+  -H "Content-Type: application/json" \
+  -H "Cookie: next-auth.session-token=abc123..." \
+  -d '{
+    "toolName": "chart_gen",
+    "ruleName": "Chart Keywords",
+    "ruleType": "keyword",
+    "patterns": ["chart", "graph", "visualize", "plot"],
+    "forceMode": "required",
+    "priority": 10
+  }'
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  success: true;
+  rule: {
+    id: string;
+    toolName: string;
+    ruleName: string;
+    // ... full rule object
+  };
+}
+```
+
+**Error Responses**:
+
+| Status | Error | Code | Solution |
+|--------|-------|------|----------|
+| 400 | "toolName is required and must be a string" | VALIDATION_ERROR | Include toolName |
+| 400 | "ruleName is required and must be a string" | VALIDATION_ERROR | Include ruleName |
+| 400 | "ruleType must be \"keyword\" or \"regex\"" | VALIDATION_ERROR | Use valid ruleType |
+| 400 | "patterns must be a non-empty array of strings" | VALIDATION_ERROR | Include patterns array |
+| 400 | "Invalid regex pattern: ..." | VALIDATION_ERROR | Fix regex syntax |
+
+---
+
+#### `GET /api/admin/tool-routing/{id}`
+
+Get a specific routing rule by ID.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Example Request**:
+
+```bash
+curl -X GET https://policybot.abhirup.app/api/admin/tool-routing/abc123 \
+  -H "Cookie: next-auth.session-token=abc123..."
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  rule: {
+    id: string;
+    toolName: string;
+    ruleName: string;
+    ruleType: 'keyword' | 'regex';
+    patterns: string[];
+    forceMode: 'required' | 'preferred' | 'suggested';
+    priority: number;
+    categoryIds: number[] | null;
+    isActive: boolean;
+    createdAt: string;
+    updatedAt: string;
+    createdBy: string;
+    updatedBy: string;
+  };
+}
+```
+
+**Error Responses**:
+
+| Status | Error | Code | Solution |
+|--------|-------|------|----------|
+| 404 | "Routing rule not found" | NOT_FOUND | Verify rule ID |
+
+---
+
+#### `PATCH /api/admin/tool-routing/{id}`
+
+Update an existing routing rule.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Request Body** (all fields optional):
+
+```typescript
+{
+  toolName?: string;
+  ruleName?: string;
+  ruleType?: 'keyword' | 'regex';
+  patterns?: string[];
+  forceMode?: 'required' | 'preferred' | 'suggested';
+  priority?: number;
+  categoryIds?: number[] | null;
+  isActive?: boolean;
+}
+```
+
+**Example Request**:
+
+```bash
+curl -X PATCH https://policybot.abhirup.app/api/admin/tool-routing/abc123 \
+  -H "Content-Type: application/json" \
+  -H "Cookie: next-auth.session-token=abc123..." \
+  -d '{
+    "patterns": ["chart", "graph", "visualize", "plot", "diagram"],
+    "priority": 5
+  }'
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  success: true;
+  rule: {
+    // ... updated rule object
+  };
+}
+```
+
+**Error Responses**:
+
+| Status | Error | Code | Solution |
+|--------|-------|------|----------|
+| 400 | "ruleType must be \"keyword\" or \"regex\"" | VALIDATION_ERROR | Use valid ruleType |
+| 400 | "patterns must be a non-empty array" | VALIDATION_ERROR | Include patterns |
+| 400 | "Invalid regex pattern: ..." | VALIDATION_ERROR | Fix regex syntax |
+| 404 | "Routing rule not found" | NOT_FOUND | Verify rule ID |
+
+---
+
+#### `DELETE /api/admin/tool-routing/{id}`
+
+Delete a routing rule.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Example Request**:
+
+```bash
+curl -X DELETE https://policybot.abhirup.app/api/admin/tool-routing/abc123 \
+  -H "Cookie: next-auth.session-token=abc123..."
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  success: true;
+  message: "Routing rule deleted";
+}
+```
+
+**Error Responses**:
+
+| Status | Error | Code | Solution |
+|--------|-------|------|----------|
+| 404 | "Routing rule not found" | NOT_FOUND | Verify rule ID |
+
+---
+
+#### `POST /api/admin/tool-routing/test`
+
+Test routing rules against a message to see which rules would match.
+
+**Authentication**: Required
+**Role**: Admin only
+
+**Request Body**:
+
+```typescript
+{
+  message: string;         // Required: message to test
+  categoryIds?: number[];  // Optional: category context
+}
+```
+
+**Example Request**:
+
+```bash
+curl -X POST https://policybot.abhirup.app/api/admin/tool-routing/test \
+  -H "Content-Type: application/json" \
+  -H "Cookie: next-auth.session-token=abc123..." \
+  -d '{
+    "message": "Create a chart showing sales by region",
+    "categoryIds": [1, 2]
+  }'
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  matches: Array<{
+    toolName: string;
+    forceMode: 'required' | 'preferred' | 'suggested';
+    ruleName: string;
+    matchedPattern: string;
+  }>;
+  toolChoice: 'auto' | 'required' | { type: 'function'; function: { name: string } };
+}
+```
+
+**Example Response**:
+
+```json
+{
+  "matches": [
+    {
+      "toolName": "chart_gen",
+      "forceMode": "required",
+      "ruleName": "Chart Keywords",
+      "matchedPattern": "chart"
+    }
+  ],
+  "toolChoice": {
+    "type": "function",
+    "function": {
+      "name": "chart_gen"
+    }
+  }
+}
+```
+
+**Notes**:
+- `toolChoice` determines the OpenAI `tool_choice` parameter:
+  - `'auto'`: No routing match, LLM decides
+  - `'required'`: Multiple tools matched, LLM must use one
+  - `{ type: 'function', function: { name: '...' } }`: Specific tool forced
 
 ---
 

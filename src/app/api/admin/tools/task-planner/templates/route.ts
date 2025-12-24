@@ -3,6 +3,7 @@
  *
  * GET  /api/admin/tools/task-planner/templates?categoryId=X - List templates for a category
  * POST /api/admin/tools/task-planner/templates - Create a new template
+ * PUT  /api/admin/tools/task-planner/templates - Bulk import templates from JSON
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -230,6 +231,181 @@ export async function POST(request: NextRequest) {
     console.error('Failed to create template:', error);
     return NextResponse.json(
       { error: 'Failed to create template' },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * PUT /api/admin/tools/task-planner/templates
+ * Bulk import multiple templates from JSON
+ *
+ * Body:
+ * {
+ *   categoryId: number,
+ *   templates: Array<{
+ *     key: string,
+ *     name: string,
+ *     description?: string,
+ *     placeholders?: string[],
+ *     tasks: Array<{ id: number, description: string }>
+ *   }>,
+ *   overwrite?: boolean  // If true, overwrite existing templates with same key
+ * }
+ */
+export async function PUT(request: NextRequest) {
+  try {
+    const admin = await requireAdmin();
+
+    const body = await request.json();
+    const { categoryId, templates, overwrite = false } = body;
+
+    // Validate categoryId
+    if (!categoryId || typeof categoryId !== 'number') {
+      return NextResponse.json(
+        { error: 'categoryId is required' },
+        { status: 400 }
+      );
+    }
+
+    // Validate templates array
+    if (!Array.isArray(templates) || templates.length === 0) {
+      return NextResponse.json(
+        { error: 'templates must be a non-empty array' },
+        { status: 400 }
+      );
+    }
+
+    // Verify category exists
+    const category = getCategoryById(categoryId);
+    if (!category) {
+      return NextResponse.json(
+        { error: 'Category not found' },
+        { status: 404 }
+      );
+    }
+
+    // Get existing config
+    const categoryConfig = getCategoryToolConfig(categoryId, 'task_planner');
+    const existingConfig = (categoryConfig?.config || {}) as TaskPlannerConfig;
+    const existingTemplates = existingConfig.templates || {};
+
+    // Track results
+    const results: {
+      imported: string[];
+      skipped: string[];
+      errors: Array<{ key: string; error: string }>;
+    } = {
+      imported: [],
+      skipped: [],
+      errors: [],
+    };
+
+    // Process each template
+    const newTemplates: Record<string, TaskTemplate> = { ...existingTemplates };
+
+    for (const template of templates) {
+      const { key, name, description, placeholders, tasks } = template;
+
+      // Validate key
+      if (!key || typeof key !== 'string' || !/^[a-z_][a-z0-9_]*$/.test(key)) {
+        results.errors.push({
+          key: key || '(missing)',
+          error: 'key must be a valid identifier (lowercase, underscores, no spaces)',
+        });
+        continue;
+      }
+
+      // Check for existing template
+      if (existingTemplates[key] && !overwrite) {
+        results.skipped.push(key);
+        continue;
+      }
+
+      // Validate name
+      if (!name || typeof name !== 'string' || name.trim().length === 0) {
+        results.errors.push({ key, error: 'name is required' });
+        continue;
+      }
+
+      // Validate tasks
+      if (!Array.isArray(tasks) || tasks.length === 0) {
+        results.errors.push({ key, error: 'tasks must be a non-empty array' });
+        continue;
+      }
+
+      let tasksValid = true;
+      for (const task of tasks) {
+        if (typeof task.id !== 'number' || typeof task.description !== 'string') {
+          results.errors.push({
+            key,
+            error: 'Each task must have an id (number) and description (string)',
+          });
+          tasksValid = false;
+          break;
+        }
+      }
+      if (!tasksValid) continue;
+
+      // Create template
+      const newTemplate: TaskTemplate = {
+        name: name.trim(),
+        description: description?.trim() || '',
+        active: true,
+        placeholders: Array.isArray(placeholders)
+          ? placeholders.filter((p): p is string => typeof p === 'string')
+          : [],
+        tasks: tasks.map((t, idx) => ({
+          id: t.id ?? idx + 1,
+          description: t.description,
+        })),
+        createdBy: admin.email,
+        updatedBy: admin.email,
+        updatedAt: new Date().toISOString(),
+      };
+
+      newTemplates[key] = newTemplate;
+      results.imported.push(key);
+    }
+
+    // Only save if we have imports
+    if (results.imported.length > 0) {
+      const updatedConfig: TaskPlannerConfig = {
+        ...existingConfig,
+        templates: newTemplates,
+      };
+
+      upsertCategoryToolConfig(
+        categoryId,
+        'task_planner',
+        { config: updatedConfig as Record<string, unknown> },
+        admin.email
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      imported: results.imported,
+      skipped: results.skipped,
+      errors: results.errors,
+      summary: {
+        total: templates.length,
+        imported: results.imported.length,
+        skipped: results.skipped.length,
+        failed: results.errors.length,
+      },
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Unauthorized') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    if (error instanceof Error && error.message === 'Admin access required') {
+      return NextResponse.json({ error: 'Admin access required' }, { status: 403 });
+    }
+
+    console.error('Failed to import templates:', error);
+    return NextResponse.json(
+      { error: 'Failed to import templates' },
       { status: 500 }
     );
   }

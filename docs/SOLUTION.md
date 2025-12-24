@@ -346,6 +346,30 @@ User Query
 - **Flexible Operations**: Support GET, POST, PUT, DELETE methods
 - **Use Cases**: Submit feedback, retrieve analytics, trigger workflows
 
+#### Tool Routing
+- **Keyword/Regex Patterns**: Match user messages to force specific tools
+- **Force Modes**: `required` (force specific tool), `preferred` (force tool use), `suggested` (hint)
+- **Category Scoping**: Rules can apply globally or to specific categories
+- **Priority System**: Lower priority values are evaluated first
+
+```
+User Message
+    │
+    ▼
+┌─────────────────┐
+│ Match against   │
+│ routing rules   │
+└─────────────────┘
+    │
+    ├── No Match ──────────────▶ tool_choice = 'auto'
+    │
+    ├── Single Required ───────▶ tool_choice = {function: {name: '...'}}
+    │
+    ├── Multiple Required ─────▶ tool_choice = 'required' (LLM picks one)
+    │
+    └── Preferred/Suggested ───▶ tool_choice = 'required' or 'auto'
+```
+
 ### 6. Authentication Flow
 
 ```
@@ -817,7 +841,7 @@ model_list:
 
 ## Admin Dashboard
 
-The admin dashboard provides a comprehensive interface for system management with five main tabs:
+The admin dashboard provides a comprehensive interface for system management with six main tabs:
 
 ### Dashboard Tab (Statistics)
 
@@ -861,6 +885,22 @@ Seven configuration sections accessible via sidebar:
 | **Web Search** | Tavily API configuration and search parameters |
 | **Branding** | Bot name and icon for sidebar |
 | **Reranker** | Cohere/local provider, score thresholds |
+
+### Tools Tab
+
+Tool management with sub-tabs:
+
+| Sub-Tab | Features |
+|---------|----------|
+| **Tools Management** | Enable/disable tools, configure tool settings, edit description overrides |
+| **Tool Routing** | Create/edit routing rules, test patterns, configure force modes |
+
+**Tool Routing Features:**
+- Create keyword or regex patterns to match user messages
+- Force specific tools when patterns match (e.g., "chart" → `chart_gen`)
+- Set priority for rule evaluation order
+- Scope rules to specific categories or apply globally
+- Test routing rules against sample messages
 
 ---
 

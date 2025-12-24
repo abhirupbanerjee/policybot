@@ -13,9 +13,11 @@ This guide explains how to use the Superuser Dashboard to manage your assigned c
 5. [Prompts Tab](#5-prompts-tab)
 6. [Skills Tab](#6-skills-tab)
 7. [Tools Tab](#7-tools-tab)
-8. [Data Sources](#8-data-sources)
-9. [Permissions Summary](#9-permissions-summary)
-10. [Troubleshooting](#10-troubleshooting)
+8. [Task Planner Templates](#8-task-planner-templates)
+9. [Data Sources](#9-data-sources)
+10. [Permissions Summary](#10-permissions-summary)
+11. [Troubleshooting](#11-troubleshooting)
+12. [Quick Reference](#12-quick-reference)
 
 ---
 
@@ -429,9 +431,105 @@ To remove category overrides and use global settings:
 2. Click **Reset to Global** for the tool
 3. Confirm the action
 
+### Tool Routing
+
+> **Note:** Tool Routing (keyword-based tool forcing) is configured by Admins only. Superusers cannot view or modify routing rules. If tools are not being called as expected, contact your Admin to review the routing configuration.
+
 ---
 
-## 8. Data Sources
+## 8. Task Planner Templates
+
+Task Planner Templates allow the AI to execute structured, multi-step workflows for complex tasks within your categories.
+
+### What are Task Planner Templates?
+
+Templates are predefined task sequences that guide the AI through complex operations. When a user requests a multi-step task, the AI can use a template to:
+- Break the work into discrete, trackable tasks
+- Execute tasks sequentially with progress tracking
+- Provide structured outputs at each stage
+
+### Viewing Templates
+
+The Task Planner section displays all templates configured for your assigned categories:
+
+| Column | Description |
+|--------|-------------|
+| **Template Key** | Unique identifier used by the AI (e.g., `soe_identify`) |
+| **Name** | Display name with placeholder support (e.g., `{country} SOE Assessment`) |
+| **Description** | When the AI should use this template |
+| **Placeholders** | Variables the AI provides (e.g., `country`, `soe_name`) |
+| **Tasks** | Number of steps in the template |
+| **Status** | Active or Inactive |
+
+### Creating a Template
+
+To create a new template for your category:
+
+1. Click **Add Template**
+2. Fill in the configuration:
+   - **Key** - Unique identifier (lowercase, underscores, e.g., `quarterly_review`)
+   - **Name** - Display name, can include `{placeholders}`
+   - **Description** - When the AI should use this template
+   - **Placeholders** - Variables the AI will substitute (comma-separated)
+3. Add tasks:
+   - Click **Add Task** for each step
+   - Enter a description (can include `{placeholders}`)
+   - Reorder tasks using drag handles
+4. Set **Active** to Yes
+5. Click **Save Template**
+
+### Template Example
+
+**Template Key:** `quarterly_review`
+**Name:** `{department} Q{quarter} Review`
+**Placeholders:** `department`, `quarter`
+
+**Tasks:**
+| ID | Description |
+|----|-------------|
+| 1 | Search knowledge base for {department} policies |
+| 2 | Gather Q{quarter} performance metrics |
+| 3 | Compare against targets |
+| 4 | Identify gaps and issues |
+| 5 | Generate recommendations |
+| 6 | Create summary report |
+
+When a user asks "Review IT department for Q3", the AI:
+1. Selects this template
+2. Substitutes: `department` → "IT", `quarter` → "3"
+3. Executes each task sequentially
+4. Tracks and reports progress
+
+### Editing Templates
+
+To modify an existing template:
+
+1. Find the template in the list
+2. Click **Edit**
+3. Modify fields as needed
+4. Add, remove, or reorder tasks
+5. Click **Save**
+
+### Template Status
+
+| Status | Behavior |
+|--------|----------|
+| **Active** | AI can use this template |
+| **Inactive** | Template hidden from AI, preserved in database |
+
+> **Note:** Only Admins can deactivate or delete templates. Superusers can create and edit templates for their categories.
+
+### Best Practices
+
+1. **Clear task descriptions** - Each task should be specific and actionable
+2. **Logical ordering** - Place research tasks before analysis tasks
+3. **User checkpoints** - Include tasks that confirm with the user before proceeding
+4. **Reasonable scope** - 5-15 tasks per template is typical
+5. **Meaningful placeholders** - Use descriptive names like `{company_name}` not `{x}`
+
+---
+
+## 9. Data Sources
 
 Data Sources allow the AI to query external APIs and CSV files to answer questions with real data.
 
@@ -510,7 +608,7 @@ To auto-configure from an OpenAPI/Swagger spec:
 
 ---
 
-## 9. Permissions Summary
+## 10. Permissions Summary
 
 ### What Superusers CAN Do
 
@@ -545,6 +643,11 @@ To auto-configure from an OpenAPI/Swagger spec:
 ✅ **Skills**
 - View all available skills (read-only)
 
+✅ **Task Planner Templates**
+- Create templates for assigned categories
+- Edit existing templates for assigned categories
+- View all templates for assigned categories
+
 ### What Superusers CANNOT Do
 
 ❌ **Global Operations**
@@ -552,6 +655,7 @@ To auto-configure from an OpenAPI/Swagger spec:
 - Create global data sources
 - Modify global tool configuration
 - Modify global system prompt
+- Configure tool routing rules
 
 ❌ **Cross-Category Access**
 - Access categories not assigned to you
@@ -571,9 +675,13 @@ To auto-configure from an OpenAPI/Swagger spec:
 - Configure reranker or LLM settings
 - Create or manage skills
 
+❌ **Task Planner Templates**
+- Deactivate or delete templates
+- Create templates for unassigned categories
+
 ---
 
-## 10. Troubleshooting
+## 11. Troubleshooting
 
 ### Common Errors
 
@@ -679,7 +787,7 @@ If you encounter issues not covered here:
 
 ---
 
-## Quick Reference
+## 12. Quick Reference
 
 ### Keyboard Shortcuts
 
@@ -717,4 +825,4 @@ If you encounter issues not covered here:
 
 ---
 
-*Last updated: December 2024*
+*Last updated: December 2024 (v2.0 - Added Task Planner Templates)*

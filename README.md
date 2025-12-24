@@ -68,7 +68,7 @@ Policy Bot is an **enterprise AI assistant platform** designed for organizations
 | **Category-Based Organization** | Organize documents and users by department (HR, Finance, IT, etc.) |
 | **Three-Tier Access Control** | Admin → SuperUser → User hierarchy with category-based permissions |
 | **Skills System** | Inject custom behaviors based on category context or keyword triggers |
-| **Tool Integrations** | Web search, external API queries, CSV data lookups, chart generation, task planning, YouTube transcripts, OpenAI-style function calling |
+| **Tool Integrations** | Web search, external API queries, CSV data lookups, chart generation, task planning, YouTube transcripts, OpenAI-style function calling, keyword-based tool routing |
 | **User Memory** | Extract and recall user-specific facts across conversations |
 | **Thread Summarization** | Automatically summarize long conversations to maintain context |
 | **Local Data Sovereignty** | All data stored locally—SQLite, ChromaDB, filesystem—with full backup control |
@@ -520,6 +520,16 @@ policy-bot/
 | GET | `/api/admin/providers` | Get LLM provider and service status |
 | GET | `/api/admin/reranker-status` | Get reranker availability (Cohere/local) |
 
+### Tool Routing
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/admin/tool-routing` | List all routing rules |
+| POST | `/api/admin/tool-routing` | Create new routing rule |
+| GET | `/api/admin/tool-routing/{id}` | Get routing rule by ID |
+| PATCH | `/api/admin/tool-routing/{id}` | Update routing rule |
+| DELETE | `/api/admin/tool-routing/{id}` | Delete routing rule |
+| POST | `/api/admin/tool-routing/test` | Test routing with a message |
+
 ## Database Schema
 
 Policy Bot uses SQLite for metadata storage with the following tables:
@@ -537,6 +547,7 @@ Policy Bot uses SQLite for metadata storage with the following tables:
 ### Configuration Tables
 - **config** - Key-value settings storage
 - **tool_configs** - Global tool configurations
+- **tool_routing_rules** - Keyword/regex patterns for forcing tool calls
 - **category_tool_configs** - Category-specific tool overrides and templates
 
 ### Feature Tables
@@ -780,7 +791,7 @@ model_list:
 
 **Features & Configuration:**
 - [Memory, Skills & Functions](docs/Memory-Skill-Functions.md) - Skills system, tools, data sources, and function APIs
-- [Tools Reference](docs/Tools.md) - Web search, document generation, data sources, function APIs, task planner, YouTube
+- [Tools Reference](docs/Tools.md) - Web search, document generation, data sources, function APIs, task planner, YouTube, tool routing
 - [LiteLLM Guide](docs/liteLLM-implementation-guide.md) - Multi-provider LLM configuration
 
 **Deployment:**

@@ -21,6 +21,8 @@ import {
   Database,
   Zap,
   ListTodo,
+  Route,
+  Wrench,
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
@@ -28,6 +30,7 @@ import Modal from '@/components/ui/Modal';
 import DataSourcesTab from './DataSourcesTab';
 import FunctionAPITab from './FunctionAPITab';
 import TaskPlannerTemplates from './TaskPlannerTemplates';
+import ToolRoutingTab from './ToolRoutingTab';
 
 // Tool interface matching API response
 interface Tool {
@@ -39,6 +42,8 @@ interface Tool {
   config: Record<string, unknown>;
   configSchema: Record<string, unknown>;
   defaultConfig: Record<string, unknown>;
+  descriptionOverride: string | null;
+  defaultDescription: string;
   metadata: {
     id: string;
     createdAt: string;
@@ -659,6 +664,8 @@ function GenericToolConfig({
   );
 }
 
+type ToolsSubTab = 'management' | 'routing';
+
 interface ToolsTabProps {
   /** If true, shows read-only view (for superusers in legacy mode) */
   readOnly?: boolean;
@@ -672,6 +679,9 @@ interface ToolsTabProps {
  * @param isSuperuser - If true, shows superuser mode with category-level config
  */
 export default function ToolsTab({ readOnly = false, isSuperuser = false }: ToolsTabProps) {
+  // Sub-tab state (only for admin mode)
+  const [activeSubTab, setActiveSubTab] = useState<ToolsSubTab>('management');
+
   // Admin mode state
   const [tools, setTools] = useState<Tool[]>([]);
 
@@ -700,6 +710,11 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false }: Tool
   const [showAuditModal, setShowAuditModal] = useState(false);
   const [auditHistory, setAuditHistory] = useState<AuditEntry[]>([]);
   const [auditToolName, setAuditToolName] = useState<string>('');
+
+  // Description override state
+  const [showDescriptionEditor, setShowDescriptionEditor] = useState<string | null>(null);
+  const [editedDescription, setEditedDescription] = useState<string>('');
+  const [savingDescription, setSavingDescription] = useState(false);
 
   // Fetch tools for admin mode
   const fetchTools = useCallback(async () => {
@@ -879,6 +894,35 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false }: Tool
     }
   };
 
+  // Save description override
+  const handleSaveDescription = async (toolName: string) => {
+    setSavingDescription(true);
+    try {
+      const response = await fetch(`/api/admin/tools/${toolName}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          descriptionOverride: editedDescription.trim() || null,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to save description');
+      }
+
+      setSuccess('LLM prompt instructions updated successfully');
+      setTimeout(() => setSuccess(null), 3000);
+      setShowDescriptionEditor(null);
+      setEditedDescription('');
+      fetchTools();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save description');
+    } finally {
+      setSavingDescription(false);
+    }
+  };
+
   // Test tool connection
   const handleTestTool = async (toolName: string) => {
     setTestingTool(toolName);
@@ -1009,48 +1053,86 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false }: Tool
         </div>
       )}
 
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold text-gray-900">
-            {isSuperuser ? 'Category Tools' : readOnly ? 'Available Tools' : 'Tools Management'}
-          </h2>
-          <p className="text-sm text-gray-500">
-            {isSuperuser
-              ? 'Configure tool availability and branding for your categories'
-              : readOnly
-                ? 'View available AI-powered tools and their status'
-                : 'Configure AI-powered tools and integrations'
-            }
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          {/* Category Selector (superuser mode) */}
-          {isSuperuser && assignedCategories.length > 0 && (
-            <select
-              value={selectedCategory || ''}
-              onChange={(e) => setSelectedCategory(Number(e.target.value))}
-              className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+      {/* Sub-tabs (admin mode only) */}
+      {!readOnly && !isSuperuser && (
+        <div className="border-b border-gray-200">
+          <nav className="-mb-px flex gap-6">
+            <button
+              onClick={() => setActiveSubTab('management')}
+              className={`flex items-center gap-2 py-3 px-1 border-b-2 text-sm font-medium transition-colors ${
+                activeSubTab === 'management'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
             >
-              {assignedCategories.map(cat => (
-                <option key={cat.id} value={cat.id}>{cat.name}</option>
-              ))}
-            </select>
-          )}
-          {!readOnly && !isSuperuser && (
-            <Button variant="secondary" onClick={fetchTools} disabled={loading}>
-              <RefreshCw size={16} className={`mr-2 ${loading ? 'animate-spin' : ''}`} />
-              Refresh
-            </Button>
-          )}
-          {isSuperuser && (
-            <Button variant="secondary" onClick={fetchSuperuserTools} disabled={loading}>
-              <RefreshCw size={16} className={`mr-2 ${loading ? 'animate-spin' : ''}`} />
-              Refresh
-            </Button>
-          )}
+              <Wrench size={16} />
+              Tools Management
+            </button>
+            <button
+              onClick={() => setActiveSubTab('routing')}
+              className={`flex items-center gap-2 py-3 px-1 border-b-2 text-sm font-medium transition-colors ${
+                activeSubTab === 'routing'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <Route size={16} />
+              Tool Routing
+            </button>
+          </nav>
         </div>
-      </div>
+      )}
+
+      {/* Tool Routing Sub-tab */}
+      {!readOnly && !isSuperuser && activeSubTab === 'routing' && (
+        <ToolRoutingTab />
+      )}
+
+      {/* Tools Management Header - only show when on management tab or in superuser/readOnly mode */}
+      {(readOnly || isSuperuser || activeSubTab === 'management') && (
+        <>
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900">
+                {isSuperuser ? 'Category Tools' : readOnly ? 'Available Tools' : 'Tools Management'}
+              </h2>
+              <p className="text-sm text-gray-500">
+                {isSuperuser
+                  ? 'Configure tool availability and branding for your categories'
+                  : readOnly
+                    ? 'View available AI-powered tools and their status'
+                    : 'Configure AI-powered tools and integrations'
+                }
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              {/* Category Selector (superuser mode) */}
+              {isSuperuser && assignedCategories.length > 0 && (
+                <select
+                  value={selectedCategory || ''}
+                  onChange={(e) => setSelectedCategory(Number(e.target.value))}
+                  className="px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                >
+                  {assignedCategories.map(cat => (
+                    <option key={cat.id} value={cat.id}>{cat.name}</option>
+                  ))}
+                </select>
+              )}
+              {!readOnly && !isSuperuser && (
+                <Button variant="secondary" onClick={fetchTools} disabled={loading}>
+                  <RefreshCw size={16} className={`mr-2 ${loading ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
+              )}
+              {isSuperuser && (
+                <Button variant="secondary" onClick={fetchSuperuserTools} disabled={loading}>
+                  <RefreshCw size={16} className={`mr-2 ${loading ? 'animate-spin' : ''}`} />
+                  Refresh
+                </Button>
+              )}
+            </div>
+          </div>
 
       {/* Tools List - Superuser Mode */}
       {isSuperuser && (
@@ -1320,6 +1402,80 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false }: Tool
                         {/* Metadata and Save - not shown for data_source and function_api which have their own UI */}
                         {tool.name !== 'data_source' && tool.name !== 'function_api' && (
                           <>
+                            {/* LLM Prompt Instructions (Description Override) */}
+                            <div className="mt-6 pt-4 border-t">
+                              <button
+                                onClick={() => {
+                                  if (showDescriptionEditor === tool.name) {
+                                    setShowDescriptionEditor(null);
+                                    setEditedDescription('');
+                                  } else {
+                                    setShowDescriptionEditor(tool.name);
+                                    setEditedDescription(tool.descriptionOverride || '');
+                                  }
+                                }}
+                                className="flex items-center gap-2 text-sm font-medium text-gray-700 hover:text-gray-900"
+                              >
+                                {showDescriptionEditor === tool.name ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                                <span>LLM Prompt Instructions</span>
+                                {tool.descriptionOverride && (
+                                  <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded">Customized</span>
+                                )}
+                              </button>
+
+                              {showDescriptionEditor === tool.name && (
+                                <div className="mt-3 space-y-3">
+                                  {/* Default description (readonly reference) */}
+                                  <div>
+                                    <label className="block text-xs text-gray-500 mb-1">Default Description (from code)</label>
+                                    <pre className="text-xs bg-gray-100 p-2 rounded border overflow-auto max-h-32 whitespace-pre-wrap">
+                                      {tool.defaultDescription}
+                                    </pre>
+                                  </div>
+
+                                  {/* Override textarea */}
+                                  <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">
+                                      Custom Description Override
+                                    </label>
+                                    <textarea
+                                      value={editedDescription}
+                                      onChange={(e) => setEditedDescription(e.target.value)}
+                                      placeholder="Leave empty to use default description..."
+                                      className="w-full h-48 p-2 border rounded text-sm font-mono resize-y"
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1">
+                                      This description is sent to the LLM to guide when and how to use this tool.
+                                      Clear the field and save to revert to default.
+                                    </p>
+                                  </div>
+
+                                  {/* Save/Clear buttons */}
+                                  <div className="flex gap-2">
+                                    <Button
+                                      onClick={() => handleSaveDescription(tool.name)}
+                                      disabled={savingDescription}
+                                    >
+                                      {savingDescription ? <Spinner size="sm" className="mr-2" /> : <Save size={16} className="mr-2" />}
+                                      Save Instructions
+                                    </Button>
+                                    {tool.descriptionOverride && (
+                                      <Button
+                                        variant="secondary"
+                                        onClick={() => {
+                                          setEditedDescription('');
+                                          handleSaveDescription(tool.name);
+                                        }}
+                                        disabled={savingDescription}
+                                      >
+                                        Reset to Default
+                                      </Button>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+
                             {/* Metadata */}
                             {tool.metadata && (
                               <div className="mt-4 pt-4 border-t text-xs text-gray-500">
@@ -1361,6 +1517,8 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false }: Tool
             })
           )}
         </div>
+      )}
+        </>
       )}
 
       {/* Audit History Modal */}

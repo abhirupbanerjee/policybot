@@ -75,6 +75,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     // Get audit history
     const auditHistory = getToolConfigAuditHistory(toolName, 10);
 
+    // Get default description from tool definition
+    const defaultDescription = tool.definition?.function?.description ?? tool.description;
+
     return NextResponse.json({
       name: tool.name,
       displayName: tool.displayName,
@@ -84,6 +87,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       config: safeConfig,
       configSchema: tool.configSchema,
       defaultConfig: tool.defaultConfig,
+      descriptionOverride: config?.descriptionOverride ?? null,
+      defaultDescription,
       metadata: config ? {
         id: config.id,
         createdAt: config.createdAt,
@@ -142,7 +147,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     const body = await request.json();
-    const { enabled, config, reset } = body;
+    const { enabled, config, reset, descriptionOverride } = body;
 
     // Handle reset to defaults
     if (reset === true) {
@@ -197,6 +202,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       const updated = updateToolConfig(toolName, {
         isEnabled: enabled,
         config: mergedConfig,
+        ...(descriptionOverride !== undefined && { descriptionOverride }),
       }, user.email);
 
       if (!updated) {
@@ -233,9 +239,13 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       });
     }
 
-    // If only enabled status is being updated
-    if (enabled !== undefined) {
-      const updated = updateToolConfig(toolName, { isEnabled: enabled }, user.email);
+    // If only enabled status and/or descriptionOverride is being updated
+    if (enabled !== undefined || descriptionOverride !== undefined) {
+      const updates: { isEnabled?: boolean; descriptionOverride?: string | null } = {};
+      if (enabled !== undefined) updates.isEnabled = enabled;
+      if (descriptionOverride !== undefined) updates.descriptionOverride = descriptionOverride;
+
+      const updated = updateToolConfig(toolName, updates, user.email);
 
       if (!updated) {
         return NextResponse.json(
@@ -250,6 +260,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
           name: tool.name,
           displayName: tool.displayName,
           enabled: updated.isEnabled,
+          descriptionOverride: updated.descriptionOverride,
           updatedAt: updated.updatedAt,
           updatedBy: updated.updatedBy,
         },
