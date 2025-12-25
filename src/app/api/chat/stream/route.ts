@@ -1,0 +1,285 @@
+/**
+ * Streaming Chat API
+ *
+ * SSE-based streaming endpoint for real-time chat responses.
+ * Provides progressive disclosure of processing phases:
+ * 1. RAG retrieval with skill/tool info
+ * 2. Tool execution with status updates
+ * 3. Final LLM response streaming
+ */
+
+import { NextRequest } from 'next/server';
+import { v4 as uuidv4 } from 'uuid';
+import { getCurrentUser } from '@/lib/auth';
+import { getUserByEmail } from '@/lib/db/users';
+import { getThread, addMessage, getMessages, getUploadPaths, getThreadCategorySlugsForQuery } from '@/lib/threads';
+import { getMemoryContext, processConversationForMemory } from '@/lib/memory';
+import { countTokens, updateThreadTokenCount, shouldSummarize, summarizeThread, getThreadSummary, formatSummaryForContext } from '@/lib/summarization';
+import { getMemorySettings, getSummarizationSettings, getLimitsSettings } from '@/lib/db/config';
+import { runWithContextAsync } from '@/lib/request-context';
+import { generateResponseWithTools } from '@/lib/openai';
+import {
+  createSSEEncoder,
+  getSSEHeaders,
+  getPhaseMessage,
+  performRAGRetrieval,
+  STREAMING_CONFIG,
+} from '@/lib/streaming';
+import type { Message, StreamEvent, StreamChatRequest, Source, MessageVisualization, GeneratedDocumentInfo } from '@/types';
+
+export async function POST(request: NextRequest) {
+  const encoder = createSSEEncoder();
+  let keepAliveInterval: NodeJS.Timeout | null = null;
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      // Helper to send SSE events
+      const send = (event: StreamEvent) => {
+        try {
+          controller.enqueue(encoder.encode(event));
+        } catch {
+          // Controller closed, ignore
+        }
+      };
+
+      // Setup keep-alive ping
+      keepAliveInterval = setInterval(() => {
+        try {
+          controller.enqueue(encoder.keepAlive());
+        } catch {
+          // Controller closed
+        }
+      }, STREAMING_CONFIG.KEEPALIVE_INTERVAL_MS);
+
+      // Handle client abort
+      const cleanup = () => {
+        if (keepAliveInterval) {
+          clearInterval(keepAliveInterval);
+          keepAliveInterval = null;
+        }
+      };
+
+      request.signal.addEventListener('abort', cleanup);
+
+      try {
+        // ============ Phase 1: Authentication & Validation ============
+        const user = await getCurrentUser();
+        if (!user) {
+          send({ type: 'error', code: 'AUTH_ERROR', message: 'Unauthorized', recoverable: false });
+          cleanup();
+          controller.close();
+          return;
+        }
+
+        const body = await request.json() as StreamChatRequest;
+        const { message, threadId } = body;
+
+        if (!message || !threadId) {
+          send({ type: 'error', code: 'VALIDATION_ERROR', message: 'Missing required fields', recoverable: false });
+          cleanup();
+          controller.close();
+          return;
+        }
+
+        // Verify thread ownership
+        const thread = await getThread(user.id, threadId);
+        if (!thread) {
+          send({ type: 'error', code: 'VALIDATION_ERROR', message: 'Thread not found', recoverable: false });
+          cleanup();
+          controller.close();
+          return;
+        }
+
+        send({ type: 'status', phase: 'init', content: getPhaseMessage('init') });
+
+        // ============ Setup ============
+        const dbUser = getUserByEmail(user.email);
+        const memorySettings = getMemorySettings();
+        const summarizationSettings = getSummarizationSettings();
+        const limitsSettings = getLimitsSettings();
+
+        // Create and save user message
+        const userMessageId = uuidv4();
+        const userMessage: Message = {
+          id: userMessageId,
+          role: 'user',
+          content: message,
+          timestamp: new Date(),
+        };
+        await addMessage(user.id, threadId, userMessage);
+        updateThreadTokenCount(threadId, countTokens(message));
+
+        // Get conversation history
+        const conversationHistory = await getMessages(user.id, threadId, 50);
+        const categorySlugs = await getThreadCategorySlugsForQuery(threadId);
+        const categoryIds = thread.categories?.map(c => c.id) || [];
+
+        // Get memory and summary context
+        let memoryContext = '';
+        if (memorySettings.enabled && dbUser) {
+          memoryContext = getMemoryContext(dbUser.id, categoryIds);
+        }
+
+        let summaryContext = '';
+        const existingSummary = getThreadSummary(threadId);
+        if (existingSummary) {
+          summaryContext = formatSummaryForContext(existingSummary.summary);
+        }
+
+        // Get user uploads
+        const uploadPaths = await getUploadPaths(user.id, threadId);
+
+        // Create assistant message ID for context
+        const assistantMessageId = uuidv4();
+
+        // ============ Run with request context ============
+        await runWithContextAsync(
+          {
+            threadId,
+            messageId: assistantMessageId,
+            categoryId: categoryIds[0],
+            userId: user.id,
+          },
+          async () => {
+            // ============ Phase 2: RAG Retrieval ============
+            send({ type: 'status', phase: 'rag', content: getPhaseMessage('rag') });
+
+            const ragResult = await performRAGRetrieval(
+              message,
+              categorySlugs,
+              uploadPaths,
+              memoryContext,
+              summaryContext,
+              send
+            );
+
+            // Send sources from RAG
+            send({ type: 'sources', data: ragResult.sources });
+
+            // ============ Phase 3: Tool Execution ============
+            send({ type: 'status', phase: 'tools', content: getPhaseMessage('tools') });
+
+            // Track collected artifacts
+            const visualizations: MessageVisualization[] = [];
+            const documents: GeneratedDocumentInfo[] = [];
+            const webSources: Source[] = [];
+
+            // Build messages for tool execution
+            const historyLimit = limitsSettings.conversationHistoryMessages;
+            const recentHistory = conversationHistory.slice(0, -1).slice(-historyLimit);
+
+            // Execute tools with streaming callbacks
+            const toolResult = await generateResponseWithTools(
+              ragResult.systemPrompt,
+              recentHistory,
+              ragResult.context,
+              message,
+              true, // Enable tools
+              ragResult.categoryIds,
+              {
+                onToolStart: (name, displayName) => {
+                  send({ type: 'tool_start', name, displayName });
+                },
+                onToolEnd: (name, success, duration, error) => {
+                  send({ type: 'tool_end', name, success, duration, error });
+                },
+                onArtifact: (type, data) => {
+                  if (type === 'visualization') {
+                    const viz = data as MessageVisualization;
+                    visualizations.push(viz);
+                    send({ type: 'artifact', subtype: 'visualization', data: viz });
+                  } else if (type === 'document') {
+                    const doc = data as GeneratedDocumentInfo;
+                    documents.push(doc);
+                    send({ type: 'artifact', subtype: 'document', data: doc });
+                  }
+                },
+              }
+            );
+
+            // Extract web sources from tool history
+            for (const msg of toolResult.fullHistory) {
+              if (msg.role === 'tool') {
+                try {
+                  const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+                  const parsed = JSON.parse(content);
+                  if (parsed.results && Array.isArray(parsed.results)) {
+                    for (const result of parsed.results) {
+                      webSources.push({
+                        documentName: `[WEB] ${result.title || result.url}`,
+                        pageNumber: 0,
+                        chunkText: result.content?.substring(0, 200) || '',
+                        score: result.score || 0,
+                      });
+                    }
+                  }
+                } catch {
+                  // Not a web search result
+                }
+              }
+            }
+
+            // Combine all sources
+            const allSources = [...ragResult.sources, ...webSources];
+
+            // ============ Phase 4: Stream Final Response ============
+            send({ type: 'status', phase: 'generating', content: getPhaseMessage('generating') });
+
+            // The response content is already in toolResult.content (non-streaming from tool execution)
+            // For true streaming of the final response, we would need to make a separate streaming call
+            // For now, we send the complete response in chunks to simulate streaming
+
+            const fullContent = toolResult.content;
+            const chunkSize = 20; // Characters per chunk for smooth typing effect
+
+            for (let i = 0; i < fullContent.length; i += chunkSize) {
+              const chunk = fullContent.slice(i, i + chunkSize);
+              send({ type: 'chunk', content: chunk });
+              // Small delay for typing effect (in real streaming this would be natural)
+              await new Promise(resolve => setTimeout(resolve, 10));
+            }
+
+            // ============ Save & Cleanup ============
+            // Save assistant message (without processing metadata)
+            const assistantMessage: Message = {
+              id: assistantMessageId,
+              role: 'assistant',
+              content: fullContent,
+              sources: allSources,
+              generatedDocuments: documents.length > 0 ? documents : undefined,
+              visualizations: visualizations.length > 0 ? visualizations : undefined,
+              timestamp: new Date(),
+            };
+
+            await addMessage(user.id, threadId, assistantMessage);
+            updateThreadTokenCount(threadId, countTokens(fullContent));
+
+            // Background tasks (non-blocking)
+            if (summarizationSettings.enabled && shouldSummarize(threadId)) {
+              summarizeThread(threadId).catch(() => {});
+            }
+
+            if (memorySettings.enabled && memorySettings.autoExtractOnThreadEnd && dbUser) {
+              const recentMessages = conversationHistory.slice(-10).map(m => ({
+                role: m.role,
+                content: m.content,
+              }));
+              processConversationForMemory(dbUser.id, categoryIds[0] || null, recentMessages).catch(() => {});
+            }
+
+            // Send completion
+            send({ type: 'done', messageId: assistantMessageId, threadId });
+          }
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        send({ type: 'error', code: 'UNKNOWN_ERROR', message, recoverable: false });
+      } finally {
+        cleanup();
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, { headers: getSSEHeaders() });
+}

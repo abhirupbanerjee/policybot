@@ -68,6 +68,9 @@ export type AcronymMappings = Record<string, string[]>;
 export interface BrandingSettings {
   botName: string;
   botIcon: string;
+  subtitle?: string;          // Custom subtitle for header (replaces hardcoded)
+  welcomeTitle?: string;      // Global fallback for welcome screen
+  welcomeMessage?: string;    // Global fallback for welcome screen
 }
 
 export interface PWASettings {

@@ -14,6 +14,9 @@ export async function GET() {
     return NextResponse.json({
       botName: branding.botName,
       botIcon: branding.botIcon,
+      subtitle: branding.subtitle || null,
+      welcomeTitle: branding.welcomeTitle || null,
+      welcomeMessage: branding.welcomeMessage || null,
       // Include available icons for client reference
       availableIcons: BRANDING_ICONS,
     });

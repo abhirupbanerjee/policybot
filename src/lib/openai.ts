@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
-import type { Message, ToolCall } from '@/types';
+import type { Message, ToolCall, StreamingCallbacks, MessageVisualization, GeneratedDocumentInfo } from '@/types';
 import { getLlmSettings, getEmbeddingSettings, getLimitsSettings, getEffectiveMaxTokens } from './db/config';
+import { getToolDisplayName } from './streaming/utils';
 import { getToolDefinitions, executeTool } from './tools';
 import { resolveToolRouting } from './tool-routing';
 import { toolsLogger as logger } from './logger';
@@ -108,7 +109,8 @@ export async function generateResponseWithTools(
   context: string,
   userMessage: string,
   enableTools: boolean = true,
-  categoryIds?: number[]
+  categoryIds?: number[],
+  callbacks?: StreamingCallbacks
 ): Promise<{
   content: string;
   toolCalls?: ToolCall[];
@@ -211,12 +213,73 @@ export async function generateResponseWithTools(
 
     // Execute each tool call
     for (const toolCall of responseMessage.tool_calls) {
-      logger.debug(`Executing tool: ${toolCall.function.name}`);
+      const toolName = toolCall.function.name;
+      const displayName = getToolDisplayName(toolName);
+      const startTime = Date.now();
 
-      const result = await executeTool(
-        toolCall.function.name,
-        toolCall.function.arguments
-      );
+      logger.debug(`Executing tool: ${toolName}`);
+
+      // Notify streaming callback that tool is starting
+      callbacks?.onToolStart?.(toolName, displayName);
+
+      let result: string;
+      let success = true;
+      let errorMsg: string | undefined;
+
+      try {
+        result = await executeTool(toolName, toolCall.function.arguments);
+
+        // Check if result indicates an error
+        try {
+          const parsed = JSON.parse(result);
+          if (parsed.error || parsed.errorCode) {
+            success = false;
+            errorMsg = parsed.error || 'Tool execution failed';
+          } else {
+            // Extract artifacts for streaming callbacks
+            if (callbacks?.onArtifact) {
+              // Check for visualization
+              if (parsed.success && parsed.data && parsed.visualizationHint) {
+                const viz: MessageVisualization = {
+                  chartType: parsed.visualizationHint.chartType,
+                  data: parsed.data,
+                  xField: parsed.visualizationHint.xField,
+                  yField: parsed.visualizationHint.yField,
+                  title: parsed.chartTitle,
+                  notes: parsed.notes,
+                  seriesMode: parsed.seriesMode,
+                };
+                callbacks.onArtifact('visualization', viz);
+              }
+
+              // Check for generated document
+              if (parsed.success && parsed.document) {
+                const doc: GeneratedDocumentInfo = {
+                  id: parsed.document.id,
+                  filename: parsed.document.filename,
+                  fileType: parsed.document.fileType,
+                  fileSize: parsed.document.fileSize || 0,
+                  fileSizeFormatted: parsed.document.fileSizeFormatted || '',
+                  downloadUrl: parsed.document.downloadUrl,
+                  expiresAt: parsed.document.expiresAt || null,
+                };
+                callbacks.onArtifact('document', doc);
+              }
+            }
+          }
+        } catch {
+          // Result is not JSON, treat as success
+        }
+      } catch (error) {
+        success = false;
+        errorMsg = error instanceof Error ? error.message : 'Unknown error';
+        result = JSON.stringify({ error: errorMsg, errorCode: 'EXECUTION_ERROR' });
+      }
+
+      const duration = Date.now() - startTime;
+
+      // Notify streaming callback that tool completed
+      callbacks?.onToolEnd?.(toolName, success, duration, errorMsg);
 
       messages.push({
         role: 'tool',

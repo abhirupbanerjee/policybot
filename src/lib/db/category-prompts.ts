@@ -20,6 +20,8 @@ export interface CategoryPrompt {
   categoryId: number;
   promptAddendum: string;
   starterPrompts: StarterPrompt[] | null;
+  welcomeTitle: string | null;
+  welcomeMessage: string | null;
   updatedAt: string;
   updatedBy: string;
 }
@@ -28,6 +30,8 @@ export interface CategoryPromptRow {
   category_id: number;
   prompt_addendum: string;
   starter_prompts: string | null;
+  welcome_title: string | null;
+  welcome_message: string | null;
   updated_at: string;
   updated_by: string;
 }
@@ -100,7 +104,7 @@ function parseStarterPrompts(json: string | null): StarterPrompt[] | null {
  */
 export function getCategoryPrompt(categoryId: number): CategoryPrompt | undefined {
   const row = queryOne<CategoryPromptRow>(
-    'SELECT category_id, prompt_addendum, starter_prompts, updated_at, updated_by FROM category_prompts WHERE category_id = ?',
+    'SELECT category_id, prompt_addendum, starter_prompts, welcome_title, welcome_message, updated_at, updated_by FROM category_prompts WHERE category_id = ?',
     [categoryId]
   );
 
@@ -110,6 +114,8 @@ export function getCategoryPrompt(categoryId: number): CategoryPrompt | undefine
     categoryId: row.category_id,
     promptAddendum: row.prompt_addendum,
     starterPrompts: parseStarterPrompts(row.starter_prompts),
+    welcomeTitle: row.welcome_title,
+    welcomeMessage: row.welcome_message,
     updatedAt: row.updated_at,
     updatedBy: row.updated_by,
   };
@@ -120,13 +126,15 @@ export function getCategoryPrompt(categoryId: number): CategoryPrompt | undefine
  */
 export function getAllCategoryPrompts(): CategoryPrompt[] {
   const rows = queryAll<CategoryPromptRow>(
-    'SELECT category_id, prompt_addendum, starter_prompts, updated_at, updated_by FROM category_prompts ORDER BY category_id'
+    'SELECT category_id, prompt_addendum, starter_prompts, welcome_title, welcome_message, updated_at, updated_by FROM category_prompts ORDER BY category_id'
   );
 
   return rows.map(row => ({
     categoryId: row.category_id,
     promptAddendum: row.prompt_addendum,
     starterPrompts: parseStarterPrompts(row.starter_prompts),
+    welcomeTitle: row.welcome_title,
+    welcomeMessage: row.welcome_message,
     updatedAt: row.updated_at,
     updatedBy: row.updated_by,
   }));
@@ -381,6 +389,52 @@ export function setCategoryStarterPrompts(
   }
 }
 
+/**
+ * Set welcome messages for a category
+ * Pass null to clear welcome messages
+ */
+export function setCategoryWelcome(
+  categoryId: number,
+  welcomeTitle: string | null,
+  welcomeMessage: string | null,
+  updatedBy: string
+): void {
+  // Validate category exists
+  const category = getCategoryById(categoryId);
+  if (!category) {
+    throw new Error(`Category with ID ${categoryId} does not exist`);
+  }
+
+  // Validate lengths
+  if (welcomeTitle && welcomeTitle.length > 50) {
+    throw new Error('Welcome title exceeds 50 characters');
+  }
+  if (welcomeMessage && welcomeMessage.length > 200) {
+    throw new Error('Welcome message exceeds 200 characters');
+  }
+
+  // Check if row exists
+  const existing = queryOne<{ category_id: number }>(
+    'SELECT category_id FROM category_prompts WHERE category_id = ?',
+    [categoryId]
+  );
+
+  if (existing) {
+    execute(
+      `UPDATE category_prompts
+       SET welcome_title = ?, welcome_message = ?, updated_by = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE category_id = ?`,
+      [welcomeTitle, welcomeMessage, updatedBy, categoryId]
+    );
+  } else {
+    execute(
+      `INSERT INTO category_prompts (category_id, prompt_addendum, welcome_title, welcome_message, updated_by, updated_at)
+       VALUES (?, '', ?, ?, ?, CURRENT_TIMESTAMP)`,
+      [categoryId, welcomeTitle, welcomeMessage, updatedBy]
+    );
+  }
+}
+
 // ============ Bulk Operations ============
 
 /**
@@ -391,7 +445,7 @@ export function getCategoryPromptsForCategories(categoryIds: number[]): Map<numb
 
   const placeholders = categoryIds.map(() => '?').join(', ');
   const rows = queryAll<CategoryPromptRow>(
-    `SELECT category_id, prompt_addendum, starter_prompts, updated_at, updated_by
+    `SELECT category_id, prompt_addendum, starter_prompts, welcome_title, welcome_message, updated_at, updated_by
      FROM category_prompts
      WHERE category_id IN (${placeholders})`,
     categoryIds
@@ -403,6 +457,8 @@ export function getCategoryPromptsForCategories(categoryIds: number[]): Map<numb
       categoryId: row.category_id,
       promptAddendum: row.prompt_addendum,
       starterPrompts: parseStarterPrompts(row.starter_prompts),
+      welcomeTitle: row.welcome_title,
+      welcomeMessage: row.welcome_message,
       updatedAt: row.updated_at,
       updatedBy: row.updated_by,
     });

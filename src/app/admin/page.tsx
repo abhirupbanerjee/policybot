@@ -132,6 +132,9 @@ type SettingsSection = 'prompt' | 'rag' | 'llm' | 'acronyms' | 'branding' | 'rer
 interface BrandingSettings {
   botName: string;
   botIcon: string;
+  subtitle?: string;
+  welcomeTitle?: string;
+  welcomeMessage?: string;
   updatedAt?: string;
   updatedBy?: string;
 }
@@ -202,6 +205,8 @@ interface CategoryPromptData {
   globalPrompt: string;
   categoryAddendum: string;
   starterPrompts: StarterPrompt[];
+  welcomeTitle: string;
+  welcomeMessage: string;
   combinedPrompt: string;
   charInfo: {
     globalLength: number;
@@ -362,9 +367,12 @@ export default function AdminPage() {
   const [categoryPromptLoading, setCategoryPromptLoading] = useState(false);
   const [editedCategoryAddendum, setEditedCategoryAddendum] = useState('');
   const [editedStarterPrompts, setEditedStarterPrompts] = useState<StarterPrompt[]>([]);
+  const [editedWelcomeTitle, setEditedWelcomeTitle] = useState('');
+  const [editedWelcomeMessage, setEditedWelcomeMessage] = useState('');
   const [savingCategoryPrompt, setSavingCategoryPrompt] = useState(false);
   const [categoryPromptModified, setCategoryPromptModified] = useState(false);
   const [starterPromptsModified, setStarterPromptsModified] = useState(false);
+  const [welcomeModified, setWelcomeModified] = useState(false);
 
   // Prompt optimization state
   const [optimizing, setOptimizing] = useState(false);
@@ -1351,8 +1359,11 @@ export default function AdminPage() {
       setCategoryPromptData(data);
       setEditedCategoryAddendum(data.categoryAddendum || '');
       setEditedStarterPrompts(data.starterPrompts || []);
+      setEditedWelcomeTitle(data.welcomeTitle || '');
+      setEditedWelcomeMessage(data.welcomeMessage || '');
       setCategoryPromptModified(false);
       setStarterPromptsModified(false);
+      setWelcomeModified(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load category prompt');
     } finally {
@@ -1369,7 +1380,10 @@ export default function AdminPage() {
     setEditingCategoryPrompt(null);
     setCategoryPromptData(null);
     setEditedCategoryAddendum('');
+    setEditedWelcomeTitle('');
+    setEditedWelcomeMessage('');
     setCategoryPromptModified(false);
+    setWelcomeModified(false);
   };
 
   const handleCategoryAddendumChange = (value: string) => {
@@ -1381,6 +1395,20 @@ export default function AdminPage() {
     setEditedStarterPrompts(starters);
     const original = categoryPromptData?.starterPrompts || [];
     setStarterPromptsModified(JSON.stringify(starters) !== JSON.stringify(original));
+  };
+
+  const handleWelcomeTitleChange = (value: string) => {
+    setEditedWelcomeTitle(value);
+    const originalTitle = categoryPromptData?.welcomeTitle || '';
+    const originalMessage = categoryPromptData?.welcomeMessage || '';
+    setWelcomeModified(value !== originalTitle || editedWelcomeMessage !== originalMessage);
+  };
+
+  const handleWelcomeMessageChange = (value: string) => {
+    setEditedWelcomeMessage(value);
+    const originalTitle = categoryPromptData?.welcomeTitle || '';
+    const originalMessage = categoryPromptData?.welcomeMessage || '';
+    setWelcomeModified(editedWelcomeTitle !== originalTitle || value !== originalMessage);
   };
 
   const handleSaveCategoryPrompt = async () => {
@@ -1396,6 +1424,8 @@ export default function AdminPage() {
         body: JSON.stringify({
           promptAddendum: editedCategoryAddendum,
           starterPrompts: editedStarterPrompts.length > 0 ? editedStarterPrompts : null,
+          welcomeTitle: editedWelcomeTitle || null,
+          welcomeMessage: editedWelcomeMessage || null,
         }),
       });
 
@@ -1409,12 +1439,15 @@ export default function AdminPage() {
         ...prev,
         categoryAddendum: data.categoryAddendum || '',
         starterPrompts: data.starterPrompts || [],
+        welcomeTitle: data.welcomeTitle || '',
+        welcomeMessage: data.welcomeMessage || '',
         combinedPrompt: data.combinedPrompt,
         charInfo: data.charInfo,
         metadata: data.metadata,
       } : null);
       setCategoryPromptModified(false);
       setStarterPromptsModified(false);
+      setWelcomeModified(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save category prompt');
     } finally {
@@ -4001,6 +4034,80 @@ export default function AdminPage() {
                         </div>
                       </div>
 
+                      {/* Subtitle */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-900 mb-1">
+                          Header Subtitle
+                          <span className="ml-1 text-xs text-gray-400 font-normal">
+                            ({(editedBranding.subtitle || '').length}/100 chars)
+                          </span>
+                        </label>
+                        <input
+                          type="text"
+                          value={editedBranding.subtitle || ''}
+                          onChange={(e) => {
+                            setEditedBranding({ ...editedBranding, subtitle: e.target.value || undefined });
+                            setBrandingModified(true);
+                          }}
+                          maxLength={100}
+                          placeholder="Ask questions about policy documents"
+                          className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                        <p className="mt-1 text-xs text-gray-500">
+                          Custom subtitle shown below the header title (optional)
+                        </p>
+                      </div>
+
+                      {/* Global Welcome Message */}
+                      <div className="border-t pt-4">
+                        <label className="block text-sm font-medium text-gray-900 mb-3">
+                          Global Welcome Screen
+                        </label>
+                        <p className="text-xs text-gray-500 mb-3">
+                          Default welcome message shown when no category-specific welcome is configured.
+                        </p>
+                        <div className="space-y-3">
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">
+                              Welcome Title
+                              <span className="ml-1 text-gray-400 font-normal">
+                                ({(editedBranding.welcomeTitle || '').length}/50 chars)
+                              </span>
+                            </label>
+                            <input
+                              type="text"
+                              value={editedBranding.welcomeTitle || ''}
+                              onChange={(e) => {
+                                setEditedBranding({ ...editedBranding, welcomeTitle: e.target.value || undefined });
+                                setBrandingModified(true);
+                              }}
+                              maxLength={50}
+                              placeholder="e.g., Welcome to Policy Bot"
+                              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1">
+                              Welcome Message
+                              <span className="ml-1 text-gray-400 font-normal">
+                                ({(editedBranding.welcomeMessage || '').length}/200 chars)
+                              </span>
+                            </label>
+                            <textarea
+                              value={editedBranding.welcomeMessage || ''}
+                              onChange={(e) => {
+                                setEditedBranding({ ...editedBranding, welcomeMessage: e.target.value || undefined });
+                                setBrandingModified(true);
+                              }}
+                              maxLength={200}
+                              rows={2}
+                              placeholder="e.g., How can I help you with policy questions today?"
+                              className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
                       {/* Preview */}
                       <div>
                         <label className="block text-sm font-medium text-gray-900 mb-2">Preview</label>
@@ -6260,6 +6367,56 @@ export default function AdminPage() {
               />
             </div>
 
+            {/* Welcome Message Configuration */}
+            <div className="border-t pt-4">
+              <label className="block text-sm font-medium text-gray-700 mb-3">
+                Welcome Screen (Optional)
+              </label>
+              <p className="text-xs text-gray-500 mb-3">
+                Custom welcome message shown to users on the chat home screen for this category.
+              </p>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    Welcome Title
+                    <span className="ml-1 text-gray-400 font-normal">
+                      ({editedWelcomeTitle.length}/50 chars)
+                    </span>
+                  </label>
+                  <input
+                    type="text"
+                    value={editedWelcomeTitle}
+                    onChange={(e) => handleWelcomeTitleChange(e.target.value)}
+                    maxLength={50}
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm ${
+                      editedWelcomeTitle.length > 50 ? 'border-red-300 bg-red-50' : ''
+                    }`}
+                    placeholder="e.g., Welcome to LEAPai"
+                    disabled={savingCategoryPrompt}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 mb-1">
+                    Welcome Message
+                    <span className="ml-1 text-gray-400 font-normal">
+                      ({editedWelcomeMessage.length}/200 chars)
+                    </span>
+                  </label>
+                  <textarea
+                    value={editedWelcomeMessage}
+                    onChange={(e) => handleWelcomeMessageChange(e.target.value)}
+                    maxLength={200}
+                    rows={2}
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm ${
+                      editedWelcomeMessage.length > 200 ? 'border-red-300 bg-red-50' : ''
+                    }`}
+                    placeholder="e.g., How can I help you with policy questions today?"
+                    disabled={savingCategoryPrompt}
+                  />
+                </div>
+              </div>
+            </div>
+
             {/* Combined Preview (Read-only) */}
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -6322,7 +6479,7 @@ export default function AdminPage() {
                 <Button
                   onClick={handleSaveCategoryPrompt}
                   disabled={
-                    (!categoryPromptModified && !starterPromptsModified) ||
+                    (!categoryPromptModified && !starterPromptsModified && !welcomeModified) ||
                     savingCategoryPrompt ||
                     optimizing ||
                     editedCategoryAddendum.length > categoryPromptData.charInfo.availableForCategory

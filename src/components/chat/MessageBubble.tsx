@@ -14,9 +14,11 @@ const MAX_SOURCES_DISPLAYED = 5;
 
 interface MessageBubbleProps {
   message: Message;
+  /** Whether this message is currently being streamed */
+  isStreaming?: boolean;
 }
 
-export default function MessageBubble({ message }: MessageBubbleProps) {
+export default function MessageBubble({ message, isStreaming = false }: MessageBubbleProps) {
   const [sourcesExpanded, setSourcesExpanded] = useState(false);
   const [showAllSources, setShowAllSources] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -68,6 +70,9 @@ export default function MessageBubble({ message }: MessageBubbleProps) {
           >
             {message.content}
           </ReactMarkdown>
+          {isStreaming && (
+            <span className="inline-block w-2 h-4 bg-gray-400 animate-pulse ml-0.5 align-middle" />
+          )}
         </div>
 
         {/* Generated Documents */}

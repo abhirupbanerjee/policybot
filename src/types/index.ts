@@ -1,3 +1,7 @@
+// ============ Stream Types (re-exported) ============
+
+export * from './stream';
+
 // ============ Core Types ============
 
 export interface User {

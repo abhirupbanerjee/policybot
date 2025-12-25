@@ -131,6 +131,14 @@ function runMigrations(database: Database.Database): void {
     database.exec('ALTER TABLE category_prompts ADD COLUMN starter_prompts TEXT DEFAULT NULL');
   }
 
+  if (!categoryPromptsColumnNames.includes('welcome_title')) {
+    database.exec('ALTER TABLE category_prompts ADD COLUMN welcome_title TEXT DEFAULT NULL');
+  }
+
+  if (!categoryPromptsColumnNames.includes('welcome_message')) {
+    database.exec('ALTER TABLE category_prompts ADD COLUMN welcome_message TEXT DEFAULT NULL');
+  }
+
   if (!skillsTableExists) {
     database.exec(`
       CREATE TABLE IF NOT EXISTS skills (

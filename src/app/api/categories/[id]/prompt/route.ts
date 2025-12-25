@@ -22,6 +22,7 @@ import {
   validatePromptAddendum,
   validateStarterPrompts,
   setCategoryStarterPrompts,
+  setCategoryWelcome,
   getResolvedSystemPrompt,
   MAX_COMBINED_PROMPT_LENGTH,
   StarterPrompt,
@@ -115,6 +116,8 @@ export async function GET(request: Request, { params }: RouteParams) {
       globalPrompt,
       categoryAddendum: categoryPrompt?.promptAddendum || '',
       starterPrompts: categoryPrompt?.starterPrompts || [],
+      welcomeTitle: categoryPrompt?.welcomeTitle || '',
+      welcomeMessage: categoryPrompt?.welcomeMessage || '',
       combinedPrompt,
       charInfo: {
         globalLength: charInfo.globalLength,
@@ -177,7 +180,29 @@ export async function PUT(request: Request, { params }: RouteParams) {
     const { user } = await checkCategoryAccess(categoryId);
 
     const body = await request.json();
-    const { promptAddendum, starterPrompts } = body;
+    const { promptAddendum, starterPrompts, welcomeTitle, welcomeMessage } = body;
+
+    // Handle welcome messages if provided
+    if (welcomeTitle !== undefined || welcomeMessage !== undefined) {
+      const title = welcomeTitle === '' ? null : (welcomeTitle || null);
+      const message = welcomeMessage === '' ? null : (welcomeMessage || null);
+
+      // Validate lengths
+      if (title && title.length > 50) {
+        return NextResponse.json(
+          { error: 'Welcome title exceeds 50 characters' },
+          { status: 400 }
+        );
+      }
+      if (message && message.length > 200) {
+        return NextResponse.json(
+          { error: 'Welcome message exceeds 200 characters' },
+          { status: 400 }
+        );
+      }
+
+      setCategoryWelcome(categoryId, title, message, user.email);
+    }
 
     // Handle starterPrompts if provided (can be independent of promptAddendum)
     if (starterPrompts !== undefined) {

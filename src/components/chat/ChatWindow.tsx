@@ -2,17 +2,27 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { MessageSquare, RefreshCw, BookOpen, ChevronDown, ChevronUp } from 'lucide-react';
-import type { Message, Thread, UserSubscription } from '@/types';
+import type { Message, Thread, UserSubscription, Source, MessageVisualization, GeneratedDocumentInfo } from '@/types';
 import MessageBubble from './MessageBubble';
 import MessageInput from './MessageInput';
 import Spinner from '@/components/ui/Spinner';
 import StarterButtons, { StarterPrompt } from './StarterButtons';
+import ProcessingIndicator from './ProcessingIndicator';
+import { useStreamingChat } from '@/hooks/useStreamingChat';
+
+interface WelcomeConfig {
+  title?: string;
+  message?: string;
+}
 
 interface ChatWindowProps {
   activeThread?: Thread | null;
   onThreadCreated?: (thread: Thread) => void;
   userSubscriptions?: UserSubscription[];
   brandingName?: string;
+  brandingSubtitle?: string;           // Custom subtitle from branding settings
+  globalWelcome?: WelcomeConfig;       // Global welcome fallback from branding
+  categoryWelcome?: WelcomeConfig;     // Per-category welcome (takes priority)
 }
 
 interface ThreadSummary {
@@ -21,13 +31,22 @@ interface ThreadSummary {
   createdAt: string;
 }
 
-export default function ChatWindow({ activeThread, onThreadCreated, userSubscriptions = [], brandingName = 'Policy Bot' }: ChatWindowProps) {
+export default function ChatWindow({
+  activeThread,
+  onThreadCreated,
+  userSubscriptions = [],
+  brandingName = 'Policy Bot',
+  brandingSubtitle,
+  globalWelcome,
+  categoryWelcome,
+}: ChatWindowProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [uploads, setUploads] = useState<string[]>([]);
   const [showSummaryDetails, setShowSummaryDetails] = useState(false);
   const [summaryData, setSummaryData] = useState<ThreadSummary | null>(null);
   const [starterPrompts, setStarterPrompts] = useState<StarterPrompt[]>([]);
   const [loadingStarters, setLoadingStarters] = useState(false);
+  const [fetchedCategoryWelcome, setFetchedCategoryWelcome] = useState<WelcomeConfig | null>(null);
 
   // Compute dynamic header based on subscriptions
   const getHeaderInfo = () => {
@@ -37,32 +56,105 @@ export default function ChatWindow({ activeThread, onThreadCreated, userSubscrip
       // No subscriptions (admin/superuser) - use branding
       return {
         title: brandingName,
-        subtitle: `Ask questions about policy documents`,
+        subtitle: brandingSubtitle || `Ask questions about policy documents`,
       };
     } else if (activeSubscriptions.length === 1) {
       // Single subscription - use category name
       const categoryName = activeSubscriptions[0].categoryName;
       return {
         title: `${categoryName} Assistant`,
-        subtitle: `Ask questions about ${categoryName}`,
+        subtitle: brandingSubtitle || `Ask questions about ${categoryName}`,
       };
     } else {
       // Multiple subscriptions - GEA Global Assistant
       return {
         title: 'GEA Global Assistant',
-        subtitle: 'Ask questions about GEA Global',
+        subtitle: brandingSubtitle || 'Ask questions about GEA Global',
       };
     }
   };
 
   const headerInfo = getHeaderInfo();
+
+  // Compute welcome screen content with priority: fetched category > prop category > global > default
+  const getWelcomeContent = () => {
+    // Priority 1: Fetched category-specific welcome (from API)
+    if (fetchedCategoryWelcome?.title || fetchedCategoryWelcome?.message) {
+      return {
+        title: fetchedCategoryWelcome.title || `Welcome to ${headerInfo.title}`,
+        message: fetchedCategoryWelcome.message || headerInfo.subtitle,
+      };
+    }
+    // Priority 2: Prop-passed category-specific welcome
+    if (categoryWelcome?.title || categoryWelcome?.message) {
+      return {
+        title: categoryWelcome.title || `Welcome to ${headerInfo.title}`,
+        message: categoryWelcome.message || headerInfo.subtitle,
+      };
+    }
+    // Priority 3: Global branding welcome
+    if (globalWelcome?.title || globalWelcome?.message) {
+      return {
+        title: globalWelcome.title || `Welcome to ${headerInfo.title}`,
+        message: globalWelcome.message || headerInfo.subtitle,
+      };
+    }
+    // Priority 4: Hardcoded fallback
+    return {
+      title: `Welcome to ${headerInfo.title}`,
+      message: headerInfo.subtitle,
+    };
+  };
+
+  const welcomeContent = getWelcomeContent();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [threadId, setThreadId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // Streaming chat hook
+  const handleStreamComplete = useCallback((
+    messageId: string,
+    content: string,
+    sources: Source[],
+    visualizations: MessageVisualization[],
+    documents: GeneratedDocumentInfo[]
+  ) => {
+    // Add completed assistant message to the list
+    const assistantMessage: Message = {
+      id: messageId,
+      role: 'assistant',
+      content,
+      sources: sources.length > 0 ? sources : undefined,
+      visualizations: visualizations.length > 0 ? visualizations : undefined,
+      generatedDocuments: documents.length > 0 ? documents : undefined,
+      timestamp: new Date(),
+    };
+    setMessages(prev => [...prev, assistantMessage]);
+    setLoading(false);
+  }, []);
+
+  const handleStreamError = useCallback((code: string, message: string) => {
+    setError(message);
+    setLoading(false);
+  }, []);
+
+  const {
+    state: streamingState,
+    sendMessage: sendStreamingMessage,
+    // abort: abortStreaming, // Available for future use (e.g., cancel button)
+    toggleProcessingDetails,
+    reset: resetStreaming,
+  } = useStreamingChat({
+    onComplete: handleStreamComplete,
+    onError: handleStreamError,
+  });
+
   // Load thread messages when active thread changes
   useEffect(() => {
+    // Reset streaming state when thread changes
+    resetStreaming();
+
     if (activeThread) {
       setThreadId(activeThread.id);
       loadThread(activeThread.id);
@@ -78,20 +170,22 @@ export default function ChatWindow({ activeThread, onThreadCreated, userSubscrip
       setUploads([]);
       setSummaryData(null);
     }
-  }, [activeThread]);
+  }, [activeThread, resetStreaming]);
 
-  // Load starter prompts for single-category threads with no messages
+  // Load starter prompts and category welcome for single-category threads
   useEffect(() => {
-    const loadStarters = async () => {
-      // Only load starters for threads with exactly one category and no messages
+    const loadCategoryData = async () => {
+      // Only load for threads with exactly one category and no messages
       if (!activeThread || messages.length > 0) {
         setStarterPrompts([]);
+        setFetchedCategoryWelcome(null);
         return;
       }
 
       const categories = activeThread.categories || [];
       if (categories.length !== 1) {
         setStarterPrompts([]);
+        setFetchedCategoryWelcome(null);
         return;
       }
 
@@ -101,15 +195,24 @@ export default function ChatWindow({ activeThread, onThreadCreated, userSubscrip
         if (response.ok) {
           const data = await response.json();
           setStarterPrompts(data.starterPrompts || []);
+          // Extract category welcome data
+          if (data.welcomeTitle || data.welcomeMessage) {
+            setFetchedCategoryWelcome({
+              title: data.welcomeTitle || undefined,
+              message: data.welcomeMessage || undefined,
+            });
+          } else {
+            setFetchedCategoryWelcome(null);
+          }
         }
       } catch (err) {
-        console.error('Failed to load starter prompts:', err);
+        console.error('Failed to load category data:', err);
       } finally {
         setLoadingStarters(false);
       }
     };
 
-    loadStarters();
+    loadCategoryData();
   }, [activeThread, messages.length]);
 
   // Clear starters when messages are sent
@@ -137,10 +240,10 @@ export default function ChatWindow({ activeThread, onThreadCreated, userSubscrip
     }
   };
 
-  // Auto-scroll to bottom
+  // Auto-scroll to bottom (on messages change or streaming content update)
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, streamingState.currentContent]);
 
   const loadThread = async (id: string) => {
     try {
@@ -192,7 +295,7 @@ export default function ChatWindow({ activeThread, onThreadCreated, userSubscrip
 
     // Add user message optimistically
     const userMessage: Message = {
-      id: `temp-${Date.now()}`,
+      id: `user-${Date.now()}`,
       role: 'user',
       content,
       timestamp: new Date(),
@@ -200,43 +303,9 @@ export default function ChatWindow({ activeThread, onThreadCreated, userSubscrip
     setMessages((prev) => [...prev, userMessage]);
     setLoading(true);
 
-    try {
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: content,
-          threadId: currentThreadId,
-        }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to send message');
-      }
-
-      const data = await response.json();
-
-      // Replace temp user message and add assistant response
-      setMessages((prev) => {
-        const filtered = prev.filter((m) => m.id !== userMessage.id);
-        return [
-          ...filtered,
-          { ...userMessage, id: `user-${Date.now()}` },
-          {
-            ...data.message,
-            timestamp: new Date(data.message.timestamp),
-          },
-        ];
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send message');
-      // Remove optimistic message on error
-      setMessages((prev) => prev.filter((m) => m.id !== userMessage.id));
-    } finally {
-      setLoading(false);
-    }
-  }, [threadId, createThread]);
+    // Use streaming for response
+    await sendStreamingMessage(content, currentThreadId);
+  }, [threadId, createThread, sendStreamingMessage]);
 
   const handleUploadComplete = (filename: string) => {
     setUploads((prev) => [...prev, filename]);
@@ -254,10 +323,10 @@ export default function ChatWindow({ activeThread, onThreadCreated, userSubscrip
     <div className="flex flex-col h-full">
       {/* Header */}
       <header className="sticky top-0 z-10 bg-white border-b px-4 sm:px-6 py-3 sm:py-4 shadow-sm">
-        <h1 className="text-lg font-semibold text-gray-900">
+        <h1 className="text-base sm:text-lg font-semibold text-gray-900 text-center sm:text-left truncate">
           {activeThread?.title || headerInfo.title}
         </h1>
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-gray-500 hidden sm:block">
           {headerInfo.subtitle}
         </p>
       </header>
@@ -298,12 +367,12 @@ export default function ChatWindow({ activeThread, onThreadCreated, userSubscrip
           <div className="flex flex-col items-center justify-center h-full text-center">
             <MessageSquare className="w-12 h-12 text-gray-300 mb-4" />
             <h2 className="text-lg font-medium text-gray-900 mb-2">
-              Welcome to {headerInfo.title}
+              {welcomeContent.title}
             </h2>
             <p className="text-gray-500 max-w-md mb-6">
               {starterPrompts.length > 0
                 ? 'Click a quick start button below or type your own question.'
-                : `${headerInfo.subtitle} or upload a document to check for compliance. Start by typing a question below.`
+                : `${welcomeContent.message} or upload a document to check for compliance. Start by typing a question below.`
               }
             </p>
 
@@ -324,7 +393,35 @@ export default function ChatWindow({ activeThread, onThreadCreated, userSubscrip
           <MessageBubble key={message.id} message={message} />
         ))}
 
-        {loading && (
+        {/* Streaming UI */}
+        {streamingState.isStreaming && (
+          <>
+            {/* Processing Indicator */}
+            <ProcessingIndicator
+              details={streamingState.processingDetails}
+              onToggleExpand={toggleProcessingDetails}
+            />
+
+            {/* Streaming Message */}
+            {streamingState.currentContent && (
+              <MessageBubble
+                message={{
+                  id: 'streaming',
+                  role: 'assistant',
+                  content: streamingState.currentContent,
+                  sources: streamingState.sources,
+                  visualizations: streamingState.visualizations,
+                  generatedDocuments: streamingState.documents,
+                  timestamp: new Date(),
+                }}
+                isStreaming={true}
+              />
+            )}
+          </>
+        )}
+
+        {/* Legacy loading indicator (fallback) */}
+        {loading && !streamingState.isStreaming && (
           <div className="flex justify-start mb-4">
             <div className="bg-gray-100 rounded-2xl px-4 py-3">
               <div className="flex items-center gap-2">
