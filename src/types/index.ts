@@ -112,6 +112,8 @@ export interface MessageVisualization {
   data: Record<string, unknown>[];
   xField?: string;
   yField?: string;
+  /** Multiple Y fields for multi-series/stacked charts (from chart_gen) */
+  yFields?: string[];
   groupBy?: string;
   sourceName?: string;
   cached?: boolean;

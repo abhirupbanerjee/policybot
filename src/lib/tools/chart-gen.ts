@@ -222,8 +222,8 @@ function formatResponse(
       chartType,
       xField: args.x_field,
       yField: args.y_fields[0],
-      // For multiple y_fields, groupBy is used for stacking
-      groupBy: args.y_fields.length > 1 ? undefined : undefined,
+      // Pass all y_fields for multi-series charts
+      yFields: args.y_fields,
     },
     chartTitle: args.title,
     notes: args.notes,

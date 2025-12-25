@@ -73,6 +73,8 @@ interface DataVisualizationProps {
   xField?: string;
   /** Field for Y axis (value axis) */
   yField?: string;
+  /** Multiple Y fields for multi-series/stacked charts (from chart_gen) */
+  yFields?: string[];
   /** Field to group data by */
   groupBy?: string;
   /** Source name for attribution */
@@ -443,13 +445,13 @@ function BarChartComponent({
   data,
   xField,
   yField,
-  groupBy,
+  stacked,
   seriesKeys,
 }: {
   data: Record<string, unknown>[];
   xField: string;
   yField: string;
-  groupBy?: string;
+  stacked?: boolean;
   seriesKeys?: string[];
 }) {
   const dataKeys = seriesKeys && seriesKeys.length > 0 ? seriesKeys : [yField];
@@ -468,9 +470,9 @@ function BarChartComponent({
             key={key}
             dataKey={key}
             name={key}
-            stackId={groupBy ? 'stack' : undefined}
+            stackId={stacked ? 'stack' : undefined}
             fill={CHART_COLORS[i % CHART_COLORS.length]}
-            radius={groupBy ? undefined : [4, 4, 0, 0]}
+            radius={stacked ? undefined : [4, 4, 0, 0]}
           />
         ))}
       </BarChart>
@@ -520,13 +522,13 @@ function AreaChartComponent({
   data,
   xField,
   yField,
-  groupBy,
+  stacked,
   seriesKeys,
 }: {
   data: Record<string, unknown>[];
   xField: string;
   yField: string;
-  groupBy?: string;
+  stacked?: boolean;
   seriesKeys?: string[];
 }) {
   const dataKeys = seriesKeys && seriesKeys.length > 0 ? seriesKeys : [yField];
@@ -546,7 +548,7 @@ function AreaChartComponent({
             type="monotone"
             dataKey={key}
             name={key}
-            stackId={groupBy ? 'stack' : undefined}
+            stackId={stacked ? 'stack' : undefined}
             stroke={CHART_COLORS[i % CHART_COLORS.length]}
             fill={`${CHART_COLORS[i % CHART_COLORS.length]}40`}
           />
@@ -697,13 +699,14 @@ export default function DataVisualization({
   data,
   xField: initialXField,
   yField: initialYField,
+  yFields: initialYFields,
   groupBy,
   sourceName,
   cached,
   fields,
   title,
   notes,
-  // seriesMode is available in props but not yet implemented for stacking control
+  seriesMode,
 }: DataVisualizationProps) {
   const [chartType, setChartType] = useState<ChartType>(initialChartType);
   const [showRawData, setShowRawData] = useState(false);
@@ -732,8 +735,18 @@ export default function DataVisualization({
     return initialYField || numericFields[0] || allFields[1] || 'value';
   });
 
+  // Check if we have multiple Y fields from chart_gen (multi-series without pivoting)
+  const hasMultipleYFields = initialYFields && initialYFields.length > 1;
+
   // Pivot data for multi-series charts when groupBy is provided
   const { pivotedData, seriesKeys } = useMemo(() => {
+    // If yFields are provided directly (from chart_gen), use them as series keys
+    // Data is already in the right format: each row has x_field + multiple y_field values
+    if (hasMultipleYFields && chartType !== 'table') {
+      return { pivotedData: data, seriesKeys: initialYFields };
+    }
+
+    // Legacy groupBy-based pivoting for data_source tool
     if (!groupBy || !xField || !yField || chartType === 'table') {
       return { pivotedData: undefined, seriesKeys: undefined };
     }
@@ -744,7 +757,7 @@ export default function DataVisualization({
     }
 
     return pivotDataForMultiSeries(data, xField, groupBy, yField);
-  }, [data, xField, yField, groupBy, chartType]);
+  }, [data, xField, yField, groupBy, chartType, hasMultipleYFields, initialYFields]);
 
   // Prepare chart data - auto-aggregate categorical data or use pivoted data
   const chartData = useMemo(() => {
@@ -761,6 +774,9 @@ export default function DataVisualization({
 
   // The Y field for categorical data is always 'count'
   const effectiveYField = isCategorical ? 'count' : yField;
+
+  // Determine if stacked mode should be used based on seriesMode prop
+  const useStackedMode = seriesMode === 'stacked' || (seriesMode === 'auto' && hasMultipleYFields);
 
   // Available chart types
   const availableTypes: ChartType[] = ['bar', 'line', 'area', 'pie', 'scatter', 'radar', 'table'];
@@ -918,7 +934,7 @@ export default function DataVisualization({
                 data={chartData}
                 xField={isCategorical ? 'name' : xField}
                 yField={effectiveYField}
-                groupBy={groupBy}
+                stacked={useStackedMode}
                 seriesKeys={seriesKeys}
               />
             )}
@@ -935,7 +951,7 @@ export default function DataVisualization({
                 data={chartData}
                 xField={isCategorical ? 'name' : xField}
                 yField={effectiveYField}
-                groupBy={groupBy}
+                stacked={useStackedMode}
                 seriesKeys={seriesKeys}
               />
             )}

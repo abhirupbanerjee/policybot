@@ -401,6 +401,8 @@ export interface VisualizationHint {
   xField?: string;
   /** Field for Y axis */
   yField?: string;
+  /** Multiple Y fields for multi-series/stacked charts (from chart_gen) */
+  yFields?: string[];
   /** Field to group by */
   groupBy?: string;
 }

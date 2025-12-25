@@ -94,11 +94,14 @@ export default function MessageBubble({ message, isStreaming = false }: MessageB
                 data={viz.data}
                 xField={viz.xField}
                 yField={viz.yField}
+                yFields={viz.yFields}
                 groupBy={viz.groupBy}
                 sourceName={viz.sourceName}
                 cached={viz.cached}
                 fields={viz.fields}
                 title={viz.title}
+                notes={viz.notes}
+                seriesMode={viz.seriesMode}
               />
             ))}
           </div>

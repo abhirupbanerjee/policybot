@@ -245,6 +245,8 @@ export async function generateResponseWithTools(
                   data: parsed.data,
                   xField: parsed.visualizationHint.xField,
                   yField: parsed.visualizationHint.yField,
+                  yFields: parsed.visualizationHint.yFields,
+                  groupBy: parsed.visualizationHint.groupBy,
                   title: parsed.chartTitle,
                   notes: parsed.notes,
                   seriesMode: parsed.seriesMode,
