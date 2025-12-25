@@ -551,7 +551,7 @@ export async function PUT(request: NextRequest) {
       }
 
       case 'branding': {
-        const { botName, botIcon } = settings;
+        const { botName, botIcon, subtitle, welcomeTitle, welcomeMessage, accentColor } = settings;
 
         // Validate bot name
         if (typeof botName !== 'string' || botName.trim().length === 0) {
@@ -577,9 +577,71 @@ export async function PUT(request: NextRequest) {
           );
         }
 
+        // Validate optional subtitle
+        if (subtitle !== undefined && typeof subtitle !== 'string') {
+          return NextResponse.json<ApiError>(
+            { error: 'Subtitle must be a string', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+        if (subtitle && subtitle.length > 100) {
+          return NextResponse.json<ApiError>(
+            { error: 'Subtitle must be 100 characters or less', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Validate optional welcome title
+        if (welcomeTitle !== undefined && typeof welcomeTitle !== 'string') {
+          return NextResponse.json<ApiError>(
+            { error: 'Welcome title must be a string', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+        if (welcomeTitle && welcomeTitle.length > 50) {
+          return NextResponse.json<ApiError>(
+            { error: 'Welcome title must be 50 characters or less', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Validate optional welcome message
+        if (welcomeMessage !== undefined && typeof welcomeMessage !== 'string') {
+          return NextResponse.json<ApiError>(
+            { error: 'Welcome message must be a string', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+        if (welcomeMessage && welcomeMessage.length > 200) {
+          return NextResponse.json<ApiError>(
+            { error: 'Welcome message must be 200 characters or less', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        // Validate optional accent color
+        if (accentColor !== undefined && accentColor !== null) {
+          if (typeof accentColor !== 'string') {
+            return NextResponse.json<ApiError>(
+              { error: 'Accent color must be a string', code: 'VALIDATION_ERROR' },
+              { status: 400 }
+            );
+          }
+          if (!/^#[0-9A-Fa-f]{6}$/.test(accentColor)) {
+            return NextResponse.json<ApiError>(
+              { error: 'Accent color must be a valid hex color (e.g., #2563eb)', code: 'VALIDATION_ERROR' },
+              { status: 400 }
+            );
+          }
+        }
+
         result = setBrandingSettings({
           botName: botName.trim(),
           botIcon,
+          subtitle: subtitle || undefined,
+          welcomeTitle: welcomeTitle || undefined,
+          welcomeMessage: welcomeMessage || undefined,
+          accentColor: accentColor || undefined,
         }, user.email);
 
         // Return the updated branding with metadata

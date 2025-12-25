@@ -5,6 +5,14 @@
 :root {
   --foreground-rgb: 0, 0, 0;
   --background-rgb: 249, 250, 251;
+
+  /* Accent color system - dynamically injected from branding settings */
+  --accent-color: #2563eb;
+  --accent-hover: #1d4ed8;
+  --accent-light: #dbeafe;
+  --accent-lighter: #eff6ff;
+  --accent-border: #bfdbfe;
+  --accent-text: #1e40af;
 }
 
 body {
@@ -80,8 +88,8 @@ body {
   font-size: 0.9em;
 }
 
-/* Context-aware inline code for user messages (blue background) */
-.bg-blue-600 .markdown-content code {
+/* Context-aware inline code for user messages (accent color background) */
+.user-message .markdown-content code {
   background-color: rgba(255, 255, 255, 0.25);
   color: #f3f4f6;
   padding: 0.125em 0.375em;
@@ -120,8 +128,8 @@ body {
 }
 
 .markdown-content blockquote {
-  border-left: 4px solid #3b82f6;
-  background-color: rgba(59, 130, 246, 0.05);
+  border-left: 4px solid var(--accent-color);
+  background-color: var(--accent-lighter);
   padding: 0.75em 1.25em;
   margin-left: 0;
   margin-right: 0;

@@ -59,9 +59,10 @@ export default function MessageBubble({ message, isStreaming = false }: MessageB
       <div
         className={`max-w-[80%] rounded-2xl px-4 py-3 ${
           isUser
-            ? 'bg-blue-600 text-white'
+            ? 'user-message text-white'
             : 'bg-gray-100 text-gray-900'
         }`}
+        style={isUser ? { backgroundColor: 'var(--accent-color)' } : undefined}
       >
         <div className={`markdown-content ${isUser ? 'text-white' : ''}`}>
           <ReactMarkdown
@@ -108,11 +109,14 @@ export default function MessageBubble({ message, isStreaming = false }: MessageB
         )}
 
         {sortedSources.length > 0 && (
-          <div className={`mt-3 pt-3 border-t ${isUser ? 'border-blue-500' : 'border-gray-300'}`}>
+          <div
+            className={`mt-3 pt-3 border-t ${isUser ? '' : 'border-gray-300'}`}
+            style={isUser ? { borderColor: 'rgba(255, 255, 255, 0.3)' } : undefined}
+          >
             <button
               onClick={() => setSourcesExpanded(!sourcesExpanded)}
               className={`flex items-center gap-1 text-sm font-medium ${
-                isUser ? 'text-blue-200 hover:text-white' : 'text-gray-600 hover:text-gray-900'
+                isUser ? 'text-white/70 hover:text-white' : 'text-gray-600 hover:text-gray-900'
               }`}
             >
               {sourcesExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
@@ -139,7 +143,7 @@ export default function MessageBubble({ message, isStreaming = false }: MessageB
           </div>
         )}
 
-        <div className={`flex items-center justify-between gap-2 mt-2 ${isUser ? 'text-blue-200' : 'text-gray-500'}`}>
+        <div className={`flex items-center justify-between gap-2 mt-2 ${isUser ? 'text-white/70' : 'text-gray-500'}`}>
           <span className="text-xs">{formatTime(message.timestamp)}</span>
           {!isUser && (
             <button

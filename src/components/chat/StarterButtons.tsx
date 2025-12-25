@@ -23,7 +23,7 @@ export default function StarterButtons({
   return (
     <div className="mb-4">
       <div className="flex items-center justify-center gap-2 mb-3 text-sm text-gray-500">
-        <Sparkles size={16} className="text-blue-500" />
+        <Sparkles size={16} style={{ color: 'var(--accent-color)' }} />
         <span>Quick start</span>
       </div>
       <div className="flex flex-wrap justify-center gap-2">
@@ -32,7 +32,20 @@ export default function StarterButtons({
             key={index}
             onClick={() => onSelect(starter.prompt)}
             disabled={disabled}
-            className="px-4 py-2 text-sm font-medium text-blue-700 bg-blue-50 border border-blue-200 rounded-full hover:bg-blue-100 hover:border-blue-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 text-sm font-medium rounded-full border transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{
+              color: 'var(--accent-text)',
+              backgroundColor: 'var(--accent-lighter)',
+              borderColor: 'var(--accent-border)',
+            }}
+            onMouseEnter={(e) => {
+              if (!disabled) {
+                e.currentTarget.style.backgroundColor = 'var(--accent-light)';
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.backgroundColor = 'var(--accent-lighter)';
+            }}
             title={starter.prompt}
           >
             {starter.label}

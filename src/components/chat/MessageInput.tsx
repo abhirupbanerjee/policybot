@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { Send } from 'lucide-react';
+import { ArrowUp } from 'lucide-react';
 import VoiceInput from './VoiceInput';
 import FileUpload from './FileUpload';
 
@@ -51,45 +51,75 @@ export default function MessageInput({
   };
 
   return (
-    <div className="border-t bg-white p-4 safe-area-bottom shadow-[0_-2px_10px_rgba(0,0,0,0.05)]">
-      {currentUploads.length > 0 && (
-        <div className="flex items-center gap-2 mb-2 text-sm text-gray-600">
-          <span className="px-2 py-1 bg-blue-50 text-blue-700 rounded">
-            {currentUploads.length} file{currentUploads.length !== 1 ? 's' : ''} attached
-          </span>
-        </div>
-      )}
+    <div className="bg-white p-4 safe-area-bottom">
+      {/* Claude-style contained input card */}
+      <div className="bg-gray-50 rounded-2xl border border-gray-200 p-3">
+        {/* Uploads indicator */}
+        {currentUploads.length > 0 && (
+          <div className="flex items-center gap-2 mb-2 text-sm">
+            <span
+              className="px-2 py-1 rounded text-sm"
+              style={{
+                backgroundColor: 'var(--accent-light)',
+                color: 'var(--accent-text)',
+              }}
+            >
+              {currentUploads.length} file{currentUploads.length !== 1 ? 's' : ''} attached
+            </span>
+          </div>
+        )}
 
-      <div className="flex items-end gap-2">
-        <FileUpload
-          threadId={threadId}
-          currentUploads={currentUploads}
-          onUploadComplete={onUploadComplete}
+        {/* Textarea */}
+        <textarea
+          ref={textareaRef}
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Ask a question..."
           disabled={disabled}
+          rows={1}
+          className="w-full bg-transparent resize-none focus:outline-none text-gray-900 placeholder-gray-400 min-h-[40px] max-h-[150px]"
         />
 
-        <div className="flex-1 relative">
-          <textarea
-            ref={textareaRef}
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Type your question..."
-            disabled={disabled}
-            rows={1}
-            className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-xl resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:bg-gray-50 disabled:cursor-not-allowed"
-          />
+        {/* Bottom row: actions + send */}
+        <div className="flex items-center justify-between mt-2">
+          {/* Left actions */}
+          <div className="flex items-center gap-1">
+            <FileUpload
+              threadId={threadId}
+              currentUploads={currentUploads}
+              onUploadComplete={onUploadComplete}
+              disabled={disabled}
+            />
+          </div>
+
+          {/* Right actions */}
+          <div className="flex items-center gap-1">
+            <VoiceInput onTranscript={handleVoiceTranscript} disabled={disabled} />
+
+            {/* Send button with accent color */}
+            <button
+              onClick={handleSubmit}
+              disabled={disabled || !message.trim()}
+              className="p-2.5 rounded-full text-white transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{
+                backgroundColor: disabled || !message.trim()
+                  ? 'var(--accent-color)'
+                  : 'var(--accent-color)',
+              }}
+              onMouseEnter={(e) => {
+                if (!disabled && message.trim()) {
+                  e.currentTarget.style.backgroundColor = 'var(--accent-hover)';
+                }
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = 'var(--accent-color)';
+              }}
+            >
+              <ArrowUp size={18} strokeWidth={2.5} />
+            </button>
+          </div>
         </div>
-
-        <VoiceInput onTranscript={handleVoiceTranscript} disabled={disabled} />
-
-        <button
-          onClick={handleSubmit}
-          disabled={disabled || !message.trim()}
-          className="p-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <Send size={20} />
-        </button>
       </div>
     </div>
   );

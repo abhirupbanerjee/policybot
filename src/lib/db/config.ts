@@ -71,6 +71,7 @@ export interface BrandingSettings {
   subtitle?: string;          // Custom subtitle for header (replaces hardcoded)
   welcomeTitle?: string;      // Global fallback for welcome screen
   welcomeMessage?: string;    // Global fallback for welcome screen
+  accentColor?: string;       // Accent color for UI elements (default: #2563eb)
 }
 
 export interface PWASettings {

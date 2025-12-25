@@ -103,7 +103,7 @@ export default function VoiceInput({ onTranscript, disabled }: VoiceInputProps) 
   if (isTranscribing) {
     return (
       <div className="flex items-center gap-2 px-3 py-2 bg-gray-100 rounded-lg">
-        <Loader2 className="w-5 h-5 animate-spin text-blue-600" />
+        <Loader2 className="w-5 h-5 animate-spin" style={{ color: 'var(--accent-color)' }} />
         <span className="text-sm text-gray-600">Transcribing...</span>
       </div>
     );
@@ -126,8 +126,16 @@ export default function VoiceInput({ onTranscript, disabled }: VoiceInputProps) 
     <button
       onClick={startRecording}
       disabled={disabled}
-      className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+      className="p-2 text-gray-500 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-200"
       title="Voice input"
+      onMouseEnter={(e) => {
+        if (!disabled) {
+          e.currentTarget.style.color = 'var(--accent-color)';
+        }
+      }}
+      onMouseLeave={(e) => {
+        e.currentTarget.style.color = '';
+      }}
     >
       <Mic size={20} />
     </button>

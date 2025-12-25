@@ -135,6 +135,7 @@ interface BrandingSettings {
   subtitle?: string;
   welcomeTitle?: string;
   welcomeMessage?: string;
+  accentColor?: string;
   updatedAt?: string;
   updatedBy?: string;
 }
@@ -589,6 +590,10 @@ export default function AdminPage() {
         setEditedBranding({
           botName: data.branding.botName,
           botIcon: data.branding.botIcon,
+          subtitle: data.branding.subtitle,
+          welcomeTitle: data.branding.welcomeTitle,
+          welcomeMessage: data.branding.welcomeMessage,
+          accentColor: data.branding.accentColor,
         });
       }
       if (data.reranker) {
@@ -1853,6 +1858,10 @@ export default function AdminPage() {
       setEditedBranding({
         botName: brandingSettings.botName,
         botIcon: brandingSettings.botIcon,
+        subtitle: brandingSettings.subtitle,
+        welcomeTitle: brandingSettings.welcomeTitle,
+        welcomeMessage: brandingSettings.welcomeMessage,
+        accentColor: brandingSettings.accentColor,
       });
       setBrandingModified(false);
     }
@@ -4108,19 +4117,105 @@ export default function AdminPage() {
                         </div>
                       </div>
 
+                      {/* Accent Color */}
+                      <div className="border-t pt-4">
+                        <label className="block text-sm font-medium text-gray-900 mb-3">
+                          Accent Color
+                        </label>
+                        <p className="text-xs text-gray-500 mb-3">
+                          Primary color used for buttons, links, and interactive elements throughout the UI.
+                        </p>
+                        <div className="flex items-center gap-4">
+                          <div className="relative">
+                            <input
+                              type="color"
+                              value={editedBranding.accentColor || '#2563eb'}
+                              onChange={(e) => {
+                                setEditedBranding({ ...editedBranding, accentColor: e.target.value });
+                                setBrandingModified(true);
+                              }}
+                              className="w-14 h-14 rounded-lg cursor-pointer border-2 border-gray-200 p-1"
+                              title="Choose accent color"
+                            />
+                          </div>
+                          <div className="flex-1 max-w-xs">
+                            <label className="block text-xs text-gray-500 mb-1">Hex Value</label>
+                            <input
+                              type="text"
+                              value={editedBranding.accentColor || '#2563eb'}
+                              onChange={(e) => {
+                                const value = e.target.value;
+                                if (/^#[0-9A-Fa-f]{0,6}$/.test(value)) {
+                                  setEditedBranding({ ...editedBranding, accentColor: value });
+                                  setBrandingModified(true);
+                                }
+                              }}
+                              placeholder="#2563eb"
+                              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
+                            />
+                          </div>
+                        </div>
+                        {/* Quick presets */}
+                        <div className="mt-3">
+                          <p className="text-xs text-gray-500 mb-2">Quick presets:</p>
+                          <div className="flex flex-wrap gap-2">
+                            {[
+                              { color: '#2563eb', label: 'Blue' },
+                              { color: '#059669', label: 'Green' },
+                              { color: '#7c3aed', label: 'Purple' },
+                              { color: '#ea580c', label: 'Orange' },
+                              { color: '#dc2626', label: 'Red' },
+                              { color: '#1f2937', label: 'Dark' },
+                            ].map(({ color, label }) => (
+                              <button
+                                key={color}
+                                type="button"
+                                onClick={() => {
+                                  setEditedBranding({ ...editedBranding, accentColor: color });
+                                  setBrandingModified(true);
+                                }}
+                                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all ${
+                                  editedBranding.accentColor === color
+                                    ? 'border-gray-900 ring-1 ring-gray-900'
+                                    : 'border-gray-200 hover:border-gray-300'
+                                }`}
+                              >
+                                <span
+                                  className="w-4 h-4 rounded-full border border-gray-200"
+                                  style={{ backgroundColor: color }}
+                                />
+                                <span className="text-xs text-gray-700">{label}</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
                       {/* Preview */}
                       <div>
                         <label className="block text-sm font-medium text-gray-900 mb-2">Preview</label>
                         <div className="inline-flex items-center gap-2 px-4 py-3 bg-gray-100 rounded-lg">
                           {(() => {
                             const iconData = BRANDING_ICONS.find(i => i.key === editedBranding.botIcon);
+                            const accentColor = editedBranding.accentColor || '#2563eb';
                             if (iconData) {
                               const IconComponent = iconData.Icon;
-                              return <IconComponent size={24} className="text-blue-600" />;
+                              return <IconComponent size={24} style={{ color: accentColor }} />;
                             }
-                            return <ScrollText size={24} className="text-blue-600" />;
+                            return <ScrollText size={24} style={{ color: accentColor }} />;
                           })()}
                           <span className="text-xl font-bold text-gray-900">{editedBranding.botName || 'Policy Bot'}</span>
+                        </div>
+                        {/* Button preview */}
+                        <div className="mt-3 flex items-center gap-2">
+                          <button
+                            type="button"
+                            className="px-4 py-2 rounded-lg text-white text-sm font-medium transition-colors"
+                            style={{ backgroundColor: editedBranding.accentColor || '#2563eb' }}
+                          >
+                            Send Message
+                          </button>
+                          <span className="text-xs text-gray-500">Button preview</span>
                         </div>
                       </div>
 

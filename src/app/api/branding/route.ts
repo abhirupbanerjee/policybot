@@ -17,6 +17,7 @@ export async function GET() {
       subtitle: branding.subtitle || null,
       welcomeTitle: branding.welcomeTitle || null,
       welcomeMessage: branding.welcomeMessage || null,
+      accentColor: branding.accentColor || '#2563eb',
       // Include available icons for client reference
       availableIcons: BRANDING_ICONS,
     });

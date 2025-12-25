@@ -333,25 +333,34 @@ export default function ChatWindow({
 
       {/* Summarization Banner */}
       {activeThread?.isSummarized && summaryData && (
-        <div className="bg-blue-50 border-b border-blue-100 px-6 py-3">
+        <div
+          className="border-b px-6 py-3"
+          style={{
+            backgroundColor: 'var(--accent-lighter)',
+            borderColor: 'var(--accent-border)',
+          }}
+        >
           <button
             onClick={() => setShowSummaryDetails(!showSummaryDetails)}
             className="w-full flex items-center justify-between text-left"
           >
-            <div className="flex items-center gap-2 text-blue-700">
+            <div className="flex items-center gap-2" style={{ color: 'var(--accent-text)' }}>
               <BookOpen size={18} />
               <span className="text-sm font-medium">
                 This conversation has been summarized ({summaryData.messagesSummarized} messages compressed)
               </span>
             </div>
             {showSummaryDetails ? (
-              <ChevronUp size={18} className="text-blue-600" />
+              <ChevronUp size={18} style={{ color: 'var(--accent-color)' }} />
             ) : (
-              <ChevronDown size={18} className="text-blue-600" />
+              <ChevronDown size={18} style={{ color: 'var(--accent-color)' }} />
             )}
           </button>
           {showSummaryDetails && (
-            <div className="mt-3 p-3 bg-white rounded-lg border border-blue-200">
+            <div
+              className="mt-3 p-3 bg-white rounded-lg border"
+              style={{ borderColor: 'var(--accent-border)' }}
+            >
               <p className="text-sm text-gray-700 whitespace-pre-wrap">{summaryData.summary}</p>
               <p className="text-xs text-gray-500 mt-2">
                 Summarized on {new Date(summaryData.createdAt).toLocaleDateString()}

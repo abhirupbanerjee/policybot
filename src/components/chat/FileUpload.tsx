@@ -115,8 +115,16 @@ export default function FileUpload({
       <button
         onClick={() => setIsModalOpen(true)}
         disabled={disabled || !threadId}
-        className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        className="p-2 text-gray-500 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-200"
         title={`Attach file (PDF, PNG, JPG, TXT - max ${MAX_FILE_SIZE_MB}MB)`}
+        onMouseEnter={(e) => {
+          if (!disabled && threadId) {
+            e.currentTarget.style.color = 'var(--accent-color)';
+          }
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.color = '';
+        }}
       >
         <Paperclip size={20} />
       </button>
@@ -130,15 +138,15 @@ export default function FileUpload({
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
-            isDragging
-              ? 'border-blue-500 bg-blue-50'
-              : 'border-gray-300 hover:border-gray-400'
-          }`}
+          className="border-2 border-dashed rounded-lg p-8 text-center transition-colors"
+          style={{
+            borderColor: isDragging ? 'var(--accent-color)' : '#d1d5db',
+            backgroundColor: isDragging ? 'var(--accent-lighter)' : 'transparent',
+          }}
         >
           {uploading ? (
             <div className="flex flex-col items-center gap-3">
-              <Loader2 className="w-10 h-10 text-blue-600 animate-spin" />
+              <Loader2 className="w-10 h-10 animate-spin" style={{ color: 'var(--accent-color)' }} />
               <p className="text-gray-600">Uploading...</p>
             </div>
           ) : (
@@ -148,7 +156,8 @@ export default function FileUpload({
                 Drag & drop a file here, or{' '}
                 <button
                   onClick={() => fileInputRef.current?.click()}
-                  className="text-blue-600 hover:underline"
+                  className="hover:underline"
+                  style={{ color: 'var(--accent-color)' }}
                 >
                   browse
                 </button>
@@ -193,7 +202,7 @@ export default function FileUpload({
                   key={filename}
                   className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg"
                 >
-                  <FileText size={16} className="text-blue-600" />
+                  <FileText size={16} style={{ color: 'var(--accent-color)' }} />
                   <span className="text-sm text-gray-700 truncate flex-1">
                     {filename}
                   </span>
