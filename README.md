@@ -64,6 +64,7 @@ Policy Bot is an **enterprise AI assistant platform** designed for organizations
 | Capability | Description |
 |------------|-------------|
 | **Multi-Provider LLM** | Switch between OpenAI, Mistral, Gemini, or run locally with Ollama—no vendor lock-in |
+| **Streaming Responses** | Real-time streaming chat with typing indicators for responsive UX |
 | **Text & Voice Input** | Interact via chat or voice recording (Whisper transcription) |
 | **Category-Based Organization** | Organize documents and users by department (HR, Finance, IT, etc.) |
 | **Three-Tier Access Control** | Admin → SuperUser → User hierarchy with category-based permissions |
@@ -73,6 +74,7 @@ Policy Bot is an **enterprise AI assistant platform** designed for organizations
 | **Thread Summarization** | Automatically summarize long conversations to maintain context |
 | **Local Data Sovereignty** | All data stored locally—SQLite, ChromaDB, filesystem—with full backup control |
 | **Cost Optimization** | Shared infrastructure reduces per-user AI costs compared to individual subscriptions |
+| **Progressive Web App** | Installable on mobile/desktop with offline support and custom theming |
 
 ### Key Differentiators
 
@@ -86,6 +88,7 @@ Policy Bot is an **enterprise AI assistant platform** designed for organizations
 
 ### Chat & Query
 - **Natural Language Q&A** - Ask questions about policy documents in plain English
+- **Streaming Responses** - Real-time streaming chat with typing indicators
 - **Web Search Integration** - Automatic web search via Tavily API when needed
 - **Source Citations** - Every response includes document names, page numbers, and relevance scores
 - **Conversation Threads** - Organize discussions into separate threads with category-based context
@@ -129,6 +132,12 @@ Policy Bot is an **enterprise AI assistant platform** designed for organizations
 - **Category-Based Access** - Users only see documents from their subscribed categories
 - **Thread Isolation** - Users can only access their own conversations and uploads
 - **Non-Root Containers** - Secure Docker deployment
+
+### Progressive Web App (PWA)
+- **Installable App** - Install on desktop and mobile devices for native-like experience
+- **Offline Support** - Continue viewing cached content when offline with automatic reconnection
+- **Mobile Optimized** - Responsive design with swipe gestures and touch-friendly UI
+- **Custom Theming** - Personalize with accent colors that persist across sessions
 
 ### User Roles
 
@@ -235,6 +244,7 @@ Policy Bot is an **enterprise AI assistant platform** designed for organizations
 
 ### AI/ML - LLM Providers (via LiteLLM)
 - **OpenAI** - GPT-4.1, GPT-4.1-mini, GPT-4.1-nano
+- **Gemini** - gemini-2.0-flash, gemini-2.5-flash-preview-05-20
 - **Mistral AI** - mistral-large-3, mistral-small-3.2, ministral-8b
 - **Ollama** - llama3.2, qwen2.5 (local, no API cost)
 - **OpenAI text-embedding-3-large** - Vector embeddings (3072 dimensions)
@@ -300,6 +310,7 @@ LITELLM_MASTER_KEY=sk-litellm-master-change-this
 
 # [OPTIONAL] Additional Providers
 MISTRAL_API_KEY=your-mistral-api-key
+GEMINI_API_KEY=your-gemini-api-key
 OLLAMA_API_BASE=http://localhost:11434
 
 # [OPTIONAL] Document Processing
@@ -357,6 +368,7 @@ LITELLM_MASTER_KEY=sk-litellm-master-change-this
 
 # [OPTIONAL] Additional Providers
 MISTRAL_API_KEY=your-mistral-api-key
+GEMINI_API_KEY=your-gemini-api-key
 
 # [OPTIONAL] Document Processing
 AZURE_DI_ENDPOINT=https://...
@@ -446,6 +458,7 @@ policy-bot/
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/api/chat` | Send message, receive RAG response |
+| POST | `/api/chat/stream` | Send message, receive streaming RAG response |
 | POST | `/api/transcribe` | Convert audio to text |
 | GET | `/api/threads` | List user threads |
 | POST | `/api/threads` | Create new thread (with category IDs) |
@@ -564,18 +577,21 @@ Policy Bot supports multiple LLM providers through LiteLLM proxy, configurable v
 | Provider | Models | Use Case |
 |----------|--------|----------|
 | **OpenAI** | GPT-4.1, GPT-4.1-mini, GPT-4.1-nano | Production workloads |
+| **Gemini** | gemini-2.0-flash, gemini-2.5-flash-preview | Fast, cost-effective inference |
 | **Mistral** | mistral-large-3, mistral-small-3.2, ministral-8b | Alternative provider |
 | **Ollama** | llama3.2, qwen2.5 | Local development, no API cost |
 
 ### Model Presets
 
-The admin panel provides 8 pre-configured model presets that optimize both LLM and RAG settings:
+The admin panel provides 10 pre-configured model presets that optimize both LLM and RAG settings:
 
 | Preset | Model | Temperature | Max Tokens | Top K / Max Context |
 |--------|-------|-------------|------------|---------------------|
 | GPT-4.1 (High Performance) | gpt-4.1 | 0.1 | 4000 | 25/20 |
 | GPT-4.1 Mini (Balanced) | gpt-4.1-mini | 0.2 | 3000 | 20/15 |
 | GPT-4.1 Nano (Cost-Effective) | gpt-4.1-nano | 0.2 | 2000 | 15/10 |
+| Gemini 2.0 Flash | gemini-2.0-flash | 0.2 | 3000 | 20/15 |
+| Gemini 2.5 Flash Preview | gemini-2.5-flash-preview | 0.2 | 3000 | 20/15 |
 | Mistral Large 3 | mistral-large-3 | 0.2 | 3000 | 20/15 |
 | Mistral Small 3.2 | mistral-small-3.2 | 0.2 | 2000 | 15/10 |
 | Ministral 8B | ministral-8b | 0.2 | 2000 | 10/8 |
@@ -761,6 +777,11 @@ model_list:
       model: openai/gpt-4.1-mini
       api_key: os.environ/OPENAI_API_KEY
 
+  - model_name: gemini-2.0-flash
+    litellm_params:
+      model: gemini/gemini-2.0-flash
+      api_key: os.environ/GEMINI_API_KEY
+
   - model_name: mistral-large-3
     litellm_params:
       model: mistral/mistral-large-latest
@@ -797,6 +818,11 @@ model_list:
 **Deployment:**
 - [Infrastructure Guide](docs/INFRASTRUCTURE.md) - Docker, deployment, and cost estimation
 - [Deployment Checklist](docs/DEPLOYMENT_CHECKLIST.md) - Production deployment guide
+
+**User Manuals:**
+- [User Guide](docs/user_manuals/USER_GUIDE.md) - Guide for regular users
+- [Superuser Guide](docs/user_manuals/SUPERUSER_GUIDE.md) - Guide for department managers
+- [Admin Guide](docs/user_manuals/ADMIN_GUIDE.md) - Complete admin documentation
 
 ## Acknowledgements
 

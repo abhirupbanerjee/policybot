@@ -853,14 +853,24 @@ Configure system-wide settings.
 | **Support Email** | Contact for user support |
 | **Default Language** | UI language |
 
+### Appearance Settings
+
+| Setting | Description |
+|---------|-------------|
+| **Accent Color** | Primary theme color for the application (users can customize) |
+| **PWA Enabled** | Enable Progressive Web App features for mobile installation |
+
 ### AI Configuration
 
 | Setting | Description |
 |---------|-------------|
-| **LLM Model** | Default model for chat |
+| **LLM Model** | Default model for chat (OpenAI, Gemini, Mistral, Ollama) |
 | **Temperature** | Response creativity (0-1) |
 | **Max Tokens** | Maximum response length |
 | **Context Window** | Document context size |
+| **Streaming** | Enable real-time streaming responses |
+| **Memory Extraction Tokens** | Maximum tokens for memory extraction |
+| **Prompt Max Tokens** | Maximum tokens for prompt context |
 
 ### Embedding Settings
 
@@ -1143,4 +1153,4 @@ User
 
 ---
 
-*Last updated: December 2024*
+*Last updated: December 2024 (v2.1 - Added streaming, PWA, accent colors, Gemini models)*

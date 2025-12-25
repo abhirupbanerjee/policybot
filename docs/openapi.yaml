@@ -25,7 +25,7 @@ servers:
 
 tags:
   - name: Chat
-    description: Send messages and receive RAG-powered responses
+    description: Send messages and receive RAG-powered responses (standard and streaming)
   - name: Threads
     description: Manage conversation threads
   - name: User

@@ -754,9 +754,12 @@ export interface RagSettings {
 }
 
 export interface LlmSettings {
-  model: string;       // Model name routed via LiteLLM (default: 'gpt-4.1-mini')
-  temperature: number; // Response randomness (default: 0.2)
-  maxTokens: number;   // Max response tokens (default: 2000)
+  model: string;               // Model name routed via LiteLLM (default: 'gpt-4.1-mini')
+  temperature: number;         // Response randomness (default: 0.2)
+  maxTokens: number;           // Max response tokens (default: 2000)
+  streaming: boolean;          // Enable streaming responses (default: true)
+  memoryExtractionMaxTokens: number;  // Max tokens for memory extraction
+  promptMaxTokens: number;     // Max tokens for prompt context
 }
 
 export interface TavilySettings {
@@ -1829,6 +1832,8 @@ Model presets are defined in code (`src/lib/db/config.ts`) and allow admins to q
 | `gpt-4.1` | gpt-4.1 | OpenAI | Complex analysis, 1M context |
 | `gpt-4.1-mini` | gpt-4.1-mini | OpenAI | Most queries (default) |
 | `gpt-4.1-nano` | gpt-4.1-nano | OpenAI | Simple queries, fastest |
+| `gemini-2.0-flash` | gemini-2.0-flash | Google | Fast, cost-effective inference |
+| `gemini-2.5-flash-preview` | gemini-2.5-flash-preview | Google | Advanced multimodal reasoning |
 | `mistral-large-3` | mistral-large-3 | Mistral | Strong reasoning, 256K context |
 | `mistral-small-3.2` | mistral-small-3.2 | Mistral | Routine queries |
 | `ministral-8b` | ministral-8b | Mistral | Lowest cost |
@@ -1855,6 +1860,8 @@ All models are routed through LiteLLM proxy (`http://litellm:4000/v1`):
 | App Model Name | LiteLLM Route | Actual Model |
 |----------------|---------------|--------------|
 | `gpt-4.1-mini` | `openai/gpt-4.1-mini` | OpenAI GPT-4.1 Mini |
+| `gemini-2.0-flash` | `gemini/gemini-2.0-flash` | Google Gemini 2.0 Flash |
+| `gemini-2.5-flash-preview` | `gemini/gemini-2.5-flash-preview-05-20` | Google Gemini 2.5 Flash Preview |
 | `mistral-large-3` | `mistral/mistral-large-latest` | Mistral Large |
 | `ollama-llama3.2` | `ollama/llama3.2` | Local Llama 3.2 |
 

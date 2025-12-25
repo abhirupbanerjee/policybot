@@ -96,6 +96,7 @@ When `AUTH_DISABLED=true` in environment:
 | Method | Endpoint | Auth | Role | Description |
 |--------|----------|------|------|-------------|
 | POST | `/api/chat` | Yes | Any | Send message and get RAG response |
+| POST | `/api/chat/stream` | Yes | Any | Send message and get streaming RAG response |
 | POST | `/api/transcribe` | Yes | Any | Convert audio to text |
 | GET | `/api/threads` | Yes | Any | List user's threads |
 | POST | `/api/threads` | Yes | Any | Create new thread |

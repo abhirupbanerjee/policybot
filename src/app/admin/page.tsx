@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Upload, RefreshCw, Trash2, FileText, AlertCircle, Users, UserPlus, Shield, User, Settings, Save, FolderOpen, Plus, Edit2, BarChart3, Database, HardDrive, Globe, Tag, Landmark, DollarSign, Activity, Layers, Server, ScrollText, ChevronUp, ChevronDown, ChevronsUpDown, Search, X, LayoutDashboard, Cpu, Mic, Sparkles, Download, Wand2, CheckCircle, Youtube, Filter, SortAsc } from 'lucide-react';
+import { ArrowLeft, Upload, RefreshCw, Trash2, FileText, AlertCircle, Users, UserPlus, Shield, User, Settings, Save, FolderOpen, Plus, Edit2, BarChart3, Database, HardDrive, Globe, Tag, Landmark, DollarSign, Activity, Layers, Server, ScrollText, ChevronUp, ChevronDown, ChevronsUpDown, Search, X, LayoutDashboard, Cpu, Mic, Sparkles, Wand2, CheckCircle, Youtube, Filter, SortAsc, MessageSquare } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import Spinner from '@/components/ui/Spinner';
@@ -126,8 +126,9 @@ interface ModelPreset {
   };
 }
 
-type TabType = 'dashboard' | 'documents' | 'categories' | 'users' | 'settings' | 'stats' | 'skills' | 'tools' | 'backup';
-type SettingsSection = 'prompt' | 'rag' | 'llm' | 'acronyms' | 'branding' | 'reranker' | 'memory' | 'summarization' | 'limits';
+type TabType = 'dashboard' | 'documents' | 'categories' | 'users' | 'settings' | 'stats' | 'prompts' | 'tools';
+type SettingsSection = 'rag' | 'llm' | 'reranker' | 'memory' | 'summarization' | 'limits' | 'backup' | 'branding';
+type PromptsSection = 'system-prompt' | 'category-prompts' | 'acronyms' | 'skills';
 
 interface BrandingSettings {
   botName: string;
@@ -381,7 +382,13 @@ export default function AdminPage() {
   const [showOptimizationDiff, setShowOptimizationDiff] = useState(false);
 
   // RAG/LLM settings state
-  const [settingsSection, setSettingsSection] = useState<SettingsSection>('prompt');
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>('llm');
+  const [promptsSection, setPromptsSection] = useState<PromptsSection>('system-prompt');
+
+  // LLM collapse state
+  const [llmPresetsExpanded, setLlmPresetsExpanded] = useState(true);
+  const [llmSettingsExpanded, setLlmSettingsExpanded] = useState(true);
+  const [llmTokenLimitsExpanded, setLlmTokenLimitsExpanded] = useState(false);
   const [ragSettings, setRagSettings] = useState<RAGSettings | null>(null);
   const [editedRag, setEditedRag] = useState<Omit<RAGSettings, 'updatedAt' | 'updatedBy'> | null>(null);
   const [llmSettings, setLlmSettings] = useState<LLMSettings | null>(null);
@@ -2433,26 +2440,15 @@ export default function AdminPage() {
               Users
             </button>
             <button
-              onClick={() => setActiveTab('settings')}
+              onClick={() => setActiveTab('prompts')}
               className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === 'settings'
+                activeTab === 'prompts'
                   ? 'border-blue-600 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >
-              <Settings size={16} className="inline mr-2" />
-              Settings
-            </button>
-            <button
-              onClick={() => setActiveTab('skills')}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === 'skills'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <Layers size={16} className="inline mr-2" />
-              Skills
+              <MessageSquare size={16} className="inline mr-2" />
+              Prompts
             </button>
             <button
               onClick={() => setActiveTab('tools')}
@@ -2466,15 +2462,15 @@ export default function AdminPage() {
               Tools
             </button>
             <button
-              onClick={() => setActiveTab('backup')}
+              onClick={() => setActiveTab('settings')}
               className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
-                activeTab === 'backup'
+                activeTab === 'settings'
                   ? 'border-blue-600 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >
-              <Download size={16} className="inline mr-2" />
-              Backup
+              <Settings size={16} className="inline mr-2" />
+              Settings
             </button>
           </nav>
         </div>
@@ -3271,16 +3267,6 @@ export default function AdminPage() {
             <div className="w-48 shrink-0">
               <nav className="bg-white rounded-lg border shadow-sm p-2 space-y-1">
                 <button
-                  onClick={() => setSettingsSection('prompt')}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    settingsSection === 'prompt'
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  System Prompt
-                </button>
-                <button
                   onClick={() => setSettingsSection('llm')}
                   className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
                     settingsSection === 'llm'
@@ -3309,26 +3295,6 @@ export default function AdminPage() {
                   }`}
                 >
                   Reranker
-                </button>
-                <button
-                  onClick={() => setSettingsSection('branding')}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    settingsSection === 'branding'
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  Branding
-                </button>
-                <button
-                  onClick={() => setSettingsSection('acronyms')}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    settingsSection === 'acronyms'
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  Acronyms
                 </button>
                 <button
                   onClick={() => setSettingsSection('memory')}
@@ -3360,138 +3326,53 @@ export default function AdminPage() {
                 >
                   Limits
                 </button>
+                <button
+                  onClick={() => setSettingsSection('backup')}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    settingsSection === 'backup'
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  Backup
+                </button>
+                <button
+                  onClick={() => setSettingsSection('branding')}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    settingsSection === 'branding'
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  Branding
+                </button>
               </nav>
             </div>
 
             {/* Settings Content */}
             <div className="flex-1">
-              {/* System Prompt Section */}
-              {settingsSection === 'prompt' && (
-                <div className="space-y-6">
-                <div className="bg-white rounded-lg border shadow-sm">
-                  <div className="px-6 py-4 border-b">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h2 className="font-semibold text-gray-900">System Prompt</h2>
-                        <p className="text-sm text-gray-500">
-                          Define the AI assistant&apos;s behavior and instructions
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {promptModified && (
-                          <Button variant="secondary" onClick={handleResetPrompt} disabled={savingPrompt}>
-                            Reset
-                          </Button>
-                        )}
-                        <Button onClick={handleSavePrompt} disabled={!promptModified || savingPrompt} loading={savingPrompt}>
-                          <Save size={18} className="mr-2" />
-                          Save
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                  {promptLoading ? (
-                    <div className="px-6 py-12 flex justify-center"><Spinner size="lg" /></div>
-                  ) : (
-                    <div className="p-6">
-                      <textarea
-                        value={editedPrompt}
-                        onChange={(e) => handlePromptChange(e.target.value)}
-                        rows={16}
-                        className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
-                        placeholder="Enter the system prompt..."
-                      />
-                      <div className="mt-3 flex items-center justify-between">
-                        {systemPrompt && (
-                          <p className="text-xs text-gray-500">
-                            Last updated: {formatDate(systemPrompt.updatedAt)} by {systemPrompt.updatedBy}
-                          </p>
-                        )}
-                        <Button
-                          variant="secondary"
-                          onClick={handleRestoreDefaultPrompt}
-                          disabled={restoringPrompt || savingPrompt}
-                          loading={restoringPrompt}
-                          className="text-orange-600 border-orange-300 hover:bg-orange-50"
-                        >
-                          <RefreshCw size={16} className="mr-2" />
-                          Restore to Default
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Category Prompts Card */}
-                <div className="bg-white rounded-lg border shadow-sm">
-                  <div className="px-6 py-4 border-b">
-                    <div>
-                      <h2 className="font-semibold text-gray-900">Category-Specific Prompts</h2>
-                      <p className="text-sm text-gray-500">
-                        Add custom prompt guidance for specific categories (appended to global prompt)
-                      </p>
-                    </div>
-                  </div>
-                  <div className="p-6">
-                    {categories.length === 0 ? (
-                      <p className="text-gray-500 text-center py-4">
-                        No categories yet. Create categories first.
-                      </p>
-                    ) : (
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="border-b text-left">
-                              <th className="pb-3 font-medium text-gray-700">Category</th>
-                              <th className="pb-3 font-medium text-gray-700">Custom Prompt</th>
-                              <th className="pb-3 font-medium text-gray-700 text-right">Actions</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y">
-                            {categories.map((cat) => (
-                              <tr key={cat.id} className="hover:bg-gray-50">
-                                <td className="py-3">
-                                  <span className="font-medium text-gray-900">{cat.name}</span>
-                                  <span className="ml-2 text-xs text-gray-400">({cat.slug})</span>
-                                </td>
-                                <td className="py-3">
-                                  <span className="text-gray-500 text-xs">Click Edit to configure</span>
-                                </td>
-                                <td className="py-3 text-right">
-                                  <Button
-                                    variant="secondary"
-                                    size="sm"
-                                    onClick={() => handleOpenCategoryPromptModal(cat.id)}
-                                  >
-                                    <Edit2 size={14} className="mr-1" />
-                                    Edit
-                                  </Button>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                </div>
-                </div>
-              )}
-
               {/* LLM Settings Section */}
               {settingsSection === 'llm' && (
                 <div className="space-y-4">
                   {/* Model Presets Card */}
                   <div className="bg-white rounded-lg border shadow-sm">
-                    <div className="px-6 py-4 border-b">
+                    <div
+                      className="px-6 py-4 border-b cursor-pointer hover:bg-gray-50 transition-colors"
+                      onClick={() => setLlmPresetsExpanded(!llmPresetsExpanded)}
+                    >
                       <div className="flex items-center justify-between">
-                        <div>
-                          <h2 className="font-semibold text-gray-900">Quick Presets</h2>
-                          <p className="text-sm text-gray-500">Apply recommended model + RAG configurations</p>
+                        <div className="flex items-center gap-3">
+                          <button className="p-1 hover:bg-gray-100 rounded">
+                            {llmPresetsExpanded ? <ChevronUp size={18} className="text-gray-500" /> : <ChevronDown size={18} className="text-gray-500" />}
+                          </button>
+                          <div>
+                            <h2 className="font-semibold text-gray-900">Quick Presets</h2>
+                            <p className="text-sm text-gray-500">Apply recommended model + RAG configurations</p>
+                          </div>
                         </div>
                         <Button
                           variant="secondary"
-                          onClick={() => setShowRestoreConfirm(true)}
+                          onClick={(e) => { e.stopPropagation(); setShowRestoreConfirm(true); }}
                           disabled={restoringDefaults || applyingPreset}
                           className="text-orange-600 border-orange-300 hover:bg-orange-50"
                         >
@@ -3500,7 +3381,7 @@ export default function AdminPage() {
                         </Button>
                       </div>
                     </div>
-                    <div className="p-6">
+                    {llmPresetsExpanded && <div className="p-6">
                       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                         {modelPresets.filter(Boolean).map((preset) => {
                           const provider = getModelProvider(preset.model);
@@ -3555,18 +3436,26 @@ export default function AdminPage() {
                           <Spinner size="sm" /> <span className="ml-2">Applying preset...</span>
                         </div>
                       )}
-                    </div>
+                    </div>}
                   </div>
 
                   {/* Manual LLM Settings Card */}
                   <div className="bg-white rounded-lg border shadow-sm">
-                    <div className="px-6 py-4 border-b">
+                    <div
+                      className="px-6 py-4 border-b cursor-pointer hover:bg-gray-50 transition-colors"
+                      onClick={() => setLlmSettingsExpanded(!llmSettingsExpanded)}
+                    >
                       <div className="flex items-center justify-between">
-                        <div>
-                          <h2 className="font-semibold text-gray-900">LLM Settings</h2>
-                          <p className="text-sm text-gray-500">Fine-tune the language model parameters manually</p>
+                        <div className="flex items-center gap-3">
+                          <button className="p-1 hover:bg-gray-100 rounded">
+                            {llmSettingsExpanded ? <ChevronUp size={18} className="text-gray-500" /> : <ChevronDown size={18} className="text-gray-500" />}
+                          </button>
+                          <div>
+                            <h2 className="font-semibold text-gray-900">LLM Settings</h2>
+                            <p className="text-sm text-gray-500">Fine-tune the language model parameters manually</p>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                           {llmModified && (
                             <Button variant="secondary" onClick={handleResetLlm} disabled={savingSettings}>
                               Reset
@@ -3579,7 +3468,7 @@ export default function AdminPage() {
                         </div>
                       </div>
                     </div>
-                    {settingsLoading ? (
+                    {llmSettingsExpanded && (settingsLoading ? (
                       <div className="px-6 py-12 flex justify-center"><Spinner size="lg" /></div>
                     ) : editedLlm && (
                       <div className="p-6 space-y-6">
@@ -3653,18 +3542,26 @@ export default function AdminPage() {
                           </p>
                         )}
                       </div>
-                    )}
+                    ))}
                   </div>
 
                   {/* Per-Model Token Limits Card */}
                   <div className="bg-white rounded-lg border shadow-sm">
-                    <div className="px-6 py-4 border-b">
-                      <div>
-                        <h2 className="font-semibold text-gray-900">Per-Model Token Limits</h2>
-                        <p className="text-sm text-gray-500">Override default max tokens for specific models</p>
+                    <div
+                      className="px-6 py-4 border-b cursor-pointer hover:bg-gray-50 transition-colors"
+                      onClick={() => setLlmTokenLimitsExpanded(!llmTokenLimitsExpanded)}
+                    >
+                      <div className="flex items-center gap-3">
+                        <button className="p-1 hover:bg-gray-100 rounded">
+                          {llmTokenLimitsExpanded ? <ChevronUp size={18} className="text-gray-500" /> : <ChevronDown size={18} className="text-gray-500" />}
+                        </button>
+                        <div>
+                          <h2 className="font-semibold text-gray-900">Per-Model Token Limits</h2>
+                          <p className="text-sm text-gray-500">Override default max tokens for specific models</p>
+                        </div>
                       </div>
                     </div>
-                    {settingsLoading ? (
+                    {llmTokenLimitsExpanded && (settingsLoading ? (
                       <div className="px-6 py-12 flex justify-center"><Spinner size="lg" /></div>
                     ) : (
                       <div className="p-6">
@@ -3756,7 +3653,7 @@ export default function AdminPage() {
                           </p>
                         )}
                       </div>
-                    )}
+                    ))}
                   </div>
                 </div>
               )}
@@ -3927,52 +3824,6 @@ export default function AdminPage() {
                       </div>
                     )}
                   </div>
-                </div>
-              )}
-
-              {/* Acronyms Section */}
-              {settingsSection === 'acronyms' && (
-                <div className="bg-white rounded-lg border shadow-sm">
-                  <div className="px-6 py-4 border-b">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h2 className="font-semibold text-gray-900">Acronyms</h2>
-                        <p className="text-sm text-gray-500">Define acronym expansions for query enhancement</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        {acronymsModified && (
-                          <Button variant="secondary" onClick={handleResetAcronyms} disabled={savingSettings}>
-                            Reset
-                          </Button>
-                        )}
-                        <Button onClick={handleSaveAcronyms} disabled={!acronymsModified || savingSettings} loading={savingSettings}>
-                          <Save size={18} className="mr-2" />
-                          Save
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                  {settingsLoading ? (
-                    <div className="px-6 py-12 flex justify-center"><Spinner size="lg" /></div>
-                  ) : (
-                    <div className="p-6">
-                      <textarea
-                        value={editedAcronyms}
-                        onChange={(e) => handleAcronymsChange(e.target.value)}
-                        rows={12}
-                        className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
-                        placeholder="ea=enterprise architecture&#10;it=information technology"
-                      />
-                      <p className="mt-2 text-sm text-gray-500">
-                        One mapping per line in format: acronym=expansion. Used to expand queries for better retrieval.
-                      </p>
-                      {acronymMappings && (
-                        <p className="mt-4 text-xs text-gray-500">
-                          Last updated: {formatDate(acronymMappings.updatedAt)} by {acronymMappings.updatedBy}
-                        </p>
-                      )}
-                    </div>
-                  )}
                 </div>
               )}
 
@@ -5035,6 +4886,11 @@ export default function AdminPage() {
                 </div>
                 </div>
               )}
+
+              {/* Backup Section */}
+              {settingsSection === 'backup' && (
+                <BackupTab />
+              )}
             </div>
           </div>
         )}
@@ -5239,19 +5095,227 @@ export default function AdminPage() {
           </div>
         )}
 
-        {/* Skills Tab */}
-        {activeTab === 'skills' && (
-          <SkillsTab />
+        {/* Prompts Tab */}
+        {activeTab === 'prompts' && (
+          <div className="flex gap-6">
+            {/* Prompts Navigation */}
+            <div className="w-48 shrink-0">
+              <nav className="bg-white rounded-lg border shadow-sm p-2 space-y-1">
+                <button
+                  onClick={() => setPromptsSection('system-prompt')}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    promptsSection === 'system-prompt'
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  System Prompt
+                </button>
+                <button
+                  onClick={() => setPromptsSection('category-prompts')}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    promptsSection === 'category-prompts'
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  Category Prompts
+                </button>
+                <button
+                  onClick={() => setPromptsSection('acronyms')}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    promptsSection === 'acronyms'
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  Acronyms
+                </button>
+                <button
+                  onClick={() => setPromptsSection('skills')}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    promptsSection === 'skills'
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  Skills
+                </button>
+              </nav>
+            </div>
+
+            {/* Prompts Content */}
+            <div className="flex-1">
+              {/* System Prompt Section */}
+              {promptsSection === 'system-prompt' && (
+                <div className="bg-white rounded-lg border shadow-sm">
+                  <div className="px-6 py-4 border-b">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h2 className="font-semibold text-gray-900">System Prompt</h2>
+                        <p className="text-sm text-gray-500">
+                          Define the AI assistant&apos;s behavior and instructions
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {promptModified && (
+                          <Button variant="secondary" onClick={handleResetPrompt} disabled={savingPrompt}>
+                            Reset
+                          </Button>
+                        )}
+                        <Button onClick={handleSavePrompt} disabled={!promptModified || savingPrompt} loading={savingPrompt}>
+                          <Save size={18} className="mr-2" />
+                          Save
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                  {promptLoading ? (
+                    <div className="px-6 py-12 flex justify-center"><Spinner size="lg" /></div>
+                  ) : (
+                    <div className="p-6">
+                      <textarea
+                        value={editedPrompt}
+                        onChange={(e) => handlePromptChange(e.target.value)}
+                        rows={16}
+                        className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
+                        placeholder="Enter the system prompt..."
+                      />
+                      <div className="mt-3 flex items-center justify-between">
+                        {systemPrompt && (
+                          <p className="text-xs text-gray-500">
+                            Last updated: {formatDate(systemPrompt.updatedAt)} by {systemPrompt.updatedBy}
+                          </p>
+                        )}
+                        <Button
+                          variant="secondary"
+                          onClick={handleRestoreDefaultPrompt}
+                          disabled={restoringPrompt || savingPrompt}
+                          loading={restoringPrompt}
+                          className="text-orange-600 border-orange-300 hover:bg-orange-50"
+                        >
+                          <RefreshCw size={16} className="mr-2" />
+                          Restore to Default
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Category Prompts Section */}
+              {promptsSection === 'category-prompts' && (
+                <div className="bg-white rounded-lg border shadow-sm">
+                  <div className="px-6 py-4 border-b">
+                    <div>
+                      <h2 className="font-semibold text-gray-900">Category-Specific Prompts</h2>
+                      <p className="text-sm text-gray-500">
+                        Add custom prompt guidance for specific categories (appended to global prompt)
+                      </p>
+                    </div>
+                  </div>
+                  <div className="p-6">
+                    {categories.length === 0 ? (
+                      <p className="text-gray-500 text-center py-4">
+                        No categories yet. Create categories first.
+                      </p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b text-left">
+                              <th className="pb-3 font-medium text-gray-700">Category</th>
+                              <th className="pb-3 font-medium text-gray-700">Custom Prompt</th>
+                              <th className="pb-3 font-medium text-gray-700 text-right">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y">
+                            {categories.map((cat) => (
+                              <tr key={cat.id} className="hover:bg-gray-50">
+                                <td className="py-3">
+                                  <span className="font-medium text-gray-900">{cat.name}</span>
+                                  <span className="ml-2 text-xs text-gray-400">({cat.slug})</span>
+                                </td>
+                                <td className="py-3">
+                                  <span className="text-gray-500 text-xs">Click Edit to configure</span>
+                                </td>
+                                <td className="py-3 text-right">
+                                  <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    onClick={() => handleOpenCategoryPromptModal(cat.id)}
+                                  >
+                                    <Edit2 size={14} className="mr-1" />
+                                    Edit
+                                  </Button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Acronyms Section */}
+              {promptsSection === 'acronyms' && (
+                <div className="bg-white rounded-lg border shadow-sm">
+                  <div className="px-6 py-4 border-b">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h2 className="font-semibold text-gray-900">Acronyms</h2>
+                        <p className="text-sm text-gray-500">Define acronym expansions for query enhancement</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {acronymsModified && (
+                          <Button variant="secondary" onClick={handleResetAcronyms} disabled={savingSettings}>
+                            Reset
+                          </Button>
+                        )}
+                        <Button onClick={handleSaveAcronyms} disabled={!acronymsModified || savingSettings} loading={savingSettings}>
+                          <Save size={18} className="mr-2" />
+                          Save
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                  {settingsLoading ? (
+                    <div className="px-6 py-12 flex justify-center"><Spinner size="lg" /></div>
+                  ) : (
+                    <div className="p-6">
+                      <textarea
+                        value={editedAcronyms}
+                        onChange={(e) => handleAcronymsChange(e.target.value)}
+                        rows={12}
+                        className="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono text-sm"
+                        placeholder="ea=enterprise architecture&#10;it=information technology"
+                      />
+                      <p className="mt-2 text-sm text-gray-500">
+                        One mapping per line in format: acronym=expansion. Used to expand queries for better retrieval.
+                      </p>
+                      {acronymMappings && (
+                        <p className="mt-4 text-xs text-gray-500">
+                          Last updated: {formatDate(acronymMappings.updatedAt)} by {acronymMappings.updatedBy}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Skills Section */}
+              {promptsSection === 'skills' && (
+                <SkillsTab />
+              )}
+            </div>
+          </div>
         )}
 
         {/* Tools Tab */}
         {activeTab === 'tools' && (
           <ToolsTab />
-        )}
-
-        {/* Backup Tab */}
-        {activeTab === 'backup' && (
-          <BackupTab />
         )}
       </main>
 

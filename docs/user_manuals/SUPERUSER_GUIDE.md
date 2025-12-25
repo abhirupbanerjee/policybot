@@ -825,4 +825,4 @@ If you encounter issues not covered here:
 
 ---
 
-*Last updated: December 2024 (v2.0 - Added Task Planner Templates)*
+*Last updated: December 2024 (v2.1 - Added streaming responses, PWA support, accent colors)*

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Users, User, FolderOpen, Tag, Plus, FileText, Upload, Trash2, X, ChevronUp, ChevronDown, ChevronsUpDown, Search, Edit2, Save, RefreshCw, MessageSquare, LayoutDashboard, Database, CheckCircle, AlertCircle, Clock, Wand2, Layers, Globe, Youtube, Filter, SortAsc } from 'lucide-react';
+import { ArrowLeft, Users, User, FolderOpen, Tag, Plus, FileText, Upload, Trash2, X, ChevronUp, ChevronDown, ChevronsUpDown, Search, Edit2, Save, RefreshCw, MessageSquare, LayoutDashboard, Database, CheckCircle, AlertCircle, Clock, Wand2, Globe, Youtube, Filter, SortAsc } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import Spinner from '@/components/ui/Spinner';
@@ -138,7 +138,13 @@ export default function SuperUserPage() {
   const [docSortOption, setDocSortOption] = useState<'newest' | 'oldest' | 'largest' | 'smallest' | 'a-z' | 'z-a'>('newest');
 
   // Active tab state
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'users' | 'documents' | 'prompts' | 'skills' | 'tools'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'users' | 'documents' | 'prompts' | 'tools'>('dashboard');
+
+  // Prompts and Tools sidebar section state
+  type PromptsSection = 'global-prompt' | 'category-prompts' | 'skills';
+  type ToolsSection = 'tools' | 'backup';
+  const [promptsSection, setPromptsSection] = useState<PromptsSection>('category-prompts');
+  const [toolsSection, setToolsSection] = useState<ToolsSection>('tools');
 
   // Stats state
   const [stats, setStats] = useState<SuperUserStats | null>(null);
@@ -883,17 +889,6 @@ export default function SuperUserPage() {
             Prompts
           </button>
           <button
-            onClick={() => setActiveTab('skills')}
-            className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
-              activeTab === 'skills'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            <Layers size={16} className="inline mr-2" />
-            Skills
-          </button>
-          <button
             onClick={() => setActiveTab('tools')}
             className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
               activeTab === 'tools'
@@ -1435,102 +1430,225 @@ export default function SuperUserPage() {
         </div>
         )}
 
-        {/* Prompts Section */}
+        {/* Prompts Section with Sidebar */}
         {activeTab === 'prompts' && (
-          <div className="space-y-6">
-            {/* Global System Prompt (Read-only) */}
-            <div className="bg-white rounded-lg border shadow-sm">
-              <div className="px-6 py-4 border-b">
-                <h2 className="font-semibold text-gray-900">Global System Prompt</h2>
-                <p className="text-sm text-gray-500">
-                  This prompt applies to all categories (read-only)
-                </p>
-              </div>
-              <div className="p-6">
-                {globalPromptLoading ? (
-                  <div className="flex items-center justify-center py-4">
-                    <Spinner size="sm" />
-                    <span className="ml-2 text-gray-500 text-sm">Loading prompt...</span>
-                  </div>
-                ) : globalPrompt ? (
-                  <div className="bg-gray-50 border rounded-lg p-4 max-h-48 overflow-y-auto">
-                    <pre className="text-sm text-gray-700 whitespace-pre-wrap font-mono">
-                      {globalPrompt}
-                    </pre>
-                  </div>
-                ) : assignedCategories.length === 0 ? (
-                  <p className="text-gray-500 text-sm">
-                    No categories assigned. Contact admin to view system prompt.
-                  </p>
-                ) : (
-                  <p className="text-gray-500 text-sm">
-                    Unable to load global system prompt.
-                  </p>
-                )}
-              </div>
+          <div className="flex gap-6">
+            {/* Prompts Navigation */}
+            <div className="w-48 shrink-0">
+              <nav className="bg-white rounded-lg border shadow-sm p-2 space-y-1">
+                <button
+                  onClick={() => setPromptsSection('global-prompt')}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    promptsSection === 'global-prompt'
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  Global Prompt
+                </button>
+                <button
+                  onClick={() => setPromptsSection('category-prompts')}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    promptsSection === 'category-prompts'
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  Category Prompts
+                </button>
+                <button
+                  onClick={() => setPromptsSection('skills')}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    promptsSection === 'skills'
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  Skills
+                </button>
+              </nav>
             </div>
 
-            {/* Category Prompts */}
-            <div className="bg-white rounded-lg border shadow-sm">
-              <div className="px-6 py-4 border-b">
-                <h2 className="font-semibold text-gray-900">Category-Specific Prompts</h2>
-                <p className="text-sm text-gray-500">
-                  Add custom prompt guidance for your assigned categories
-                </p>
-              </div>
-              <div className="p-6">
-                {assignedCategories.length === 0 ? (
-                  <p className="text-gray-500 text-center py-4">
-                    No categories assigned to you.
-                  </p>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b text-left">
-                          <th className="pb-3 font-medium text-gray-700">Category</th>
-                          <th className="pb-3 font-medium text-gray-700">Custom Prompt</th>
-                          <th className="pb-3 font-medium text-gray-700 text-right">Actions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y">
-                        {assignedCategories.map((cat) => (
-                          <tr key={cat.categoryId} className="hover:bg-gray-50">
-                            <td className="py-3">
-                              <span className="font-medium text-gray-900">{cat.categoryName}</span>
-                            </td>
-                            <td className="py-3">
-                              <span className="text-gray-500 text-xs">Click Edit to configure</span>
-                            </td>
-                            <td className="py-3 text-right">
-                              <Button
-                                variant="secondary"
-                                size="sm"
-                                onClick={() => handleOpenCategoryPromptModal(cat.categoryId)}
-                              >
-                                <Edit2 size={14} className="mr-1" />
-                                Edit
-                              </Button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+            {/* Prompts Content */}
+            <div className="flex-1">
+              {/* Global System Prompt (Read-only) */}
+              {promptsSection === 'global-prompt' && (
+                <div className="bg-white rounded-lg border shadow-sm">
+                  <div className="px-6 py-4 border-b">
+                    <h2 className="font-semibold text-gray-900">Global System Prompt</h2>
+                    <p className="text-sm text-gray-500">
+                      This prompt applies to all categories (view only - set by administrator)
+                    </p>
                   </div>
-                )}
-              </div>
+                  <div className="p-6">
+                    {globalPromptLoading ? (
+                      <div className="flex items-center justify-center py-4">
+                        <Spinner size="sm" />
+                        <span className="ml-2 text-gray-500 text-sm">Loading prompt...</span>
+                      </div>
+                    ) : globalPrompt ? (
+                      <div className="bg-gray-50 border rounded-lg p-4 max-h-96 overflow-y-auto">
+                        <pre className="text-sm text-gray-700 whitespace-pre-wrap font-mono">
+                          {globalPrompt}
+                        </pre>
+                      </div>
+                    ) : assignedCategories.length === 0 ? (
+                      <p className="text-gray-500 text-sm">
+                        No categories assigned. Contact admin to view system prompt.
+                      </p>
+                    ) : (
+                      <p className="text-gray-500 text-sm">
+                        Unable to load global system prompt.
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Category Prompts */}
+              {promptsSection === 'category-prompts' && (
+                <div className="bg-white rounded-lg border shadow-sm">
+                  <div className="px-6 py-4 border-b">
+                    <h2 className="font-semibold text-gray-900">Category-Specific Prompts</h2>
+                    <p className="text-sm text-gray-500">
+                      Add custom prompt guidance for your assigned categories
+                    </p>
+                  </div>
+                  <div className="p-6">
+                    {assignedCategories.length === 0 ? (
+                      <p className="text-gray-500 text-center py-4">
+                        No categories assigned to you.
+                      </p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b text-left">
+                              <th className="pb-3 font-medium text-gray-700">Category</th>
+                              <th className="pb-3 font-medium text-gray-700">Custom Prompt</th>
+                              <th className="pb-3 font-medium text-gray-700 text-right">Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y">
+                            {assignedCategories.map((cat) => (
+                              <tr key={cat.categoryId} className="hover:bg-gray-50">
+                                <td className="py-3">
+                                  <span className="font-medium text-gray-900">{cat.categoryName}</span>
+                                </td>
+                                <td className="py-3">
+                                  <span className="text-gray-500 text-xs">Click Edit to configure</span>
+                                </td>
+                                <td className="py-3 text-right">
+                                  <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    onClick={() => handleOpenCategoryPromptModal(cat.categoryId)}
+                                  >
+                                    <Edit2 size={14} className="mr-1" />
+                                    Edit
+                                  </Button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Skills Section */}
+              {promptsSection === 'skills' && (
+                <SkillsTab isSuperuser />
+              )}
             </div>
           </div>
         )}
 
-        {/* Skills Section */}
-        {activeTab === 'skills' && (
-          <SkillsTab isSuperuser />
-        )}
-
-        {/* Tools Section (superuser mode with category config) */}
+        {/* Tools Section with Sidebar */}
         {activeTab === 'tools' && (
-          <ToolsTab isSuperuser />
+          <div className="flex gap-6">
+            {/* Tools Navigation */}
+            <div className="w-48 shrink-0">
+              <nav className="bg-white rounded-lg border shadow-sm p-2 space-y-1">
+                <button
+                  onClick={() => setToolsSection('tools')}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    toolsSection === 'tools'
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  Tools
+                </button>
+                <button
+                  onClick={() => setToolsSection('backup')}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+                    toolsSection === 'backup'
+                      ? 'bg-blue-50 text-blue-700'
+                      : 'text-gray-600 hover:bg-gray-50'
+                  }`}
+                >
+                  Backup
+                </button>
+              </nav>
+            </div>
+
+            {/* Tools Content */}
+            <div className="flex-1">
+              {/* Tools Tab Content */}
+              {toolsSection === 'tools' && (
+                <ToolsTab isSuperuser />
+              )}
+
+              {/* Backup Section */}
+              {toolsSection === 'backup' && (
+                <div className="bg-white rounded-lg border shadow-sm">
+                  <div className="px-6 py-4 border-b">
+                    <h2 className="font-semibold text-gray-900">Backup Threads</h2>
+                    <p className="text-sm text-gray-500">
+                      Export conversation threads from your assigned categories
+                    </p>
+                  </div>
+                  <div className="p-6">
+                    <div className="text-center py-8">
+                      <p className="text-gray-500 mb-4">
+                        Download threads and messages from categories you manage.
+                      </p>
+                      <Button
+                        onClick={async () => {
+                          try {
+                            const response = await fetch('/api/superuser/backup', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({ includeThreads: true }),
+                            });
+                            if (!response.ok) throw new Error('Backup failed');
+                            const blob = await response.blob();
+                            const url = window.URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `threads-backup-${new Date().toISOString().split('T')[0]}.json`;
+                            document.body.appendChild(a);
+                            a.click();
+                            window.URL.revokeObjectURL(url);
+                            a.remove();
+                          } catch (err) {
+                            console.error('Backup error:', err);
+                            alert('Failed to create backup. Please try again.');
+                          }
+                        }}
+                      >
+                        <FileText size={16} className="mr-2" />
+                        Export Threads
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         )}
       </main>
 
