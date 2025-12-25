@@ -70,6 +70,22 @@ export interface BrandingSettings {
   botIcon: string;
 }
 
+export interface PWASettings {
+  themeColor: string;
+  backgroundColor: string;
+  icon192Path: string;
+  icon512Path: string;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+export const DEFAULT_PWA_SETTINGS: PWASettings = {
+  themeColor: '#2563eb',
+  backgroundColor: '#ffffff',
+  icon192Path: '/icons/icon-192x192.png',
+  icon512Path: '/icons/icon-512x512.png',
+};
+
 export interface EmbeddingSettings {
   model: string;        // e.g., 'text-embedding-3-large'
   dimensions: number;   // e.g., 3072
@@ -241,7 +257,8 @@ export type SettingKey =
   | 'skills-settings'
   | 'limits-settings'
   | 'model-token-limits'
-  | 'token-limits-settings';
+  | 'token-limits-settings'
+  | 'pwa-settings';
 
 // ============ Generic Operations ============
 
@@ -597,6 +614,16 @@ export function getEffectiveMaxTokens(model: string): number {
   return 2000;
 }
 
+/**
+ * Get PWA settings
+ * Priority: SQLite > hardcoded defaults
+ */
+export function getPWASettings(): PWASettings {
+  const dbSettings = getSetting<PWASettings>('pwa-settings');
+  if (dbSettings) return dbSettings;
+  return DEFAULT_PWA_SETTINGS;
+}
+
 // ============ Typed Setters ============
 
 /**
@@ -784,6 +811,16 @@ export function setModelTokenLimit(model: string, limit: number | 'default', upd
 export function setModelTokenLimits(limits: ModelTokenLimits, updatedBy?: string): ModelTokenLimits {
   setSetting('model-token-limits', limits, updatedBy);
   return limits;
+}
+
+/**
+ * Update PWA settings
+ */
+export function setPWASettings(settings: Partial<PWASettings>, updatedBy?: string): PWASettings {
+  const current = getPWASettings();
+  const updated = { ...current, ...settings, updatedAt: new Date().toISOString(), updatedBy };
+  setSetting('pwa-settings', updated, updatedBy);
+  return updated;
 }
 
 // ============ Default System Prompt ============

@@ -25,7 +25,7 @@ import {
   ResponsiveContainer,
   Cell,
 } from 'recharts';
-import { BarChart3, LineChart as LineChartIcon, PieChart as PieChartIcon, Table, Download, ChevronDown, ChevronUp, Activity, Radar as RadarIcon, AlertCircle, Image } from 'lucide-react';
+import { BarChart3, LineChart as LineChartIcon, PieChart as PieChartIcon, Table, Download, ChevronDown, ChevronUp, Activity, Radar as RadarIcon, AlertCircle, Image as ImageIcon } from 'lucide-react';
 import type { ChartType, VisualizationHint } from '@/types/data-sources';
 
 // ===== Error Boundary =====
@@ -855,7 +855,7 @@ export default function DataVisualization({
               className="flex items-center gap-1 px-2 py-1 text-xs text-blue-600 hover:bg-blue-100 rounded disabled:opacity-50"
               title="Export as PNG"
             >
-              <Image size={14} />
+              <ImageIcon size={14} />
               <span className="hidden sm:inline">{isExporting ? 'Exporting...' : 'PNG'}</span>
             </button>
           )}

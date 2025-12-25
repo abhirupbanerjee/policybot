@@ -413,6 +413,9 @@ export default function AdminPage() {
   const [llmModified, setLlmModified] = useState(false);
   const [acronymsModified, setAcronymsModified] = useState(false);
   const [brandingModified, setBrandingModified] = useState(false);
+  const [pwaIcon192, setPwaIcon192] = useState<File | null>(null);
+  const [pwaIcon512, setPwaIcon512] = useState<File | null>(null);
+  const [uploadingPwaIcons, setUploadingPwaIcons] = useState(false);
   const [rerankerModified, setRerankerModified] = useState(false);
   const [memoryModified, setMemoryModified] = useState(false);
   const [summarizationModified, setSummarizationModified] = useState(false);
@@ -1819,6 +1822,45 @@ export default function AdminPage() {
         botIcon: brandingSettings.botIcon,
       });
       setBrandingModified(false);
+    }
+  };
+
+  const handleUploadPwaIcons = async () => {
+    if (!pwaIcon192 && !pwaIcon512) return;
+
+    setUploadingPwaIcons(true);
+    setError(null);
+    try {
+      const uploads: Promise<Response>[] = [];
+
+      if (pwaIcon192) {
+        const formData192 = new FormData();
+        formData192.append('file', pwaIcon192);
+        formData192.append('size', '192');
+        uploads.push(fetch('/api/admin/branding/icon', { method: 'POST', body: formData192 }));
+      }
+
+      if (pwaIcon512) {
+        const formData512 = new FormData();
+        formData512.append('file', pwaIcon512);
+        formData512.append('size', '512');
+        uploads.push(fetch('/api/admin/branding/icon', { method: 'POST', body: formData512 }));
+      }
+
+      const responses = await Promise.all(uploads);
+      for (const response of responses) {
+        if (!response.ok) {
+          const data = await response.json();
+          throw new Error(data.error || 'Failed to upload icon');
+        }
+      }
+
+      setPwaIcon192(null);
+      setPwaIcon512(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to upload PWA icons');
+    } finally {
+      setUploadingPwaIcons(false);
     }
   };
 
@@ -3981,6 +4023,83 @@ export default function AdminPage() {
                           Last updated: {formatDate(brandingSettings.updatedAt)} by {brandingSettings.updatedBy}
                         </p>
                       )}
+
+                      {/* PWA Icons */}
+                      <div className="mt-6 pt-6 border-t">
+                        <label className="block text-sm font-medium text-gray-900 mb-2">
+                          PWA App Icons
+                        </label>
+                        <p className="text-xs text-gray-500 mb-4">
+                          Upload custom icons for the installable app. PNG format recommended.
+                        </p>
+
+                        <div className="grid grid-cols-2 gap-4">
+                          {/* 192x192 Icon */}
+                          <div>
+                            <p className="text-xs font-medium text-gray-700 mb-2">192×192 (Required)</p>
+                            {pwaIcon192 ? (
+                              <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border rounded-lg">
+                                <span className="text-sm truncate flex-1">{pwaIcon192.name}</span>
+                                <button
+                                  onClick={() => setPwaIcon192(null)}
+                                  className="p-1 hover:bg-gray-200 rounded"
+                                >
+                                  <X size={14} />
+                                </button>
+                              </div>
+                            ) : (
+                              <label className="flex flex-col items-center justify-center h-24 border-2 border-dashed rounded-lg cursor-pointer hover:border-blue-400 transition-colors">
+                                <Upload size={20} className="text-gray-400 mb-1" />
+                                <span className="text-xs text-gray-500">192×192 PNG</span>
+                                <input
+                                  type="file"
+                                  accept=".png,.jpg,.jpeg,.webp"
+                                  onChange={(e) => setPwaIcon192(e.target.files?.[0] || null)}
+                                  className="hidden"
+                                />
+                              </label>
+                            )}
+                          </div>
+
+                          {/* 512x512 Icon */}
+                          <div>
+                            <p className="text-xs font-medium text-gray-700 mb-2">512×512 (Required)</p>
+                            {pwaIcon512 ? (
+                              <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border rounded-lg">
+                                <span className="text-sm truncate flex-1">{pwaIcon512.name}</span>
+                                <button
+                                  onClick={() => setPwaIcon512(null)}
+                                  className="p-1 hover:bg-gray-200 rounded"
+                                >
+                                  <X size={14} />
+                                </button>
+                              </div>
+                            ) : (
+                              <label className="flex flex-col items-center justify-center h-24 border-2 border-dashed rounded-lg cursor-pointer hover:border-blue-400 transition-colors">
+                                <Upload size={20} className="text-gray-400 mb-1" />
+                                <span className="text-xs text-gray-500">512×512 PNG</span>
+                                <input
+                                  type="file"
+                                  accept=".png,.jpg,.jpeg,.webp"
+                                  onChange={(e) => setPwaIcon512(e.target.files?.[0] || null)}
+                                  className="hidden"
+                                />
+                              </label>
+                            )}
+                          </div>
+                        </div>
+
+                        {(pwaIcon192 || pwaIcon512) && (
+                          <Button
+                            onClick={handleUploadPwaIcons}
+                            loading={uploadingPwaIcons}
+                            className="mt-4"
+                          >
+                            <Upload size={16} className="mr-2" />
+                            Upload Icons
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   ) : null}
                 </div>
