@@ -51,7 +51,7 @@ export default function MessageInput({
   };
 
   return (
-    <div className="border-t bg-white p-4">
+    <div className="border-t bg-white p-4 safe-area-bottom">
       {currentUploads.length > 0 && (
         <div className="flex items-center gap-2 mb-2 text-sm text-gray-600">
           <span className="px-2 py-1 bg-blue-50 text-blue-700 rounded">

@@ -253,7 +253,7 @@ export default function ChatWindow({ activeThread, onThreadCreated, userSubscrip
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <header className="bg-white border-b px-6 py-4">
+      <header className="sticky top-0 z-10 bg-white border-b px-4 sm:px-6 py-3 sm:py-4 shadow-sm">
         <h1 className="text-lg font-semibold text-gray-900">
           {activeThread?.title || headerInfo.title}
         </h1>

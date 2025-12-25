@@ -11,6 +11,7 @@ import type { Thread } from '@/types';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import CategorySelector from '@/components/ui/CategorySelector';
+import { useSwipeGesture } from '@/hooks/useSwipeGesture';
 
 // Icon mapping for branding
 const ICON_COMPONENTS: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
@@ -78,6 +79,12 @@ export default function ThreadSidebar({
   const isAdmin = userRole === 'admin';
   const isSuperUser = userRole === 'superuser';
   const isRegularUser = userRole === 'user';
+
+  // Enable swipe gestures for mobile sidebar
+  useSwipeGesture({
+    onSwipeRight: () => setIsOpen(true),
+    onSwipeLeft: () => setIsOpen(false),
+  });
 
   // Regular users must select exactly one category per thread
   const requiresSingleCategory = isRegularUser;

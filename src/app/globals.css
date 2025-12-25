@@ -192,3 +192,46 @@ body {
     font-size: 1rem; /* 16px */
   }
 }
+
+/* ============ Mobile UX Utilities ============ */
+
+/* Touch target utilities */
+.touch-target {
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Safe area for notched devices */
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
+.safe-area-top {
+  padding-top: env(safe-area-inset-top, 0);
+}
+
+/* Dynamic viewport height with fallback */
+.h-screen-dynamic {
+  height: 100vh;
+  height: 100dvh;
+}
+
+/* Prevent iOS auto-zoom on input focus (must be >= 16px) */
+input, textarea, select {
+  font-size: 16px;
+}
+
+@media (min-width: 640px) {
+  input, textarea, select {
+    font-size: inherit;
+  }
+}
+
+/* Prevent horizontal overflow on admin */
+.admin-container {
+  overflow-x: hidden;
+  max-width: 100%;
+}

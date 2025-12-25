@@ -8,7 +8,7 @@ export const MarkdownComponents: Components = {
   // Table wrapper for responsive scrolling
   table: ({ children }) => (
     <div className="overflow-x-auto touch-pan-x my-4 rounded-md border border-gray-200">
-      <table className="w-full">{children}</table>
+      <table className="w-max min-w-full">{children}</table>
     </div>
   ),
 
@@ -20,7 +20,7 @@ export const MarkdownComponents: Components = {
     const align = style?.textAlign;
     return (
       <th
-        className="bg-gray-50 px-3 py-2 sm:px-4 sm:py-3 text-left font-semibold text-gray-900 border-b border-gray-200 text-sm sm:text-base"
+        className="bg-gray-50 px-3 py-2 sm:px-4 sm:py-3 text-left font-semibold text-gray-900 border-b border-gray-200 text-sm sm:text-base whitespace-nowrap"
         style={align ? { textAlign: align } : undefined}
       >
         {children}
