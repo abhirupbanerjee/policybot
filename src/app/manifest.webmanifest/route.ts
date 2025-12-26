@@ -1,0 +1,47 @@
+import { NextResponse } from 'next/server';
+import { getPWASettings, getBrandingSettings } from '@/lib/db/config';
+
+// Force dynamic rendering - reads from database at runtime
+export const dynamic = 'force-dynamic';
+
+/**
+ * Dynamic Web App Manifest
+ *
+ * Returns a manifest.webmanifest with dynamic values from the database:
+ * - Bot name from branding settings
+ * - Icon paths from PWA settings (auto-set when bot icon is selected)
+ */
+export async function GET() {
+  const pwa = getPWASettings();
+  const branding = getBrandingSettings();
+
+  const manifest = {
+    name: branding.botName || 'Policy Bot',
+    short_name: branding.botName || 'PolicyBot',
+    description: 'AI-powered policy assistant',
+    start_url: '/',
+    display: 'standalone',
+    background_color: pwa.backgroundColor || '#ffffff',
+    theme_color: pwa.themeColor || '#2563eb',
+    orientation: 'portrait-primary',
+    icons: [
+      {
+        src: pwa.icon192Path || '/icons/icon-192x192.png',
+        sizes: '192x192',
+        type: 'image/png',
+        purpose: 'maskable',
+      },
+      {
+        src: pwa.icon512Path || '/icons/icon-512x512.png',
+        sizes: '512x512',
+        type: 'image/png',
+      },
+    ],
+  };
+
+  return NextResponse.json(manifest, {
+    headers: {
+      'Content-Type': 'application/manifest+json',
+    },
+  });
+}
