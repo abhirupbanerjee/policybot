@@ -11,6 +11,7 @@ import BackupTab from '@/components/admin/BackupTab';
 import SkillsTab from '@/components/admin/SkillsTab';
 import ToolsTab from '@/components/admin/ToolsTab';
 import StarterPromptsEditor from '@/components/admin/StarterPromptsEditor';
+import MobileTabMenu from '@/components/admin/MobileTabMenu';
 import type { GlobalDocument } from '@/types';
 
 interface AllowedUser {
@@ -2381,12 +2382,25 @@ export default function AdminPage() {
       </header>
 
       {/* Tab Navigation */}
-      <div className="bg-white border-b">
-        <div className="max-w-6xl mx-auto px-4">
-          <nav className="flex gap-4">
+      <div className="bg-white border-b sticky top-0 z-20">
+        <div className="max-w-6xl mx-auto px-4 py-0 flex items-center justify-between md:justify-start">
+          {/* Mobile Menu - Only visible below md breakpoint */}
+          <div className="md:hidden py-2">
+            <MobileTabMenu
+              activeTab={activeTab}
+              settingsSection={settingsSection}
+              promptsSection={promptsSection}
+              onTabChange={setActiveTab}
+              onSettingsChange={setSettingsSection}
+              onPromptsChange={setPromptsSection}
+            />
+          </div>
+
+          {/* Desktop Tabs - Only visible on md and above */}
+          <nav className="hidden md:flex gap-4 w-full overflow-x-auto">
             <button
               onClick={() => setActiveTab('dashboard')}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 activeTab === 'dashboard'
                   ? 'border-blue-600 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -2397,7 +2411,7 @@ export default function AdminPage() {
             </button>
             <button
               onClick={() => setActiveTab('stats')}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 activeTab === 'stats'
                   ? 'border-blue-600 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -2408,7 +2422,7 @@ export default function AdminPage() {
             </button>
             <button
               onClick={() => setActiveTab('categories')}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 activeTab === 'categories'
                   ? 'border-blue-600 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -2419,7 +2433,7 @@ export default function AdminPage() {
             </button>
             <button
               onClick={() => setActiveTab('documents')}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 activeTab === 'documents'
                   ? 'border-blue-600 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -2430,7 +2444,7 @@ export default function AdminPage() {
             </button>
             <button
               onClick={() => setActiveTab('users')}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 activeTab === 'users'
                   ? 'border-blue-600 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -2441,7 +2455,7 @@ export default function AdminPage() {
             </button>
             <button
               onClick={() => setActiveTab('prompts')}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 activeTab === 'prompts'
                   ? 'border-blue-600 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -2452,7 +2466,7 @@ export default function AdminPage() {
             </button>
             <button
               onClick={() => setActiveTab('tools')}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 activeTab === 'tools'
                   ? 'border-blue-600 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
@@ -2463,7 +2477,7 @@ export default function AdminPage() {
             </button>
             <button
               onClick={() => setActiveTab('settings')}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 activeTab === 'settings'
                   ? 'border-blue-600 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700'
