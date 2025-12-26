@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Users, User, FolderOpen, Tag, Plus, FileText, Upload, Trash2, X, ChevronUp, ChevronDown, ChevronsUpDown, Search, Edit2, Save, RefreshCw, MessageSquare, LayoutDashboard, Database, CheckCircle, AlertCircle, Clock, Wand2, Globe, Youtube, Filter, SortAsc } from 'lucide-react';
+import { ArrowLeft, Users, User, FolderOpen, Tag, Plus, FileText, Upload, Trash2, X, ChevronUp, ChevronDown, ChevronsUpDown, Search, Edit2, Save, RefreshCw, Database, CheckCircle, AlertCircle, Clock, Wand2, Youtube, Filter, SortAsc, MessageSquare, Globe } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import Spinner from '@/components/ui/Spinner';
@@ -10,7 +10,7 @@ import { type SortDirection } from '@/components/ui/SortableTable';
 import SkillsTab from '@/components/admin/SkillsTab';
 import ToolsTab from '@/components/admin/ToolsTab';
 import StarterPromptsEditor from '@/components/admin/StarterPromptsEditor';
-import MobileSuperuserMenu from '@/components/superuser/MobileSuperuserMenu';
+import SuperuserSidebarMenu from '@/components/superuser/SuperuserSidebarMenu';
 
 interface StarterPrompt {
   label: string;
@@ -786,8 +786,9 @@ export default function SuperUserPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b sticky top-0 z-10">
-        <div className="max-w-6xl mx-auto px-4 py-4">
+      {/* Header */}
+      <header className="bg-white border-b sticky top-0 z-20 h-16">
+        <div className="h-full px-4 flex items-center">
           <div className="flex items-center gap-4">
             <button
               onClick={() => router.push('/')}
@@ -797,127 +798,66 @@ export default function SuperUserPage() {
             </button>
             <div>
               <h1 className="text-xl font-semibold text-gray-900">Super User Dashboard</h1>
-              <p className="text-sm text-gray-500">Manage documents and user subscriptions for your categories</p>
+              <p className="text-sm text-gray-500 hidden sm:block">Manage documents and user subscriptions for your categories</p>
             </div>
           </div>
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-4 py-8">
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">
-            <p className="text-red-600">{error}</p>
-            <button
-              onClick={() => setError(null)}
-              className="text-red-400 hover:text-red-600"
-            >
-              &times;
-            </button>
-          </div>
-        )}
+      {/* Main Layout with Sidebar */}
+      <div className="flex">
+        {/* Sidebar Navigation */}
+        <SuperuserSidebarMenu
+          activeTab={activeTab}
+          promptsSection={promptsSection}
+          toolsSection={toolsSection}
+          onTabChange={setActiveTab}
+          onPromptsChange={setPromptsSection}
+          onToolsChange={setToolsSection}
+        />
 
-        {/* Assigned Categories */}
-        <div className="bg-white rounded-lg border shadow-sm mb-6">
-          <div className="px-6 py-4 border-b">
-            <h2 className="font-semibold text-gray-900">Your Assigned Categories</h2>
-            <p className="text-sm text-gray-500">
-              You can manage documents and user subscriptions for these categories
-            </p>
-          </div>
-          <div className="px-6 py-4">
-            {assignedCategories.length === 0 ? (
-              <p className="text-gray-500 text-sm">No categories assigned to you yet.</p>
-            ) : (
-              <div className="flex flex-wrap gap-2">
-                {assignedCategories.map(cat => (
-                  <span
-                    key={cat.categoryId}
-                    className="inline-flex items-center gap-2 px-3 py-1.5 bg-orange-100 text-orange-700 rounded-full text-sm font-medium"
-                  >
-                    <FolderOpen size={14} />
-                    {cat.categoryName}
-                  </span>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+        {/* Main Content */}
+        <main className="flex-1 p-4 md:p-6 overflow-auto">
+          {error && (
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center justify-between">
+              <p className="text-red-600">{error}</p>
+              <button
+                onClick={() => setError(null)}
+                className="text-red-400 hover:text-red-600"
+              >
+                &times;
+              </button>
+            </div>
+          )}
 
-        {/* Tab Navigation */}
-        <div className="border-b mb-6 flex items-center">
-          {/* Mobile Menu - Only visible below md breakpoint */}
-          <div className="md:hidden py-2">
-            <MobileSuperuserMenu
-              activeTab={activeTab}
-              promptsSection={promptsSection}
-              toolsSection={toolsSection}
-              onTabChange={setActiveTab}
-              onPromptsChange={setPromptsSection}
-              onToolsChange={setToolsSection}
-            />
+          {/* Assigned Categories - Shown on all pages */}
+          <div className="bg-white rounded-lg border shadow-sm mb-6">
+            <div className="px-6 py-4 border-b">
+              <h2 className="font-semibold text-gray-900">Your Assigned Categories</h2>
+              <p className="text-sm text-gray-500">
+                You can manage documents and user subscriptions for these categories
+              </p>
+            </div>
+            <div className="px-6 py-4">
+              {assignedCategories.length === 0 ? (
+                <p className="text-gray-500 text-sm">No categories assigned to you yet.</p>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {assignedCategories.map(cat => (
+                    <span
+                      key={cat.categoryId}
+                      className="inline-flex items-center gap-2 px-3 py-1.5 bg-orange-100 text-orange-700 rounded-full text-sm font-medium"
+                    >
+                      <FolderOpen size={14} />
+                      {cat.categoryName}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
 
-          {/* Desktop Tabs - Only visible on md and above */}
-          <nav className="hidden md:flex">
-            <button
-              onClick={() => setActiveTab('dashboard')}
-              className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors whitespace-nowrap ${
-                activeTab === 'dashboard'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <LayoutDashboard size={16} className="inline mr-2" />
-              Dashboard
-            </button>
-            <button
-              onClick={() => setActiveTab('users')}
-              className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors whitespace-nowrap ${
-                activeTab === 'users'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <Users size={16} className="inline mr-2" />
-              Users
-            </button>
-            <button
-              onClick={() => setActiveTab('documents')}
-              className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors whitespace-nowrap ${
-                activeTab === 'documents'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <FileText size={16} className="inline mr-2" />
-              Documents
-            </button>
-            <button
-              onClick={() => setActiveTab('prompts')}
-              className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors whitespace-nowrap ${
-                activeTab === 'prompts'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <MessageSquare size={16} className="inline mr-2" />
-              Prompts
-            </button>
-            <button
-              onClick={() => setActiveTab('tools')}
-              className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors whitespace-nowrap ${
-                activeTab === 'tools'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <Globe size={16} className="inline mr-2" />
-              Tools
-            </button>
-          </nav>
-        </div>
-
-        {/* Dashboard Section */}
+          {/* Dashboard Section */}
         {activeTab === 'dashboard' && (
           <div className="space-y-6">
             {statsLoading ? (
@@ -1666,7 +1606,8 @@ export default function SuperUserPage() {
             </div>
           </div>
         )}
-      </main>
+        </main>
+      </div>
 
       {/* Upload Document Modal */}
       <Modal

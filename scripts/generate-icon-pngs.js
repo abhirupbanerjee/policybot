@@ -1,0 +1,101 @@
+/**
+ * Generate PNG versions of Lucide icons for PWA use
+ *
+ * Run with: node scripts/generate-icon-pngs.js
+ */
+
+const fs = require('fs');
+const path = require('path');
+const sharp = require('sharp');
+
+// Icon definitions matching BRANDING_ICONS in src/lib/db/config.ts
+const ICONS = [
+  { key: 'government', lucideIcon: 'landmark' },
+  { key: 'operations', lucideIcon: 'settings' },
+  { key: 'finance', lucideIcon: 'dollar-sign' },
+  { key: 'kpi', lucideIcon: 'bar-chart-3' },
+  { key: 'logs', lucideIcon: 'file-text' },
+  { key: 'data', lucideIcon: 'database' },
+  { key: 'monitoring', lucideIcon: 'activity' },
+  { key: 'architecture', lucideIcon: 'layers' },
+  { key: 'internet', lucideIcon: 'globe' },
+  { key: 'systems', lucideIcon: 'server' },
+  { key: 'policy', lucideIcon: 'scroll-text' },
+];
+
+// Icon color (blue matching the app theme)
+const ICON_COLOR = '#2563eb';
+const BACKGROUND_COLOR = '#ffffff';
+
+// Output sizes
+const SIZES = [192, 512];
+
+// Lucide icon SVG template (24x24 viewBox)
+// We'll fetch actual SVG paths from lucide-static or define them manually
+const LUCIDE_SVGS = {
+  'landmark': '<path d="M3 21h18M6 21V9m6 12V9m6 12V9M4 9h16L12 3 4 9Z"/>',
+  'settings': '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
+  'dollar-sign': '<line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
+  'bar-chart-3': '<path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M7 16h8"/><path d="M7 11h12"/><path d="M7 6h3"/>',
+  'file-text': '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>',
+  'database': '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/>',
+  'activity': '<path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"/>',
+  'layers': '<path d="m12.83 2.18a2 2 0 0 0-1.66 0L2.6 6.08a1 1 0 0 0 0 1.83l8.58 3.91a2 2 0 0 0 1.66 0l8.58-3.9a1 1 0 0 0 0-1.83Z"/><path d="m22 12.18-8.58 3.91a2 2 0 0 1-1.66 0L3.18 12.16"/><path d="m22 17.18-8.58 3.91a2 2 0 0 1-1.66 0L3.18 17.16"/>',
+  'globe': '<circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/>',
+  'server': '<rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/>',
+  'scroll-text': '<path d="M15 12h-5"/><path d="M15 8h-5"/><path d="M19 17V5a2 2 0 0 0-2-2H4"/><path d="M8 21h12a2 2 0 0 0 2-2v-1a1 1 0 0 0-1-1H11a1 1 0 0 0-1 1v1a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v2a1 1 0 0 0 1 1h3"/>',
+};
+
+function createSvg(iconKey, size) {
+  const svgPath = LUCIDE_SVGS[iconKey];
+  if (!svgPath) {
+    console.error(`No SVG path found for icon: ${iconKey}`);
+    return null;
+  }
+
+  // Calculate padding (20% of size for nice margins)
+  const padding = Math.floor(size * 0.2);
+  const iconSize = size - (padding * 2);
+
+  // Scale factor from 24x24 viewBox to target icon size
+  const scale = iconSize / 24;
+  const offset = padding;
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
+  <rect width="${size}" height="${size}" fill="${BACKGROUND_COLOR}" rx="${Math.floor(size * 0.15)}"/>
+  <g transform="translate(${offset}, ${offset}) scale(${scale})" fill="none" stroke="${ICON_COLOR}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    ${svgPath}
+  </g>
+</svg>`;
+}
+
+async function generateIcon(iconDef, size) {
+  const svg = createSvg(iconDef.lucideIcon, size);
+  if (!svg) return;
+
+  const outputPath = path.join(__dirname, '..', 'public', 'icons', 'bot', `${iconDef.key}-${size}.png`);
+
+  try {
+    await sharp(Buffer.from(svg))
+      .png()
+      .toFile(outputPath);
+    console.log(`Generated: ${iconDef.key}-${size}.png`);
+  } catch (error) {
+    console.error(`Failed to generate ${iconDef.key}-${size}.png:`, error.message);
+  }
+}
+
+async function main() {
+  console.log('Generating PNG icons from Lucide SVGs...\n');
+
+  for (const icon of ICONS) {
+    for (const size of SIZES) {
+      await generateIcon(icon, size);
+    }
+  }
+
+  console.log('\nDone! Generated icons in public/icons/bot/');
+}
+
+main().catch(console.error);

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Upload, RefreshCw, Trash2, FileText, AlertCircle, Users, UserPlus, Shield, User, Settings, Save, FolderOpen, Plus, Edit2, BarChart3, Database, HardDrive, Globe, Tag, Landmark, DollarSign, Activity, Layers, Server, ScrollText, ChevronUp, ChevronDown, ChevronsUpDown, Search, X, LayoutDashboard, Cpu, Mic, Sparkles, Wand2, CheckCircle, Youtube, Filter, SortAsc, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Upload, RefreshCw, Trash2, FileText, AlertCircle, Users, UserPlus, Shield, User, Settings, Save, FolderOpen, Plus, Edit2, BarChart3, Database, HardDrive, Globe, Tag, Landmark, DollarSign, Activity, Layers, Server, ScrollText, ChevronUp, ChevronDown, ChevronsUpDown, Search, X, Cpu, Mic, Sparkles, Wand2, CheckCircle, Youtube, Filter, SortAsc } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import Spinner from '@/components/ui/Spinner';
@@ -11,7 +11,7 @@ import BackupTab from '@/components/admin/BackupTab';
 import SkillsTab from '@/components/admin/SkillsTab';
 import ToolsTab from '@/components/admin/ToolsTab';
 import StarterPromptsEditor from '@/components/admin/StarterPromptsEditor';
-import MobileTabMenu from '@/components/admin/MobileTabMenu';
+import AdminSidebarMenu from '@/components/admin/AdminSidebarMenu';
 import type { GlobalDocument } from '@/types';
 
 interface AllowedUser {
@@ -235,19 +235,19 @@ interface EmbeddingSettings {
   updatedBy?: string;
 }
 
-// Available icon options for branding with their Lucide components
+// Available icon options for branding with their Lucide components and PNG paths
 const BRANDING_ICONS = [
-  { key: 'government', label: 'Government', Icon: Landmark },
-  { key: 'operations', label: 'Operations', Icon: Settings },
-  { key: 'finance', label: 'Finance', Icon: DollarSign },
-  { key: 'kpi', label: 'KPI', Icon: BarChart3 },
-  { key: 'logs', label: 'Logs', Icon: FileText },
-  { key: 'data', label: 'Data', Icon: Database },
-  { key: 'monitoring', label: 'Monitoring', Icon: Activity },
-  { key: 'architecture', label: 'Architecture', Icon: Layers },
-  { key: 'internet', label: 'Internet', Icon: Globe },
-  { key: 'systems', label: 'Systems', Icon: Server },
-  { key: 'policy', label: 'Policy', Icon: ScrollText },
+  { key: 'government', label: 'Government', Icon: Landmark, png192: '/icons/bot/government-192.png', png512: '/icons/bot/government-512.png' },
+  { key: 'operations', label: 'Operations', Icon: Settings, png192: '/icons/bot/operations-192.png', png512: '/icons/bot/operations-512.png' },
+  { key: 'finance', label: 'Finance', Icon: DollarSign, png192: '/icons/bot/finance-192.png', png512: '/icons/bot/finance-512.png' },
+  { key: 'kpi', label: 'KPI', Icon: BarChart3, png192: '/icons/bot/kpi-192.png', png512: '/icons/bot/kpi-512.png' },
+  { key: 'logs', label: 'Logs', Icon: FileText, png192: '/icons/bot/logs-192.png', png512: '/icons/bot/logs-512.png' },
+  { key: 'data', label: 'Data', Icon: Database, png192: '/icons/bot/data-192.png', png512: '/icons/bot/data-512.png' },
+  { key: 'monitoring', label: 'Monitoring', Icon: Activity, png192: '/icons/bot/monitoring-192.png', png512: '/icons/bot/monitoring-512.png' },
+  { key: 'architecture', label: 'Architecture', Icon: Layers, png192: '/icons/bot/architecture-192.png', png512: '/icons/bot/architecture-512.png' },
+  { key: 'internet', label: 'Internet', Icon: Globe, png192: '/icons/bot/internet-192.png', png512: '/icons/bot/internet-512.png' },
+  { key: 'systems', label: 'Systems', Icon: Server, png192: '/icons/bot/systems-192.png', png512: '/icons/bot/systems-512.png' },
+  { key: 'policy', label: 'Policy', Icon: ScrollText, png192: '/icons/bot/policy-192.png', png512: '/icons/bot/policy-512.png' },
 ] as const;
 
 interface SystemStats {
@@ -430,9 +430,6 @@ export default function AdminPage() {
   const [llmModified, setLlmModified] = useState(false);
   const [acronymsModified, setAcronymsModified] = useState(false);
   const [brandingModified, setBrandingModified] = useState(false);
-  const [pwaIcon192, setPwaIcon192] = useState<File | null>(null);
-  const [pwaIcon512, setPwaIcon512] = useState<File | null>(null);
-  const [uploadingPwaIcons, setUploadingPwaIcons] = useState(false);
   const [rerankerModified, setRerankerModified] = useState(false);
   const [memoryModified, setMemoryModified] = useState(false);
   const [summarizationModified, setSummarizationModified] = useState(false);
@@ -1875,45 +1872,6 @@ export default function AdminPage() {
     }
   };
 
-  const handleUploadPwaIcons = async () => {
-    if (!pwaIcon192 && !pwaIcon512) return;
-
-    setUploadingPwaIcons(true);
-    setError(null);
-    try {
-      const uploads: Promise<Response>[] = [];
-
-      if (pwaIcon192) {
-        const formData192 = new FormData();
-        formData192.append('file', pwaIcon192);
-        formData192.append('size', '192');
-        uploads.push(fetch('/api/admin/branding/icon', { method: 'POST', body: formData192 }));
-      }
-
-      if (pwaIcon512) {
-        const formData512 = new FormData();
-        formData512.append('file', pwaIcon512);
-        formData512.append('size', '512');
-        uploads.push(fetch('/api/admin/branding/icon', { method: 'POST', body: formData512 }));
-      }
-
-      const responses = await Promise.all(uploads);
-      for (const response of responses) {
-        if (!response.ok) {
-          const data = await response.json();
-          throw new Error(data.error || 'Failed to upload icon');
-        }
-      }
-
-      setPwaIcon192(null);
-      setPwaIcon512(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to upload PWA icons');
-    } finally {
-      setUploadingPwaIcons(false);
-    }
-  };
-
   // Reranker handlers
   const handleSaveReranker = async () => {
     if (!editedReranker || !rerankerModified) return;
@@ -2360,137 +2318,40 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b">
-        <div className="max-w-6xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <button
-                onClick={() => router.push('/')}
-                className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
-              >
-                <ArrowLeft size={20} />
-              </button>
-              <div>
-                <h1 className="text-xl font-bold text-gray-900">Admin Dashboard</h1>
-                <p className="text-sm text-gray-500">
-                  Manage documents and users
-                </p>
-              </div>
+      {/* Header */}
+      <header className="bg-white border-b sticky top-0 z-20 h-16">
+        <div className="h-full px-4 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => router.push('/')}
+              className="p-2 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg"
+            >
+              <ArrowLeft size={20} />
+            </button>
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">Admin Dashboard</h1>
+              <p className="text-sm text-gray-500 hidden sm:block">
+                Manage documents and users
+              </p>
             </div>
           </div>
         </div>
       </header>
 
-      {/* Tab Navigation */}
-      <div className="bg-white border-b sticky top-0 z-20">
-        <div className="max-w-6xl mx-auto px-4 py-0 flex items-center justify-between md:justify-start">
-          {/* Mobile Menu - Only visible below md breakpoint */}
-          <div className="md:hidden py-2">
-            <MobileTabMenu
-              activeTab={activeTab}
-              settingsSection={settingsSection}
-              promptsSection={promptsSection}
-              onTabChange={setActiveTab}
-              onSettingsChange={setSettingsSection}
-              onPromptsChange={setPromptsSection}
-            />
-          </div>
+      {/* Main Layout with Sidebar */}
+      <div className="flex">
+        {/* Sidebar Navigation */}
+        <AdminSidebarMenu
+          activeTab={activeTab}
+          settingsSection={settingsSection}
+          promptsSection={promptsSection}
+          onTabChange={setActiveTab}
+          onSettingsChange={setSettingsSection}
+          onPromptsChange={setPromptsSection}
+        />
 
-          {/* Desktop Tabs - Only visible on md and above */}
-          <nav className="hidden md:flex gap-4 w-full overflow-x-auto">
-            <button
-              onClick={() => setActiveTab('dashboard')}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                activeTab === 'dashboard'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <LayoutDashboard size={16} className="inline mr-2" />
-              Dashboard
-            </button>
-            <button
-              onClick={() => setActiveTab('stats')}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                activeTab === 'stats'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <BarChart3 size={16} className="inline mr-2" />
-              Stats
-            </button>
-            <button
-              onClick={() => setActiveTab('categories')}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                activeTab === 'categories'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <FolderOpen size={16} className="inline mr-2" />
-              Categories
-            </button>
-            <button
-              onClick={() => setActiveTab('documents')}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                activeTab === 'documents'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <FileText size={16} className="inline mr-2" />
-              Documents
-            </button>
-            <button
-              onClick={() => setActiveTab('users')}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                activeTab === 'users'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <Users size={16} className="inline mr-2" />
-              Users
-            </button>
-            <button
-              onClick={() => setActiveTab('prompts')}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                activeTab === 'prompts'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <MessageSquare size={16} className="inline mr-2" />
-              Prompts
-            </button>
-            <button
-              onClick={() => setActiveTab('tools')}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                activeTab === 'tools'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <Globe size={16} className="inline mr-2" />
-              Tools
-            </button>
-            <button
-              onClick={() => setActiveTab('settings')}
-              className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-                activeTab === 'settings'
-                  ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <Settings size={16} className="inline mr-2" />
-              Settings
-            </button>
-          </nav>
-        </div>
-      </div>
-
-      <main className="max-w-6xl mx-auto px-4 py-8">
+        {/* Main Content */}
+        <main className="flex-1 p-4 md:p-6 overflow-auto">
         {error && (
           <div className="mb-6 p-4 bg-red-50 text-red-600 rounded-lg flex items-center gap-3">
             <AlertCircle size={20} />
@@ -4091,81 +3952,52 @@ export default function AdminPage() {
                         </p>
                       )}
 
-                      {/* PWA Icons */}
+                      {/* PWA Icons - Auto-set from Bot Icon */}
                       <div className="mt-6 pt-6 border-t">
                         <label className="block text-sm font-medium text-gray-900 mb-2">
                           PWA App Icons
                         </label>
                         <p className="text-xs text-gray-500 mb-4">
-                          Upload custom icons for the installable app. PNG format recommended.
+                          App icons are automatically set from the selected bot icon above.
                         </p>
 
-                        <div className="grid grid-cols-2 gap-4">
-                          {/* 192x192 Icon */}
-                          <div>
-                            <p className="text-xs font-medium text-gray-700 mb-2">192×192 (Required)</p>
-                            {pwaIcon192 ? (
-                              <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border rounded-lg">
-                                <span className="text-sm truncate flex-1">{pwaIcon192.name}</span>
-                                <button
-                                  onClick={() => setPwaIcon192(null)}
-                                  className="p-1 hover:bg-gray-200 rounded"
-                                >
-                                  <X size={14} />
-                                </button>
+                        {(() => {
+                          const selectedIcon = BRANDING_ICONS.find(i => i.key === editedBranding.botIcon);
+                          if (!selectedIcon) return null;
+                          return (
+                            <div className="grid grid-cols-2 gap-4">
+                              {/* 192x192 Preview */}
+                              <div>
+                                <p className="text-xs font-medium text-gray-700 mb-2">192×192</p>
+                                <div className="flex items-center justify-center h-24 bg-gray-50 border rounded-lg">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={selectedIcon.png192}
+                                    alt="192x192 icon preview"
+                                    className="w-12 h-12 object-contain"
+                                  />
+                                </div>
                               </div>
-                            ) : (
-                              <label className="flex flex-col items-center justify-center h-24 border-2 border-dashed rounded-lg cursor-pointer hover:border-blue-400 transition-colors">
-                                <Upload size={20} className="text-gray-400 mb-1" />
-                                <span className="text-xs text-gray-500">192×192 PNG</span>
-                                <input
-                                  type="file"
-                                  accept=".png,.jpg,.jpeg,.webp"
-                                  onChange={(e) => setPwaIcon192(e.target.files?.[0] || null)}
-                                  className="hidden"
-                                />
-                              </label>
-                            )}
-                          </div>
 
-                          {/* 512x512 Icon */}
-                          <div>
-                            <p className="text-xs font-medium text-gray-700 mb-2">512×512 (Required)</p>
-                            {pwaIcon512 ? (
-                              <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border rounded-lg">
-                                <span className="text-sm truncate flex-1">{pwaIcon512.name}</span>
-                                <button
-                                  onClick={() => setPwaIcon512(null)}
-                                  className="p-1 hover:bg-gray-200 rounded"
-                                >
-                                  <X size={14} />
-                                </button>
+                              {/* 512x512 Preview */}
+                              <div>
+                                <p className="text-xs font-medium text-gray-700 mb-2">512×512</p>
+                                <div className="flex items-center justify-center h-24 bg-gray-50 border rounded-lg">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={selectedIcon.png512}
+                                    alt="512x512 icon preview"
+                                    className="w-16 h-16 object-contain"
+                                  />
+                                </div>
                               </div>
-                            ) : (
-                              <label className="flex flex-col items-center justify-center h-24 border-2 border-dashed rounded-lg cursor-pointer hover:border-blue-400 transition-colors">
-                                <Upload size={20} className="text-gray-400 mb-1" />
-                                <span className="text-xs text-gray-500">512×512 PNG</span>
-                                <input
-                                  type="file"
-                                  accept=".png,.jpg,.jpeg,.webp"
-                                  onChange={(e) => setPwaIcon512(e.target.files?.[0] || null)}
-                                  className="hidden"
-                                />
-                              </label>
-                            )}
-                          </div>
-                        </div>
+                            </div>
+                          );
+                        })()}
 
-                        {(pwaIcon192 || pwaIcon512) && (
-                          <Button
-                            onClick={handleUploadPwaIcons}
-                            loading={uploadingPwaIcons}
-                            className="mt-4"
-                          >
-                            <Upload size={16} className="mr-2" />
-                            Upload Icons
-                          </Button>
-                        )}
+                        <p className="text-xs text-gray-400 mt-3">
+                          Icons will be updated when you save branding settings.
+                        </p>
                       </div>
                     </div>
                   ) : null}
@@ -5331,7 +5163,8 @@ export default function AdminPage() {
         {activeTab === 'tools' && (
           <ToolsTab />
         )}
-      </main>
+        </main>
+      </div>
 
       {/* Delete Document Modal */}
       <Modal

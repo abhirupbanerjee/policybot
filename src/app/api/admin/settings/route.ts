@@ -36,6 +36,7 @@ import {
   BRANDING_ICONS,
   DEFAULT_PRESET_ID,
   getDefaultSystemPrompt,
+  setPWASettings,
 } from '@/lib/db/config';
 import { getConfigValue } from '@/lib/config-loader';
 import { invalidateQueryCache, invalidateTavilyCache } from '@/lib/redis';
@@ -643,6 +644,15 @@ export async function PUT(request: NextRequest) {
           welcomeMessage: welcomeMessage || undefined,
           accentColor: accentColor || undefined,
         }, user.email);
+
+        // Auto-update PWA icons based on selected bot icon
+        const selectedIcon = BRANDING_ICONS.find(i => i.key === botIcon);
+        if (selectedIcon) {
+          setPWASettings({
+            icon192Path: selectedIcon.png192,
+            icon512Path: selectedIcon.png512,
+          }, user.email);
+        }
 
         // Return the updated branding with metadata
         const brandingMeta = getSettingMetadata('branding-settings');
