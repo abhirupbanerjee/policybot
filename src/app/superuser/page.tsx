@@ -1386,47 +1386,9 @@ export default function SuperUserPage() {
         </div>
         )}
 
-        {/* Prompts Section with Sidebar */}
+        {/* Prompts Section */}
         {activeTab === 'prompts' && (
-          <div className="flex gap-6">
-            {/* Prompts Navigation */}
-            <div className="w-48 shrink-0">
-              <nav className="bg-white rounded-lg border shadow-sm p-2 space-y-1">
-                <button
-                  onClick={() => setPromptsSection('global-prompt')}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    promptsSection === 'global-prompt'
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  Global Prompt
-                </button>
-                <button
-                  onClick={() => setPromptsSection('category-prompts')}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    promptsSection === 'category-prompts'
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  Category Prompts
-                </button>
-                <button
-                  onClick={() => setPromptsSection('skills')}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    promptsSection === 'skills'
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  Skills
-                </button>
-              </nav>
-            </div>
-
-            {/* Prompts Content */}
-            <div className="flex-1">
+          <>
               {/* Global System Prompt (Read-only) */}
               {promptsSection === 'global-prompt' && (
                 <div className="bg-white rounded-lg border shadow-sm">
@@ -1518,41 +1480,12 @@ export default function SuperUserPage() {
               {promptsSection === 'skills' && (
                 <SkillsTab isSuperuser />
               )}
-            </div>
-          </div>
+          </>
         )}
 
-        {/* Tools Section with Sidebar */}
+        {/* Tools Section */}
         {activeTab === 'tools' && (
-          <div className="flex gap-6">
-            {/* Tools Navigation */}
-            <div className="w-48 shrink-0">
-              <nav className="bg-white rounded-lg border shadow-sm p-2 space-y-1">
-                <button
-                  onClick={() => setToolsSection('tools')}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    toolsSection === 'tools'
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  Tools
-                </button>
-                <button
-                  onClick={() => setToolsSection('backup')}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    toolsSection === 'backup'
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  Backup
-                </button>
-              </nav>
-            </div>
-
-            {/* Tools Content */}
-            <div className="flex-1">
+          <>
               {/* Tools Tab Content */}
               {toolsSection === 'tools' && (
                 <ToolsTab isSuperuser />
@@ -1603,8 +1536,7 @@ export default function SuperUserPage() {
                   </div>
                 </div>
               )}
-            </div>
-          </div>
+          </>
         )}
         </main>
       </div>

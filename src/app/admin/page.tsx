@@ -3137,95 +3137,7 @@ export default function AdminPage() {
 
         {/* Settings Tab */}
         {activeTab === 'settings' && (
-          <div className="flex gap-6">
-            {/* Settings Navigation */}
-            <div className="w-48 shrink-0">
-              <nav className="bg-white rounded-lg border shadow-sm p-2 space-y-1">
-                <button
-                  onClick={() => setSettingsSection('llm')}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    settingsSection === 'llm'
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  LLM
-                </button>
-                <button
-                  onClick={() => setSettingsSection('rag')}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    settingsSection === 'rag'
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  RAG
-                </button>
-                <button
-                  onClick={() => setSettingsSection('reranker')}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    settingsSection === 'reranker'
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  Reranker
-                </button>
-                <button
-                  onClick={() => setSettingsSection('memory')}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    settingsSection === 'memory'
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  Memory
-                </button>
-                <button
-                  onClick={() => setSettingsSection('summarization')}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    settingsSection === 'summarization'
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  Summarization
-                </button>
-                <button
-                  onClick={() => setSettingsSection('limits')}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    settingsSection === 'limits'
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  Limits
-                </button>
-                <button
-                  onClick={() => setSettingsSection('backup')}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    settingsSection === 'backup'
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  Backup
-                </button>
-                <button
-                  onClick={() => setSettingsSection('branding')}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    settingsSection === 'branding'
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  Branding
-                </button>
-              </nav>
-            </div>
-
-            {/* Settings Content */}
-            <div className="flex-1">
+          <>
               {/* LLM Settings Section */}
               {settingsSection === 'llm' && (
                 <div className="space-y-4">
@@ -4737,8 +4649,7 @@ export default function AdminPage() {
               {settingsSection === 'backup' && (
                 <BackupTab />
               )}
-            </div>
-          </div>
+          </>
         )}
 
         {/* Stats Tab */}
@@ -4943,55 +4854,7 @@ export default function AdminPage() {
 
         {/* Prompts Tab */}
         {activeTab === 'prompts' && (
-          <div className="flex gap-6">
-            {/* Prompts Navigation */}
-            <div className="w-48 shrink-0">
-              <nav className="bg-white rounded-lg border shadow-sm p-2 space-y-1">
-                <button
-                  onClick={() => setPromptsSection('system-prompt')}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    promptsSection === 'system-prompt'
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  System Prompt
-                </button>
-                <button
-                  onClick={() => setPromptsSection('category-prompts')}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    promptsSection === 'category-prompts'
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  Category Prompts
-                </button>
-                <button
-                  onClick={() => setPromptsSection('acronyms')}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    promptsSection === 'acronyms'
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  Acronyms
-                </button>
-                <button
-                  onClick={() => setPromptsSection('skills')}
-                  className={`w-full text-left px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
-                    promptsSection === 'skills'
-                      ? 'bg-blue-50 text-blue-700'
-                      : 'text-gray-600 hover:bg-gray-50'
-                  }`}
-                >
-                  Skills
-                </button>
-              </nav>
-            </div>
-
-            {/* Prompts Content */}
-            <div className="flex-1">
+          <>
               {/* System Prompt Section */}
               {promptsSection === 'system-prompt' && (
                 <div className="bg-white rounded-lg border shadow-sm">
@@ -5155,8 +5018,7 @@ export default function AdminPage() {
               {promptsSection === 'skills' && (
                 <SkillsTab />
               )}
-            </div>
-          </div>
+          </>
         )}
 
         {/* Tools Tab */}
