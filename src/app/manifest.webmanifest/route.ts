@@ -16,6 +16,7 @@ export async function GET() {
   const branding = getBrandingSettings();
 
   const manifest = {
+    id: '/',
     name: branding.botName || 'Policy Bot',
     short_name: branding.botName || 'PolicyBot',
     description: 'AI-powered policy assistant',
@@ -24,7 +25,14 @@ export async function GET() {
     background_color: pwa.backgroundColor || '#ffffff',
     theme_color: pwa.themeColor || '#2563eb',
     orientation: 'portrait-primary',
+    prefer_related_applications: false,
     icons: [
+      {
+        src: pwa.icon192Path || '/icons/icon-192x192.png',
+        sizes: '192x192',
+        type: 'image/png',
+        purpose: 'any',
+      },
       {
         src: pwa.icon192Path || '/icons/icon-192x192.png',
         sizes: '192x192',
@@ -35,6 +43,13 @@ export async function GET() {
         src: pwa.icon512Path || '/icons/icon-512x512.png',
         sizes: '512x512',
         type: 'image/png',
+        purpose: 'any',
+      },
+      {
+        src: pwa.icon512Path || '/icons/icon-512x512.png',
+        sizes: '512x512',
+        type: 'image/png',
+        purpose: 'maskable',
       },
     ],
   };

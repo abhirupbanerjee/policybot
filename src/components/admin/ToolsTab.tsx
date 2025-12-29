@@ -853,7 +853,7 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false }: Tool
       const response = await fetch(`/api/admin/tools/${tool.name}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isEnabled: !tool.enabled }),
+        body: JSON.stringify({ enabled: !tool.enabled }),
       });
 
       if (!response.ok) {
