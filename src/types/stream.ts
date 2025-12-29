@@ -5,7 +5,7 @@
  * progressive disclosure UI state, and processing metadata.
  */
 
-import type { Source, GeneratedDocumentInfo, MessageVisualization } from './index';
+import type { Source, GeneratedDocumentInfo, GeneratedImageInfo, MessageVisualization } from './index';
 
 // ============ Stream Phases ============
 
@@ -60,6 +60,7 @@ export type StreamEvent =
   // Artifacts
   | { type: 'artifact'; subtype: 'visualization'; data: MessageVisualization }
   | { type: 'artifact'; subtype: 'document'; data: GeneratedDocumentInfo }
+  | { type: 'artifact'; subtype: 'image'; data: GeneratedImageInfo }
 
   // RAG sources
   | { type: 'sources'; data: Source[] }
@@ -116,5 +117,5 @@ export interface ProcessingDetails {
 export interface StreamingCallbacks {
   onToolStart?: (name: string, displayName: string) => void;
   onToolEnd?: (name: string, success: boolean, duration: number, error?: string) => void;
-  onArtifact?: (type: 'visualization' | 'document', data: MessageVisualization | GeneratedDocumentInfo) => void;
+  onArtifact?: (type: 'visualization' | 'document' | 'image', data: MessageVisualization | GeneratedDocumentInfo | GeneratedImageInfo) => void;
 }

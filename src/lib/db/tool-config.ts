@@ -389,6 +389,37 @@ export const TOOL_DEFAULTS: Record<string, { enabled: boolean; config: Record<st
     enabled: true,
     config: {},
   },
+  image_gen: {
+    enabled: false, // Disabled until API keys configured
+    config: {
+      activeProvider: 'gemini',
+      providers: {
+        openai: {
+          enabled: true,
+          model: 'dall-e-3',
+          size: '1024x1024',
+          quality: 'standard',
+          style: 'natural',
+        },
+        gemini: {
+          enabled: true,
+          model: 'gemini-3-pro-image-preview',
+          aspectRatio: '16:9',
+        },
+      },
+      defaultStyle: 'infographic',
+      infographicProvider: 'gemini',
+      enhancePrompts: true,
+      addSafetyPrefixes: true,
+      imageProcessing: {
+        maxDimension: 2048,
+        format: 'webp',
+        quality: 85,
+        generateThumbnail: true,
+        thumbnailSize: 400,
+      },
+    },
+  },
 };
 
 /**

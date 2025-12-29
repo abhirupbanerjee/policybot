@@ -25,7 +25,7 @@ import {
   performRAGRetrieval,
   STREAMING_CONFIG,
 } from '@/lib/streaming';
-import type { Message, StreamEvent, StreamChatRequest, Source, MessageVisualization, GeneratedDocumentInfo } from '@/types';
+import type { Message, StreamEvent, StreamChatRequest, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo } from '@/types';
 
 export async function POST(request: NextRequest) {
   const encoder = createSSEEncoder();
@@ -162,6 +162,7 @@ export async function POST(request: NextRequest) {
             // Track collected artifacts
             const visualizations: MessageVisualization[] = [];
             const documents: GeneratedDocumentInfo[] = [];
+            const images: GeneratedImageInfo[] = [];
             const webSources: Source[] = [];
 
             // Build messages for tool execution
@@ -192,6 +193,10 @@ export async function POST(request: NextRequest) {
                     const doc = data as GeneratedDocumentInfo;
                     documents.push(doc);
                     send({ type: 'artifact', subtype: 'document', data: doc });
+                  } else if (type === 'image') {
+                    const img = data as GeneratedImageInfo;
+                    images.push(img);
+                    send({ type: 'artifact', subtype: 'image', data: img });
                   }
                 },
               }
@@ -247,6 +252,7 @@ export async function POST(request: NextRequest) {
               content: fullContent,
               sources: allSources,
               generatedDocuments: documents.length > 0 ? documents : undefined,
+              generatedImages: images.length > 0 ? images : undefined,
               visualizations: visualizations.length > 0 ? visualizations : undefined,
               timestamp: new Date(),
             };

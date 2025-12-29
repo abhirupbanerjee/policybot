@@ -23,6 +23,7 @@ import {
   ListTodo,
   Route,
   Wrench,
+  ImageIcon,
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
@@ -31,6 +32,7 @@ import DataSourcesTab from './DataSourcesTab';
 import FunctionAPITab from './FunctionAPITab';
 import TaskPlannerTemplates from './TaskPlannerTemplates';
 import ToolRoutingTab from './ToolRoutingTab';
+import ImageGenConfig from './ImageGenConfig';
 
 // Tool interface matching API response
 interface Tool {
@@ -121,6 +123,8 @@ function getToolIcon(toolName: string) {
       return Zap;
     case 'task_planner':
       return ListTodo;
+    case 'image_gen':
+      return ImageIcon;
     default:
       return Settings;
   }
@@ -1014,6 +1018,14 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false }: Tool
         return (
           <TaskPlannerTemplates
             isSuperuser={forSuperuser}
+          />
+        );
+      case 'image_gen':
+        return (
+          <ImageGenConfig
+            config={editedConfig}
+            onChange={setEditedConfig}
+            disabled={saving}
           />
         );
       default:

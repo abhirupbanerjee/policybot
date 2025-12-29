@@ -8,6 +8,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { getToolConfig, TOOL_DEFAULTS } from '@/lib/db/tool-config';
 import { getTool, initializeTools } from '@/lib/tools';
+import { testImageGen as testImageGenProvider } from '@/lib/tools/image-gen';
 
 interface RouteParams {
   params: Promise<{ toolName: string }>;
@@ -245,6 +246,9 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         break;
       case 'youtube':
         result = await testYouTube(toolConfig);
+        break;
+      case 'image_gen':
+        result = await testImageGenProvider();
         break;
       default:
         result = {

@@ -19,6 +19,7 @@ import type {
   Source,
   MessageVisualization,
   GeneratedDocumentInfo,
+  GeneratedImageInfo,
 } from '@/types';
 
 // ============ Types ============
@@ -38,6 +39,8 @@ export interface StreamingState {
   visualizations: MessageVisualization[];
   /** Generated documents from tools */
   documents: GeneratedDocumentInfo[];
+  /** Generated images from tools */
+  images: GeneratedImageInfo[];
   /** Error message if any */
   error: string | null;
   /** Whether error is recoverable */
@@ -46,7 +49,7 @@ export interface StreamingState {
 
 export interface UseStreamingChatOptions {
   /** Callback when streaming completes successfully */
-  onComplete?: (messageId: string, content: string, sources: Source[], visualizations: MessageVisualization[], documents: GeneratedDocumentInfo[]) => void;
+  onComplete?: (messageId: string, content: string, sources: Source[], visualizations: MessageVisualization[], documents: GeneratedDocumentInfo[], images: GeneratedImageInfo[]) => void;
   /** Callback on error */
   onError?: (code: string, message: string, recoverable: boolean) => void;
   /** Callback when phase changes */
@@ -84,6 +87,7 @@ const initialState: StreamingState = {
   sources: [],
   visualizations: [],
   documents: [],
+  images: [],
   error: null,
   errorRecoverable: false,
 };
@@ -188,6 +192,11 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
             ...prev,
             documents: [...prev.documents, event.data],
           }));
+        } else if (event.subtype === 'image') {
+          setState(prev => ({
+            ...prev,
+            images: [...prev.images, event.data],
+          }));
         }
         break;
 
@@ -220,7 +229,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
         }
         setState(prev => {
           const finalContent = contentBufferRef.current || prev.currentContent;
-          onComplete?.(event.messageId, finalContent, prev.sources, prev.visualizations, prev.documents);
+          onComplete?.(event.messageId, finalContent, prev.sources, prev.visualizations, prev.documents, prev.images);
           return {
             ...prev,
             isStreaming: false,

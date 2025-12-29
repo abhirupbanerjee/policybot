@@ -24,7 +24,7 @@ import {
   MAX_USER_CHUNKS_RETURNED,
   CHUNK_PREVIEW_LENGTH,
 } from './constants';
-import type { Message, Source, RetrievedChunk, RAGResponse, GeneratedDocumentInfo, MessageVisualization } from '@/types';
+import type { Message, Source, RetrievedChunk, RAGResponse, GeneratedDocumentInfo, GeneratedImageInfo, MessageVisualization } from '@/types';
 
 /**
  * Generate expanded queries to improve retrieval coverage
@@ -403,10 +403,13 @@ export async function ragQuery(
   // Extract generated documents from tool call results
   const generatedDocuments = extractGeneratedDocumentsFromHistory(fullHistory);
 
+  // Extract generated images from image_gen tool results
+  const generatedImages = extractGeneratedImagesFromHistory(fullHistory);
+
   // Extract visualizations from data_source tool results
   const visualizations = extractVisualizationsFromHistory(fullHistory);
 
-  const response: RAGResponse = { answer, sources, generatedDocuments, visualizations };
+  const response: RAGResponse = { answer, sources, generatedDocuments, generatedImages, visualizations };
 
   // Cache response (only for queries without user documents and if caching is enabled)
   if (cacheEnabled && userDocPaths.length === 0) {
@@ -528,4 +531,43 @@ function extractVisualizationsFromHistory(
   }
 
   return visualizations;
+}
+
+/**
+ * Extract generated images from tool call history (image_gen tool)
+ */
+function extractGeneratedImagesFromHistory(
+  history: OpenAI.Chat.ChatCompletionMessageParam[]
+): GeneratedImageInfo[] {
+  const images: GeneratedImageInfo[] = [];
+
+  for (const msg of history) {
+    if (msg.role === 'tool') {
+      try {
+        const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+        const toolResult = JSON.parse(content);
+
+        // Check if this is a successful image_gen result with imageHint
+        if (toolResult.success && toolResult.imageHint) {
+          const hint = toolResult.imageHint;
+          const metadata = toolResult.metadata;
+
+          images.push({
+            id: hint.id,
+            url: hint.url,
+            thumbnailUrl: hint.thumbnailUrl,
+            width: hint.width,
+            height: hint.height,
+            alt: hint.alt || 'Generated image',
+            provider: metadata?.provider,
+            model: metadata?.model,
+          });
+        }
+      } catch {
+        // Ignore JSON parse errors - not an image_gen result
+      }
+    }
+  }
+
+  return images;
 }

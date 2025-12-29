@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import type { Message, ToolCall, StreamingCallbacks, MessageVisualization, GeneratedDocumentInfo } from '@/types';
+import type { Message, ToolCall, StreamingCallbacks, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo } from '@/types';
 import { getLlmSettings, getEmbeddingSettings, getLimitsSettings, getEffectiveMaxTokens } from './db/config';
 import { getToolDisplayName } from './streaming/utils';
 import { getToolDefinitions, executeTool } from './tools';
@@ -266,6 +266,21 @@ export async function generateResponseWithTools(
                   expiresAt: parsed.document.expiresAt || null,
                 };
                 callbacks.onArtifact('document', doc);
+              }
+
+              // Check for generated image
+              if (parsed.success && parsed.imageHint) {
+                const img: GeneratedImageInfo = {
+                  id: parsed.imageHint.id,
+                  url: parsed.imageHint.url,
+                  thumbnailUrl: parsed.imageHint.thumbnailUrl,
+                  width: parsed.imageHint.width,
+                  height: parsed.imageHint.height,
+                  alt: parsed.imageHint.alt || 'Generated image',
+                  provider: parsed.metadata?.provider,
+                  model: parsed.metadata?.model,
+                };
+                callbacks.onArtifact('image', img);
               }
             }
           }

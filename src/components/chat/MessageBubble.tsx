@@ -7,6 +7,7 @@ import { ChevronDown, ChevronRight, Copy, Check } from 'lucide-react';
 import type { Message } from '@/types';
 import SourceCard from './SourceCard';
 import DocumentResultCard from './DocumentResultCard';
+import ImageDisplay from './ImageDisplay';
 import DataVisualization from './DataVisualization';
 import { MarkdownComponents } from '@/components/markdown/MarkdownRenderers';
 
@@ -81,6 +82,15 @@ export default function MessageBubble({ message, isStreaming = false }: MessageB
           <div className="mt-2">
             {message.generatedDocuments.map((doc) => (
               <DocumentResultCard key={doc.id} document={doc} />
+            ))}
+          </div>
+        )}
+
+        {/* Generated Images */}
+        {message.generatedImages && message.generatedImages.length > 0 && (
+          <div className="mt-4 space-y-4">
+            {message.generatedImages.map((image) => (
+              <ImageDisplay key={image.id} image={image} />
             ))}
           </div>
         )}

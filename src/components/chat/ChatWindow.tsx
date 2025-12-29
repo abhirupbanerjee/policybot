@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { MessageSquare, RefreshCw, BookOpen, ChevronDown, ChevronUp } from 'lucide-react';
-import type { Message, Thread, UserSubscription, Source, MessageVisualization, GeneratedDocumentInfo } from '@/types';
+import type { Message, Thread, UserSubscription, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo } from '@/types';
 import MessageBubble from './MessageBubble';
 import MessageInput from './MessageInput';
 import Spinner from '@/components/ui/Spinner';
@@ -118,7 +118,8 @@ export default function ChatWindow({
     content: string,
     sources: Source[],
     visualizations: MessageVisualization[],
-    documents: GeneratedDocumentInfo[]
+    documents: GeneratedDocumentInfo[],
+    images: GeneratedImageInfo[]
   ) => {
     // Add completed assistant message to the list
     const assistantMessage: Message = {
@@ -128,6 +129,7 @@ export default function ChatWindow({
       sources: sources.length > 0 ? sources : undefined,
       visualizations: visualizations.length > 0 ? visualizations : undefined,
       generatedDocuments: documents.length > 0 ? documents : undefined,
+      generatedImages: images.length > 0 ? images : undefined,
       timestamp: new Date(),
     };
     setMessages(prev => [...prev, assistantMessage]);
@@ -421,6 +423,7 @@ export default function ChatWindow({
                   sources: streamingState.sources,
                   visualizations: streamingState.visualizations,
                   generatedDocuments: streamingState.documents,
+                  generatedImages: streamingState.images,
                   timestamp: new Date(),
                 }}
                 isStreaming={true}
