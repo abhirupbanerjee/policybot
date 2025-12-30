@@ -11,6 +11,13 @@ import {
   DEFAULT_CONVERSATION_HISTORY_LIMIT,
 } from './constants';
 
+/**
+ * Terminal tools that should stop the tool loop after successful execution.
+ * These tools produce final outputs (images, documents) and should not be called again
+ * unless the user explicitly requests it.
+ */
+const TERMINAL_TOOLS = new Set(['image_gen', 'doc_gen', 'chart_gen']);
+
 let openaiClient: OpenAI | null = null;
 
 function getOpenAI(): OpenAI {
@@ -199,8 +206,9 @@ export async function generateResponseWithTools(
 
   // Tool call loop (max iterations to prevent runaway)
   let iterations = 0;
+  let terminalToolSucceeded = false;
 
-  while (responseMessage.tool_calls && iterations < MAX_TOOL_CALL_ITERATIONS) {
+  while (responseMessage.tool_calls && iterations < MAX_TOOL_CALL_ITERATIONS && !terminalToolSucceeded) {
     iterations++;
     logger.debug(`Tool call iteration ${iterations}/${MAX_TOOL_CALL_ITERATIONS}`);
 
@@ -283,6 +291,12 @@ export async function generateResponseWithTools(
                 callbacks.onArtifact('image', img);
               }
             }
+
+            // Check if this is a terminal tool that succeeded - stop further iterations
+            if (TERMINAL_TOOLS.has(toolName) && parsed.success) {
+              logger.debug(`Terminal tool ${toolName} succeeded, stopping tool loop`);
+              terminalToolSucceeded = true;
+            }
           }
         } catch {
           // Result is not JSON, treat as success
@@ -303,6 +317,11 @@ export async function generateResponseWithTools(
         tool_call_id: toolCall.id,
         content: result,
       });
+    }
+
+    // If a terminal tool succeeded, skip getting another response
+    if (terminalToolSucceeded) {
+      break;
     }
 
     // Get next response with tool results
