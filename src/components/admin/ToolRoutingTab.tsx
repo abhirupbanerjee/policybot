@@ -59,6 +59,11 @@ interface Category {
   slug: string;
 }
 
+interface Tool {
+  name: string;
+  displayName: string;
+}
+
 /**
  * Format date for display
  */
@@ -88,6 +93,7 @@ function getForceModeLabel(mode: string): { label: string; color: string } {
 export default function ToolRoutingTab() {
   const [rules, setRules] = useState<ToolRoutingRule[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [tools, setTools] = useState<Tool[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -146,11 +152,25 @@ export default function ToolRoutingTab() {
     }
   }, []);
 
+  // Fetch available tools
+  const fetchTools = useCallback(async () => {
+    try {
+      const response = await fetch('/api/admin/tools');
+      if (!response.ok) throw new Error('Failed to fetch tools');
+
+      const data = await response.json();
+      setTools(data.tools || []);
+    } catch (err) {
+      console.error('Failed to fetch tools:', err);
+    }
+  }, []);
+
   // Fetch data on mount
   useEffect(() => {
     fetchRules();
     fetchCategories();
-  }, [fetchRules, fetchCategories]);
+    fetchTools();
+  }, [fetchRules, fetchCategories, fetchTools]);
 
   // Open create modal
   const handleCreate = () => {
@@ -640,15 +660,20 @@ export default function ToolRoutingTab() {
           {/* Tool Name */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">Tool Name *</label>
-            <input
-              type="text"
+            <select
               value={formData.toolName}
               onChange={(e) => setFormData({ ...formData, toolName: e.target.value })}
-              placeholder="e.g., chart_gen, task_planner"
               className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-            />
+            >
+              <option value="">Select a tool...</option>
+              {tools.map((tool) => (
+                <option key={tool.name} value={tool.name}>
+                  {tool.displayName} ({tool.name})
+                </option>
+              ))}
+            </select>
             <p className="text-xs text-gray-500 mt-1">
-              The tool to invoke when patterns match (must match tool name in tools.ts)
+              The tool to invoke when patterns match
             </p>
           </div>
 
