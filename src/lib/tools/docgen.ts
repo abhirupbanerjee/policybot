@@ -327,6 +327,7 @@ export const documentGenerationTool: ToolDefinition = {
 
       return JSON.stringify({
         success: true,
+        message: 'Document generated successfully. Do NOT call doc_gen again unless the user explicitly requests another document.',
         document: {
           id: result.id,
           filename: result.filename,

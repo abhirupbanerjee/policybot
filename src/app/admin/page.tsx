@@ -12,6 +12,7 @@ import SkillsTab from '@/components/admin/SkillsTab';
 import ToolsTab from '@/components/admin/ToolsTab';
 import StarterPromptsEditor from '@/components/admin/StarterPromptsEditor';
 import AdminSidebarMenu from '@/components/admin/AdminSidebarMenu';
+import CacheSettingsTab from '@/components/admin/CacheSettingsTab';
 import type { GlobalDocument } from '@/types';
 
 interface AllowedUser {
@@ -128,7 +129,7 @@ interface ModelPreset {
 }
 
 type TabType = 'dashboard' | 'documents' | 'categories' | 'users' | 'settings' | 'stats' | 'prompts' | 'tools';
-type SettingsSection = 'rag' | 'llm' | 'reranker' | 'memory' | 'summarization' | 'limits' | 'backup' | 'branding';
+type SettingsSection = 'rag' | 'llm' | 'reranker' | 'memory' | 'summarization' | 'limits' | 'backup' | 'branding' | 'cache';
 type PromptsSection = 'system-prompt' | 'category-prompts' | 'acronyms' | 'skills';
 
 interface BrandingSettings {
@@ -4648,6 +4649,11 @@ export default function AdminPage() {
               {/* Backup Section */}
               {settingsSection === 'backup' && (
                 <BackupTab />
+              )}
+
+              {/* Cache Section */}
+              {settingsSection === 'cache' && (
+                <CacheSettingsTab />
               )}
           </>
         )}

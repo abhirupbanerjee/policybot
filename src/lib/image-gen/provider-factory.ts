@@ -438,6 +438,7 @@ export async function generateImage(
 
     return {
       success: true,
+      message: 'Image generated successfully. Do NOT call image_gen again unless the user explicitly requests another image.',
       imageHint,
       metadata: {
         provider,

@@ -185,6 +185,8 @@ export interface ImageHint {
 export interface ImageGenResponse {
   /** Whether generation succeeded */
   success: boolean;
+  /** Status message for LLM context */
+  message?: string;
   /** Image hint for frontend rendering (like visualizationHint) */
   imageHint?: ImageHint;
   /** Generation metadata */
