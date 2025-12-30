@@ -13,6 +13,7 @@ import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { getToolConfig } from '@/lib/db/tool-config';
 import { execute } from '@/lib/db/index';
+import { getRequestContext } from '@/lib/request-context';
 import { generateWithDalle } from './providers/openai-dalle';
 import { generateWithGemini } from './providers/gemini-imagen';
 import { processImage, getFileExtension } from './image-processor';
@@ -265,6 +266,14 @@ async function saveImage(
     fs.writeFileSync(thumbnailPath, thumbnailBuffer);
   }
 
+  // Get thread context for foreign key constraint
+  const context = getRequestContext();
+  const threadId = context.threadId;
+
+  if (!threadId) {
+    throw new Error('No thread context available for image generation');
+  }
+
   // Store in database (using thread_outputs table like document generator)
   const result = execute(
     `INSERT INTO thread_outputs (
@@ -272,7 +281,7 @@ async function saveImage(
       generation_config, expires_at
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
-      'image-gen', // Using 'image-gen' as thread_id for standalone images
+      threadId,
       null, // message_id
       filename,
       filepath,
