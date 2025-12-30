@@ -30,11 +30,11 @@ interface CacheStats {
 }
 
 const EVICTION_POLICIES = [
-  { value: 'noeviction', label: 'No Eviction', description: 'Return errors when memory limit reached' },
-  { value: 'allkeys-lru', label: 'All Keys LRU', description: 'Evict least recently used keys (recommended)' },
-  { value: 'allkeys-lfu', label: 'All Keys LFU', description: 'Evict least frequently used keys' },
-  { value: 'volatile-lru', label: 'Volatile LRU', description: 'Evict LRU keys with TTL set' },
-  { value: 'volatile-ttl', label: 'Volatile TTL', description: 'Evict keys with shortest TTL' },
+  { value: 'noeviction', label: 'No Eviction', description: 'Return errors when memory limit is reached - no data is automatically deleted' },
+  { value: 'allkeys-lru', label: 'Least Recently Used (Recommended)', description: 'Remove keys that have not been accessed for the longest time' },
+  { value: 'allkeys-lfu', label: 'Least Frequently Used', description: 'Remove keys that are accessed least often' },
+  { value: 'volatile-lru', label: 'Least Recently Used (Only Expiring Keys)', description: 'Remove least recently used keys, but only those with an expiration time set' },
+  { value: 'volatile-ttl', label: 'Shortest Time-to-Live', description: 'Remove keys that are closest to their expiration time' },
 ];
 
 export default function CacheSettingsTab() {
@@ -339,16 +339,26 @@ export default function CacheSettingsTab() {
               <input
                 type="number"
                 value={maxMemoryMB}
-                onChange={(e) => setMaxMemoryMB(parseInt(e.target.value) || 0)}
+                onChange={(e) => {
+                  const val = parseInt(e.target.value) || 0;
+                  setMaxMemoryMB(Math.min(Math.max(val, 0), 4096));
+                }}
                 min={0}
                 max={4096}
-                className="w-32 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                className={`w-32 px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 ${
+                  maxMemoryMB > 4096 ? 'border-red-500' : ''
+                }`}
               />
               <span className="text-sm text-gray-500">0 = no limit (not recommended)</span>
             </div>
             <p className="text-xs text-gray-400 mt-1">
-              Recommended: 256MB for small deployments, 512MB for medium
+              Recommended: 256MB for small deployments, 512MB for medium. Maximum allowed: 4096MB (4GB).
             </p>
+            {maxMemoryMB > 4096 && (
+              <p className="text-xs text-red-600 mt-1">
+                Value cannot exceed 4096MB (4GB). The value has been capped.
+              </p>
+            )}
           </div>
 
           {/* Eviction Policy */}
