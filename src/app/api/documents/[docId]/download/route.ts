@@ -101,7 +101,7 @@ function getContentType(fileType: string): string {
     xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     pptx: 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     md: 'text/markdown',
-    image: 'image/png',
+    image: 'image/webp', // Generated images are stored as WebP
   };
 
   return contentTypes[fileType] || 'application/octet-stream';

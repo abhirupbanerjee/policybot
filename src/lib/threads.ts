@@ -81,6 +81,7 @@ function toMessage(parsed: ParsedMessage): Message {
     name: parsed.toolName || undefined,
     generatedDocuments: parsed.generatedDocuments || undefined,
     visualizations: parsed.visualizations || undefined,
+    generatedImages: parsed.generatedImages || undefined,
     timestamp: parsed.createdAt,
   };
 }
@@ -278,6 +279,7 @@ export async function addMessage(
     toolName: message.name,
     generatedDocuments: message.generatedDocuments,
     visualizations: message.visualizations,
+    generatedImages: message.generatedImages,
   });
 
   // Update title if this is the first user message and title is default
