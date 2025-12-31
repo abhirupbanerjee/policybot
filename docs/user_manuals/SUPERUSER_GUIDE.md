@@ -8,16 +8,17 @@ This guide explains how to use the Superuser Dashboard to manage your assigned c
 
 1. [Introduction](#1-introduction)
 2. [Dashboard Tab](#2-dashboard-tab)
-3. [Users Tab](#3-users-tab)
-4. [Documents Tab](#4-documents-tab)
-5. [Prompts Tab](#5-prompts-tab)
-6. [Skills Tab](#6-skills-tab)
-7. [Tools Tab](#7-tools-tab)
-8. [Task Planner Templates](#8-task-planner-templates)
-9. [Data Sources](#9-data-sources)
-10. [Permissions Summary](#10-permissions-summary)
-11. [Troubleshooting](#11-troubleshooting)
-12. [Quick Reference](#12-quick-reference)
+3. [Categories Tab](#3-categories-tab)
+4. [Users Tab](#4-users-tab)
+5. [Documents Tab](#5-documents-tab)
+6. [Prompts Tab](#6-prompts-tab)
+7. [Skills Tab](#7-skills-tab)
+8. [Tools Tab](#8-tools-tab)
+9. [Task Planner Templates](#9-task-planner-templates)
+10. [Data Sources](#10-data-sources)
+11. [Permissions Summary](#11-permissions-summary)
+12. [Troubleshooting](#12-troubleshooting)
+13. [Quick Reference](#13-quick-reference)
 
 ---
 
@@ -27,17 +28,30 @@ This guide explains how to use the Superuser Dashboard to manage your assigned c
 
 A **Superuser** is a category-focused manager role in Policy Bot. Superusers can manage documents, users, and configurations for their **assigned categories** only. This role is ideal for department heads or team leads who need to manage their team's access to specific policy documents.
 
+### Hybrid Role Support
+
+Superusers can have two types of category access:
+
+| Access Type | Description | Capabilities |
+|-------------|-------------|--------------|
+| **Managed Categories** | Categories assigned for management | Upload documents, manage users, configure tools/prompts, create new categories |
+| **Subscribed Categories** | Categories subscribed for read access | Chat and query documents (same as regular user access) |
+
+This allows a superuser to manage their department's categories while also having read access to other relevant categories (e.g., an HR superuser managing HR Policies but subscribed to Legal for reference).
+
 ### Role Comparison
 
 | Capability | User | Superuser | Admin |
 |------------|------|-----------|-------|
 | Chat with assistant | ✅ | ✅ | ✅ |
 | Upload documents to threads | ✅ | ✅ | ✅ |
-| Upload documents to categories | ❌ | ✅ (assigned only) | ✅ (all + global) |
-| Manage user subscriptions | ❌ | ✅ (assigned only) | ✅ (all) |
-| Configure data sources | ❌ | ✅ (assigned only) | ✅ (all) |
-| Configure tools per category | ❌ | ✅ (assigned only) | ✅ (global + all) |
-| Edit category prompts | ❌ | ✅ (assigned only) | ✅ (global + all) |
+| Upload documents to categories | ❌ | ✅ (managed only) | ✅ (all + global) |
+| Create new categories | ❌ | ✅ (within quota) | ✅ |
+| Manage user subscriptions | ❌ | ✅ (managed only) | ✅ (all) |
+| Configure data sources | ❌ | ✅ (managed only) | ✅ (all) |
+| Configure tools per category | ❌ | ✅ (managed only) | ✅ (global + all) |
+| Edit category prompts | ❌ | ✅ (managed only) | ✅ (global + all) |
+| Access subscribed categories | ✅ | ✅ | ✅ |
 | Create/delete users | ❌ | ❌ | ✅ |
 | Manage all categories | ❌ | ❌ | ✅ |
 | System settings & backups | ❌ | ❌ | ✅ |
@@ -64,15 +78,7 @@ Once assigned, you'll see the **Superuser** option in the navigation menu.
 
 ## 2. Dashboard Tab
 
-The Dashboard tab provides an overview of your assigned categories and recent activity.
-
-### Assigned Categories
-
-At the top of the dashboard, you'll see orange badges displaying the categories assigned to you. These are the only categories you can manage.
-
-```
-Your Assigned Categories: [HR Policies] [Finance] [Operations]
-```
+The Dashboard tab provides an overview of your categories and recent activity.
 
 ### Statistics Cards
 
@@ -111,7 +117,77 @@ Click the **Refresh** button to update all statistics with the latest data.
 
 ---
 
-## 3. Users Tab
+## 3. Categories Tab
+
+The Categories tab provides a unified view of all your categories - both managed and subscribed - and lets you create new categories.
+
+### Viewing Your Categories
+
+The Categories tab displays two sections:
+
+#### Managed Categories
+
+Categories you have full management access to:
+- Displayed with **orange badges**
+- Click a category to manage its documents, users, prompts, and tools
+- Shows document count and subscriber count
+
+```
+Managed Categories:
+[HR Policies] 45 docs, 12 subscribers
+[Training] 23 docs, 8 subscribers
+```
+
+#### Subscribed Categories
+
+Categories you have read-only access to (for chat/queries):
+- Displayed with **blue badges**
+- You can select these when starting a chat to query their documents
+- You cannot upload documents or manage users in these categories
+
+```
+Subscribed Categories:
+[Legal] [Finance] [Operations]
+```
+
+### Creating New Categories
+
+Superusers can create new categories within their quota:
+
+1. Click the **Create Category** button
+2. Fill in the category details:
+   - **Name** - Display name (e.g., "Training Materials")
+   - **Description** - Purpose of this category
+3. Click **Create**
+
+The new category is automatically assigned to you for management.
+
+### Category Quota
+
+Your Admin may configure a limit on how many categories you can create:
+
+| Setting | Description |
+|---------|-------------|
+| **Created Categories** | Number of categories you've created |
+| **Quota Limit** | Maximum categories allowed (set by Admin) |
+| **Unlimited** | If no quota is set, shown as "Unlimited" |
+
+If you reach your quota limit, contact your Admin to:
+- Increase your quota
+- Delete categories you no longer need
+- Have an Admin create additional categories for you
+
+### Categories in Chat
+
+When starting a new chat conversation, you can select from:
+- All your **managed categories** (orange)
+- All your **subscribed categories** (blue)
+
+This allows you to query documents from categories you manage as well as reference documents from other categories you're subscribed to.
+
+---
+
+## 4. Users Tab
 
 The Users tab lets you manage which users have access to your assigned categories.
 
@@ -151,9 +227,9 @@ To remove a user's access to a category:
 
 ---
 
-## 4. Documents Tab
+## 5. Documents Tab
 
-The Documents tab is where you upload and manage documents for your assigned categories.
+The Documents tab is where you upload and manage documents for your managed categories.
 
 ### Uploading Documents
 
@@ -265,9 +341,9 @@ You can only delete documents that you uploaded:
 
 ---
 
-## 5. Prompts Tab
+## 6. Prompts Tab
 
-The Prompts tab lets you customize AI behavior for your assigned categories.
+The Prompts tab lets you customize AI behavior for your managed categories.
 
 ### Understanding Prompt Hierarchy
 
@@ -339,7 +415,7 @@ To remove category customizations and use only the global prompt:
 
 ---
 
-## 6. Skills Tab
+## 7. Skills Tab
 
 The Skills tab shows AI skills configured for Policy Bot.
 
@@ -371,9 +447,9 @@ If you need a new skill or changes to existing skills, contact your Admin.
 
 ---
 
-## 7. Tools Tab
+## 8. Tools Tab
 
-The Tools tab lets you configure AI tools for your assigned categories.
+The Tools tab lets you configure AI tools for your managed categories.
 
 ### Understanding Tool Inheritance
 
@@ -437,7 +513,7 @@ To remove category overrides and use global settings:
 
 ---
 
-## 8. Task Planner Templates
+## 9. Task Planner Templates
 
 Task Planner Templates allow the AI to execute structured, multi-step workflows for complex tasks within your categories.
 
@@ -529,7 +605,7 @@ To modify an existing template:
 
 ---
 
-## 9. Data Sources
+## 10. Data Sources
 
 Data Sources allow the AI to query external APIs and CSV files to answer questions with real data.
 
@@ -608,34 +684,40 @@ To auto-configure from an OpenAPI/Swagger spec:
 
 ---
 
-## 10. Permissions Summary
+## 11. Permissions Summary
 
 ### What Superusers CAN Do
 
+✅ **Categories**
+- View all managed categories (with full access)
+- View all subscribed categories (read-only access)
+- Create new categories (within quota)
+- Manage categories you created
+
 ✅ **Documents**
-- Upload files, text, web URLs, and YouTube videos to assigned categories
-- View all documents in assigned categories
+- Upload files, text, web URLs, and YouTube videos to managed categories
+- View all documents in managed categories
 - Delete documents you uploaded
 - Monitor document processing status
 
 ✅ **Users**
-- View users subscribed to assigned categories
-- Add existing users to your categories
-- Remove user subscriptions from your categories
+- View users subscribed to managed categories
+- Add existing users to your managed categories
+- Remove user subscriptions from your managed categories
 
 ✅ **Data Sources**
-- Create API and CSV data sources for assigned categories
+- Create API and CSV data sources for managed categories
 - Edit data source configurations
 - Delete data sources you created
 - Test data source connections
 
 ✅ **Tools**
-- Enable/disable tools per category
-- Configure tool branding per category
+- Enable/disable tools per managed category
+- Configure tool branding per managed category
 - Reset tool config to global defaults
 
 ✅ **Prompts**
-- Edit category-specific prompt addendums
+- Edit category-specific prompt addendums for managed categories
 - Configure starter prompts
 - Use AI prompt optimization
 - Reset to global prompt
@@ -644,9 +726,13 @@ To auto-configure from an OpenAPI/Swagger spec:
 - View all available skills (read-only)
 
 ✅ **Task Planner Templates**
-- Create templates for assigned categories
-- Edit existing templates for assigned categories
-- View all templates for assigned categories
+- Create templates for managed categories
+- Edit existing templates for managed categories
+- View all templates for managed categories
+
+✅ **Chat Access**
+- Query documents from both managed and subscribed categories
+- Select any accessible category when starting a conversation
 
 ### What Superusers CANNOT Do
 
@@ -681,7 +767,7 @@ To auto-configure from an OpenAPI/Swagger spec:
 
 ---
 
-## 11. Troubleshooting
+## 12. Troubleshooting
 
 ### Common Errors
 
@@ -787,7 +873,7 @@ If you encounter issues not covered here:
 
 ---
 
-## 12. Quick Reference
+## 13. Quick Reference
 
 ### Keyboard Shortcuts
 
@@ -825,4 +911,4 @@ If you encounter issues not covered here:
 
 ---
 
-*Last updated: December 2024 (v2.1 - Added streaming responses, PWA support, accent colors)*
+*Last updated: December 2024 (v2.2 - Added Categories tab, hybrid role support with subscribed categories, category creation quota)*

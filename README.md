@@ -144,7 +144,7 @@ Policy Bot is an **enterprise AI assistant platform** designed for organizations
 | Role | Permissions |
 |------|-------------|
 | **Admin** | Full access: manage all users, categories, documents, and settings |
-| **Super User** | Manage users and upload documents to assigned categories |
+| **Super User** | Manage users and upload documents to assigned categories. Can also be subscribed to additional categories for read-only chat access (hybrid role). |
 | **User** | Access chat and documents from subscribed categories |
 
 ## Solution Architecture
@@ -515,6 +515,9 @@ policy-bot/
 | GET | `/api/superuser/users` | Get users in assigned categories |
 | POST | `/api/superuser/users` | Add user subscription |
 | DELETE | `/api/superuser/users` | Remove user subscription |
+| GET | `/api/superuser/categories` | Get managed and subscribed categories |
+| POST | `/api/superuser/categories` | Create new category (within quota) |
+| DELETE | `/api/superuser/categories` | Delete category created by self |
 
 ### User
 | Method | Endpoint | Description |
@@ -678,7 +681,7 @@ Admins can customize the bot's appearance through the Settings tab:
 | Role | Description |
 |------|-------------|
 | **admin** | Full access including user management and document administration |
-| **superuser** | Can manage users subscribed to their assigned categories |
+| **superuser** | Can manage users subscribed to their assigned categories, create categories within quota. Supports hybrid access: can also be subscribed to additional categories for read-only chat access. |
 | **user** | Can use chat and upload documents to threads |
 
 ### Access Control Modes

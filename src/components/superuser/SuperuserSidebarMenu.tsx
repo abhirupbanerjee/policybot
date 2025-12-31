@@ -5,35 +5,36 @@ import {
   Menu,
   X,
   LayoutDashboard,
+  FolderOpen,
   Users,
   FileText,
   MessageSquare,
   Globe,
+  Archive,
   ChevronDown,
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
 } from 'lucide-react';
 
-type TabType = 'dashboard' | 'users' | 'documents' | 'prompts' | 'tools';
+type TabType = 'dashboard' | 'categories' | 'users' | 'documents' | 'prompts' | 'tools' | 'backup';
 type PromptsSection = 'global-prompt' | 'category-prompts' | 'skills';
-type ToolsSection = 'tools' | 'backup';
 
 interface SuperuserSidebarMenuProps {
   activeTab: TabType;
   promptsSection: PromptsSection;
-  toolsSection: ToolsSection;
   onTabChange: (tab: TabType) => void;
   onPromptsChange: (section: PromptsSection) => void;
-  onToolsChange: (section: ToolsSection) => void;
 }
 
 const MAIN_TABS: { id: TabType; label: string; icon: typeof LayoutDashboard }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+  { id: 'categories', label: 'Categories', icon: FolderOpen },
   { id: 'users', label: 'Users', icon: Users },
   { id: 'documents', label: 'Documents', icon: FileText },
   { id: 'prompts', label: 'Prompts', icon: MessageSquare },
   { id: 'tools', label: 'Tools', icon: Globe },
+  { id: 'backup', label: 'Backup', icon: Archive },
 ];
 
 const PROMPTS_SUBMENU: { id: PromptsSection; label: string }[] = [
@@ -42,33 +43,26 @@ const PROMPTS_SUBMENU: { id: PromptsSection; label: string }[] = [
   { id: 'skills', label: 'Skills' },
 ];
 
-const TOOLS_SUBMENU: { id: ToolsSection; label: string }[] = [
-  { id: 'tools', label: 'Tools' },
-  { id: 'backup', label: 'Backup' },
-];
-
 export default function SuperuserSidebarMenu({
   activeTab,
   promptsSection,
-  toolsSection,
   onTabChange,
   onPromptsChange,
-  onToolsChange,
 }: SuperuserSidebarMenuProps) {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(true);
-  const [expandedMenu, setExpandedMenu] = useState<'prompts' | 'tools' | null>(
-    activeTab === 'prompts' ? 'prompts' : activeTab === 'tools' ? 'tools' : null
+  const [expandedMenu, setExpandedMenu] = useState<'prompts' | null>(
+    activeTab === 'prompts' ? 'prompts' : null
   );
 
   const handleTabClick = (tabId: TabType) => {
-    if (tabId === 'prompts' || tabId === 'tools') {
+    if (tabId === 'prompts') {
       // If collapsed, expand sidebar first and show submenu
       if (isCollapsed) {
         setIsCollapsed(false);
-        setExpandedMenu(tabId);
+        setExpandedMenu('prompts');
       } else {
-        setExpandedMenu(expandedMenu === tabId ? null : tabId);
+        setExpandedMenu(expandedMenu === 'prompts' ? null : 'prompts');
       }
     } else {
       onTabChange(tabId);
@@ -82,20 +76,10 @@ export default function SuperuserSidebarMenu({
     setIsMobileOpen(false);
   };
 
-  const handleToolsSubClick = (section: ToolsSection) => {
-    onTabChange('tools');
-    onToolsChange(section);
-    setIsMobileOpen(false);
-  };
-
   const getCurrentLabel = () => {
     if (activeTab === 'prompts') {
       const sub = PROMPTS_SUBMENU.find(s => s.id === promptsSection);
       return `Prompts > ${sub?.label || ''}`;
-    }
-    if (activeTab === 'tools') {
-      const sub = TOOLS_SUBMENU.find(s => s.id === toolsSection);
-      return `Tools > ${sub?.label || ''}`;
     }
     return MAIN_TABS.find(t => t.id === activeTab)?.label || '';
   };
@@ -121,7 +105,7 @@ export default function SuperuserSidebarMenu({
         {MAIN_TABS.map(tab => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
-          const hasSubmenu = tab.id === 'prompts' || tab.id === 'tools';
+          const hasSubmenu = tab.id === 'prompts';
           const isExpanded = expandedMenu === tab.id;
 
           return (
@@ -163,25 +147,6 @@ export default function SuperuserSidebarMenu({
                   ))}
                 </div>
               )}
-
-              {/* Tools Submenu */}
-              {tab.id === 'tools' && isExpanded && (
-                <div className="bg-gray-50/80">
-                  {TOOLS_SUBMENU.map(sub => (
-                    <button
-                      key={sub.id}
-                      onClick={() => handleToolsSubClick(sub.id)}
-                      className={`w-full pl-11 pr-4 py-2 text-left text-sm transition-colors ${
-                        activeTab === 'tools' && toolsSection === sub.id
-                          ? 'bg-blue-100 text-blue-700 font-medium'
-                          : 'text-gray-600 hover:bg-gray-100'
-                      }`}
-                    >
-                      {sub.label}
-                    </button>
-                  ))}
-                </div>
-              )}
             </div>
           );
         })}
@@ -207,7 +172,7 @@ export default function SuperuserSidebarMenu({
         {MAIN_TABS.map(tab => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
-          const hasSubmenu = tab.id === 'prompts' || tab.id === 'tools';
+          const hasSubmenu = tab.id === 'prompts';
           const isExpanded = expandedMenu === tab.id && !isCollapsed;
 
           return (
@@ -241,25 +206,6 @@ export default function SuperuserSidebarMenu({
                       onClick={() => handlePromptsSubClick(sub.id)}
                       className={`w-full pl-11 pr-4 py-2 text-left text-sm transition-colors ${
                         activeTab === 'prompts' && promptsSection === sub.id
-                          ? 'bg-blue-100 text-blue-700 font-medium'
-                          : 'text-gray-600 hover:bg-gray-100'
-                      }`}
-                    >
-                      {sub.label}
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {/* Tools Submenu - only show when expanded and not collapsed */}
-              {tab.id === 'tools' && isExpanded && (
-                <div className="bg-gray-50/80">
-                  {TOOLS_SUBMENU.map(sub => (
-                    <button
-                      key={sub.id}
-                      onClick={() => handleToolsSubClick(sub.id)}
-                      className={`w-full pl-11 pr-4 py-2 text-left text-sm transition-colors ${
-                        activeTab === 'tools' && toolsSection === sub.id
                           ? 'bg-blue-100 text-blue-700 font-medium'
                           : 'text-gray-600 hover:bg-gray-100'
                       }`}

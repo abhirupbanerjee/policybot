@@ -44,6 +44,8 @@ tags:
     description: Document management for assigned categories
   - name: Super User - Users
     description: User subscription management for assigned categories
+  - name: Super User - Categories
+    description: Category management for superusers (view managed/subscribed, create within quota)
   - name: Admin - Tools
     description: Tool configuration management (admin only)
   - name: Admin - Skills
@@ -2553,6 +2555,217 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '403':
           description: No access to this category
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /superuser/categories:
+    get:
+      tags:
+        - Super User - Categories
+      summary: Get accessible categories
+      description: |
+        Get super user's accessible categories including:
+        - Managed categories (from super_user_categories - full control)
+        - Subscribed categories (from user_subscriptions - read-only access)
+        - Category creation quota information
+      operationId: getSuperuserCategories
+      responses:
+        '200':
+          description: Categories and quota
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  managedCategories:
+                    type: array
+                    description: Categories the superuser can manage (upload docs, manage users)
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        name:
+                          type: string
+                        slug:
+                          type: string
+                        description:
+                          type: string
+                          nullable: true
+                        documentCount:
+                          type: integer
+                        subscriberCount:
+                          type: integer
+                        createdByMe:
+                          type: boolean
+                          description: Whether this superuser created the category
+                  subscribedCategories:
+                    type: array
+                    description: Categories the superuser has read-only access to (for chat)
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: integer
+                        name:
+                          type: string
+                        slug:
+                          type: string
+                        description:
+                          type: string
+                          nullable: true
+                        isActive:
+                          type: boolean
+                  quota:
+                    type: object
+                    description: Category creation quota for this superuser
+                    properties:
+                      used:
+                        type: integer
+                        description: Categories already created by this superuser
+                      limit:
+                        type: integer
+                        description: Maximum categories this superuser can create
+                      canCreate:
+                        type: boolean
+                        description: Whether the superuser can create more categories
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Super user access required
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+    post:
+      tags:
+        - Super User - Categories
+      summary: Create category
+      description: Create a new category (within superuser's quota). The category is automatically assigned to the superuser.
+      operationId: createSuperuserCategory
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  maxLength: 100
+                  description: Category name
+                description:
+                  type: string
+                  description: Optional category description
+              required:
+                - name
+      responses:
+        '201':
+          description: Category created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  category:
+                    type: object
+                    properties:
+                      id:
+                        type: integer
+                      name:
+                        type: string
+                      slug:
+                        type: string
+                      description:
+                        type: string
+                        nullable: true
+                      createdBy:
+                        type: string
+                      createdAt:
+                        type: string
+                        format: date-time
+                  quota:
+                    type: object
+                    properties:
+                      used:
+                        type: integer
+                      limit:
+                        type: integer
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Super user access required or quota exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '409':
+          description: Category already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+    delete:
+      tags:
+        - Super User - Categories
+      summary: Delete category
+      description: Delete a category created by this super user. Also deletes all documents and ChromaDB data.
+      operationId: deleteSuperuserCategory
+      parameters:
+        - name: categoryId
+          in: query
+          required: true
+          schema:
+            type: integer
+          description: Category ID to delete
+      responses:
+        '200':
+          description: Category deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  deleted:
+                    type: object
+                    properties:
+                      categoryId:
+                        type: integer
+                      categoryName:
+                        type: string
+                      documentsDeleted:
+                        type: integer
+                      deleteErrors:
+                        type: array
+                        items:
+                          type: string
+                        description: Any failed document deletions
+        '400':
+          description: Validation error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: Can only delete categories you created
           content:
             application/json:
               schema:

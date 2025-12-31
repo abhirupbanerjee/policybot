@@ -43,7 +43,7 @@ As a user, you can:
 | Role | What They Can Do |
 |------|------------------|
 | **User (You)** | Chat, upload to threads, access subscribed categories |
-| **Superuser** | Manage specific categories assigned to them |
+| **Superuser** | Manage assigned categories + can access additional subscribed categories |
 | **Admin** | Full system management |
 
 ---
@@ -546,4 +546,4 @@ If you encounter issues:
 
 ---
 
-*Last updated: December 2024 (v1.0 - Initial user guide with streaming, PWA, accent colors)*
+*Last updated: December 2024 (v1.1 - Updated role descriptions for hybrid superuser model)*

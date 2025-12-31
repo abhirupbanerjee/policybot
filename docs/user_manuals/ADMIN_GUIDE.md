@@ -208,9 +208,11 @@ Manage all user accounts and access.
 
 | Role | Capabilities |
 |------|-------------|
-| **User** | Chat, upload to threads only |
-| **Superuser** | Manage assigned categories |
+| **User** | Chat, upload to threads only, access subscribed categories |
+| **Superuser** | Manage assigned categories + can be subscribed to other categories for read access |
 | **Admin** | Full system access |
+
+> **Note:** Superusers support a hybrid role model where they can both manage their assigned categories (full access) and be subscribed to other categories (read-only access for chat/queries).
 
 ### Editing a User
 
@@ -226,10 +228,28 @@ Manage all user accounts and access.
 
 For users with Superuser role:
 1. Edit the user
-2. In **Assigned Categories**, select categories
+2. In **Assigned Categories**, select categories for management
 3. Click **Save**
 
-The Superuser can now manage those categories.
+The Superuser can now manage those categories (upload documents, manage users, configure tools/prompts).
+
+### Adding Subscriptions to Superusers
+
+Superusers can also be subscribed to additional categories for **read-only access** (hybrid role):
+
+1. Edit the superuser
+2. In **Subscribed Categories**, select categories for read access
+3. Click **Save**
+
+This allows a superuser to:
+- **Manage** their assigned categories (full access)
+- **Query/chat** with subscribed categories (read-only)
+
+**Example use case:** An HR superuser manages the "HR Policies" category but is subscribed to "Legal" and "Compliance" for reference when answering questions.
+
+**Visual indicators in the user list:**
+- **Orange badges** - Assigned/managed categories
+- **Blue badges** - Subscribed categories (read-only)
 
 ### Deactivating vs Deleting
 
@@ -1127,10 +1147,14 @@ Admin
   └── System configuration
 
 Superuser
-  ├── Assigned category management
-  ├── Document uploads
-  ├── User subscriptions (assigned)
-  └── Tool configuration (assigned)
+  ├── Managed category access (full control)
+  │   ├── Document uploads
+  │   ├── User subscriptions
+  │   ├── Tool configuration
+  │   └── Prompt customization
+  ├── Subscribed category access (read-only)
+  │   └── Chat/query documents
+  └── Category creation (within quota)
 
 User
   ├── Chat access
@@ -1153,4 +1177,4 @@ User
 
 ---
 
-*Last updated: December 2024 (v2.1 - Added streaming, PWA, accent colors, Gemini models)*
+*Last updated: December 2024 (v2.2 - Added superuser hybrid role support, superuser subscriptions management, category creation quotas)*

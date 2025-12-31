@@ -19,16 +19,19 @@ import {
 } from 'lucide-react';
 
 type TabType = 'dashboard' | 'documents' | 'categories' | 'users' | 'settings' | 'stats' | 'prompts' | 'tools';
-type SettingsSection = 'rag' | 'llm' | 'reranker' | 'memory' | 'summarization' | 'limits' | 'backup' | 'branding' | 'cache' | 'superuser';
+type SettingsSection = 'rag' | 'rag-tuning' | 'llm' | 'reranker' | 'memory' | 'summarization' | 'limits' | 'backup' | 'branding' | 'cache' | 'superuser';
 type PromptsSection = 'system-prompt' | 'category-prompts' | 'acronyms' | 'skills';
+type ToolsSection = 'management' | 'dependencies' | 'routing';
 
 interface AdminSidebarMenuProps {
   activeTab: TabType;
   settingsSection: SettingsSection;
   promptsSection: PromptsSection;
+  toolsSection: ToolsSection;
   onTabChange: (tab: TabType) => void;
   onSettingsChange: (section: SettingsSection) => void;
   onPromptsChange: (section: PromptsSection) => void;
+  onToolsChange: (section: ToolsSection) => void;
 }
 
 const MAIN_TABS: { id: TabType; label: string; icon: typeof LayoutDashboard }[] = [
@@ -52,6 +55,7 @@ const PROMPTS_SUBMENU: { id: PromptsSection; label: string }[] = [
 const SETTINGS_SUBMENU: { id: SettingsSection; label: string }[] = [
   { id: 'llm', label: 'LLM' },
   { id: 'rag', label: 'RAG' },
+  { id: 'rag-tuning', label: 'RAG Tuning' },
   { id: 'reranker', label: 'Reranker' },
   { id: 'memory', label: 'Memory' },
   { id: 'summarization', label: 'Summarization' },
@@ -62,22 +66,30 @@ const SETTINGS_SUBMENU: { id: SettingsSection; label: string }[] = [
   { id: 'cache', label: 'Cache' },
 ];
 
+const TOOLS_SUBMENU: { id: ToolsSection; label: string }[] = [
+  { id: 'management', label: 'Tools Management' },
+  { id: 'dependencies', label: 'Dependencies' },
+  { id: 'routing', label: 'Tool Routing' },
+];
+
 export default function AdminSidebarMenu({
   activeTab,
   settingsSection,
   promptsSection,
+  toolsSection,
   onTabChange,
   onSettingsChange,
   onPromptsChange,
+  onToolsChange,
 }: AdminSidebarMenuProps) {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(true);
-  const [expandedMenu, setExpandedMenu] = useState<'prompts' | 'settings' | null>(
-    activeTab === 'prompts' ? 'prompts' : activeTab === 'settings' ? 'settings' : null
+  const [expandedMenu, setExpandedMenu] = useState<'prompts' | 'settings' | 'tools' | null>(
+    activeTab === 'prompts' ? 'prompts' : activeTab === 'settings' ? 'settings' : activeTab === 'tools' ? 'tools' : null
   );
 
   const handleTabClick = (tabId: TabType) => {
-    if (tabId === 'prompts' || tabId === 'settings') {
+    if (tabId === 'prompts' || tabId === 'settings' || tabId === 'tools') {
       // If collapsed, expand sidebar first and show submenu
       if (isCollapsed) {
         setIsCollapsed(false);
@@ -103,6 +115,12 @@ export default function AdminSidebarMenu({
     setIsMobileOpen(false);
   };
 
+  const handleToolsSubClick = (section: ToolsSection) => {
+    onTabChange('tools');
+    onToolsChange(section);
+    setIsMobileOpen(false);
+  };
+
   const getCurrentLabel = () => {
     if (activeTab === 'prompts') {
       const sub = PROMPTS_SUBMENU.find(s => s.id === promptsSection);
@@ -111,6 +129,10 @@ export default function AdminSidebarMenu({
     if (activeTab === 'settings') {
       const sub = SETTINGS_SUBMENU.find(s => s.id === settingsSection);
       return `Settings > ${sub?.label || ''}`;
+    }
+    if (activeTab === 'tools') {
+      const sub = TOOLS_SUBMENU.find(s => s.id === toolsSection);
+      return `Tools > ${sub?.label || ''}`;
     }
     return MAIN_TABS.find(t => t.id === activeTab)?.label || '';
   };
@@ -136,7 +158,7 @@ export default function AdminSidebarMenu({
         {MAIN_TABS.map(tab => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
-          const hasSubmenu = tab.id === 'prompts' || tab.id === 'settings';
+          const hasSubmenu = tab.id === 'prompts' || tab.id === 'settings' || tab.id === 'tools';
           const isExpanded = expandedMenu === tab.id;
 
           return (
@@ -169,6 +191,25 @@ export default function AdminSidebarMenu({
                       onClick={() => handlePromptsSubClick(sub.id)}
                       className={`w-full pl-11 pr-4 py-2 text-left text-sm transition-colors ${
                         activeTab === 'prompts' && promptsSection === sub.id
+                          ? 'bg-blue-100 text-blue-700 font-medium'
+                          : 'text-gray-600 hover:bg-gray-100'
+                      }`}
+                    >
+                      {sub.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Tools Submenu */}
+              {tab.id === 'tools' && isExpanded && (
+                <div className="bg-gray-50/80">
+                  {TOOLS_SUBMENU.map(sub => (
+                    <button
+                      key={sub.id}
+                      onClick={() => handleToolsSubClick(sub.id)}
+                      className={`w-full pl-11 pr-4 py-2 text-left text-sm transition-colors ${
+                        activeTab === 'tools' && toolsSection === sub.id
                           ? 'bg-blue-100 text-blue-700 font-medium'
                           : 'text-gray-600 hover:bg-gray-100'
                       }`}
@@ -222,7 +263,7 @@ export default function AdminSidebarMenu({
         {MAIN_TABS.map(tab => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
-          const hasSubmenu = tab.id === 'prompts' || tab.id === 'settings';
+          const hasSubmenu = tab.id === 'prompts' || tab.id === 'settings' || tab.id === 'tools';
           const isExpanded = expandedMenu === tab.id && !isCollapsed;
 
           return (
@@ -256,6 +297,25 @@ export default function AdminSidebarMenu({
                       onClick={() => handlePromptsSubClick(sub.id)}
                       className={`w-full pl-11 pr-4 py-2 text-left text-sm transition-colors ${
                         activeTab === 'prompts' && promptsSection === sub.id
+                          ? 'bg-blue-100 text-blue-700 font-medium'
+                          : 'text-gray-600 hover:bg-gray-100'
+                      }`}
+                    >
+                      {sub.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Tools Submenu - only show when expanded and not collapsed */}
+              {tab.id === 'tools' && isExpanded && (
+                <div className="bg-gray-50/80">
+                  {TOOLS_SUBMENU.map(sub => (
+                    <button
+                      key={sub.id}
+                      onClick={() => handleToolsSubClick(sub.id)}
+                      className={`w-full pl-11 pr-4 py-2 text-left text-sm transition-colors ${
+                        activeTab === 'tools' && toolsSection === sub.id
                           ? 'bg-blue-100 text-blue-700 font-medium'
                           : 'text-gray-600 hover:bg-gray-100'
                       }`}

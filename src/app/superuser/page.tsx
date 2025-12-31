@@ -94,11 +94,19 @@ interface OptimizationResult {
   tokensUsed: number;
 }
 
+// Subscribed category interface (for read-only access)
+interface SubscribedCategory {
+  id: number;
+  name: string;
+  slug: string;
+}
+
 export default function SuperUserPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [assignedCategories, setAssignedCategories] = useState<AssignedCategory[]>([]);
+  const [subscribedCategories, setSubscribedCategories] = useState<SubscribedCategory[]>([]);
   const [users, setUsers] = useState<ManagedUser[]>([]);
 
   // Add subscription modal state
@@ -153,13 +161,11 @@ export default function SuperUserPage() {
   const [docSortOption, setDocSortOption] = useState<'newest' | 'oldest' | 'largest' | 'smallest' | 'a-z' | 'z-a'>('newest');
 
   // Active tab state
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'users' | 'documents' | 'prompts' | 'tools'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'categories' | 'users' | 'documents' | 'prompts' | 'tools' | 'backup'>('dashboard');
 
-  // Prompts and Tools sidebar section state
+  // Prompts sidebar section state
   type PromptsSection = 'global-prompt' | 'category-prompts' | 'skills';
-  type ToolsSection = 'tools' | 'backup';
   const [promptsSection, setPromptsSection] = useState<PromptsSection>('category-prompts');
-  const [toolsSection, setToolsSection] = useState<ToolsSection>('tools');
 
   // Stats state
   const [stats, setStats] = useState<SuperUserStats | null>(null);
@@ -217,11 +223,12 @@ export default function SuperUserPage() {
     try {
       setLoading(true);
 
-      // Load users, documents, and stats in parallel
-      const [usersResponse, docsResponse, sessionResponse] = await Promise.all([
+      // Load users, documents, categories, and session in parallel
+      const [usersResponse, docsResponse, sessionResponse, categoriesResponse] = await Promise.all([
         fetch('/api/superuser/users'),
         fetch('/api/superuser/documents'),
         fetch('/api/auth/session'),
+        fetch('/api/user/categories'),
       ]);
 
       if (usersResponse.status === 403 || docsResponse.status === 403) {
@@ -246,6 +253,17 @@ export default function SuperUserPage() {
       if (sessionResponse.ok) {
         const sessionData = await sessionResponse.json();
         setCurrentUserEmail(sessionData.user?.email || null);
+      }
+
+      // Get all accessible categories (assigned + subscribed)
+      // Filter to only subscribed (not assigned) for display purposes
+      if (categoriesResponse.ok) {
+        const categoriesData = await categoriesResponse.json();
+        const allCategories: SubscribedCategory[] = categoriesData.categories || [];
+        const assignedIds = new Set(userData.assignedCategories?.map((c: AssignedCategory) => c.categoryId) || []);
+        // Only keep categories that are NOT in assigned list (these are subscribed-only)
+        const subscribed = allCategories.filter(c => !assignedIds.has(c.id));
+        setSubscribedCategories(subscribed);
       }
 
       // Load stats separately
@@ -899,10 +917,8 @@ export default function SuperUserPage() {
         <SuperuserSidebarMenu
           activeTab={activeTab}
           promptsSection={promptsSection}
-          toolsSection={toolsSection}
           onTabChange={setActiveTab}
           onPromptsChange={setPromptsSection}
-          onToolsChange={setToolsSection}
         />
 
         {/* Main Content */}
@@ -919,50 +935,99 @@ export default function SuperUserPage() {
             </div>
           )}
 
-          {/* Assigned Categories - Shown on all pages */}
-          <div className="bg-white rounded-lg border shadow-sm mb-6">
-            <div className="px-6 py-4 border-b flex items-center justify-between">
-              <div>
-                <h2 className="font-semibold text-gray-900">Your Assigned Categories</h2>
-                <p className="text-sm text-gray-500">
-                  You can manage documents and user subscriptions for these categories
-                </p>
+          {/* Categories Section */}
+          {activeTab === 'categories' && (
+            <div className="space-y-6">
+              {/* Header with Create Button */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-lg font-semibold text-gray-900">Your Categories</h2>
+                  <p className="text-sm text-gray-500">
+                    Manage your assigned categories and view subscribed categories
+                  </p>
+                </div>
+                <Button onClick={() => setShowCreateCategory(true)}>
+                  <Plus size={18} className="mr-2" />
+                  Create Category
+                </Button>
               </div>
-              <Button onClick={() => setShowCreateCategory(true)}>
-                <Plus size={18} className="mr-2" />
-                Create Category
-              </Button>
-            </div>
-            <div className="px-6 py-4">
-              {assignedCategories.length === 0 ? (
-                <p className="text-gray-500 text-sm">No categories assigned to you yet. Create one to get started.</p>
-              ) : (
-                <div className="flex flex-wrap gap-2">
-                  {assignedCategories.map(cat => (
-                    <span
-                      key={cat.categoryId}
-                      className="inline-flex items-center gap-2 px-3 py-1.5 bg-orange-100 text-orange-700 rounded-full text-sm font-medium group"
-                    >
-                      <FolderOpen size={14} />
-                      {cat.categoryName}
-                      {cat.createdBy === currentUserEmail && (
-                        <button
-                          onClick={() => {
-                            const docCount = stats?.categories.find(c => c.categoryId === cat.categoryId)?.documentCount || 0;
-                            setShowDeleteCategory({ id: cat.categoryId, name: cat.categoryName, documentCount: docCount });
-                          }}
-                          className="ml-1 p-0.5 hover:bg-orange-200 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                          title="Delete category"
+
+              {/* Managed Categories */}
+              <div className="bg-white rounded-lg border shadow-sm">
+                <div className="px-6 py-4 border-b">
+                  <h3 className="font-semibold text-gray-900">Managed Categories</h3>
+                  <p className="text-sm text-gray-500">
+                    You can upload documents and manage users for these categories
+                  </p>
+                </div>
+                <div className="px-6 py-4">
+                  {assignedCategories.length === 0 ? (
+                    <p className="text-gray-500 text-sm">No categories assigned to you yet. Create one to get started.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {assignedCategories.map(cat => (
+                        <span
+                          key={cat.categoryId}
+                          className="inline-flex items-center gap-2 px-3 py-1.5 bg-orange-100 text-orange-700 rounded-full text-sm font-medium group"
                         >
-                          <Trash2 size={12} />
-                        </button>
-                      )}
-                    </span>
-                  ))}
+                          <FolderOpen size={14} />
+                          {cat.categoryName}
+                          {cat.createdBy === currentUserEmail && (
+                            <button
+                              onClick={() => {
+                                const docCount = stats?.categories.find(c => c.categoryId === cat.categoryId)?.documentCount || 0;
+                                setShowDeleteCategory({ id: cat.categoryId, name: cat.categoryName, documentCount: docCount });
+                              }}
+                              className="ml-1 p-0.5 hover:bg-orange-200 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                              title="Delete category"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          )}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Subscribed Categories */}
+              <div className="bg-white rounded-lg border shadow-sm">
+                <div className="px-6 py-4 border-b">
+                  <h3 className="font-semibold text-gray-900">Subscribed Categories</h3>
+                  <p className="text-sm text-gray-500">
+                    You have read-only access to chat with documents in these categories
+                  </p>
+                </div>
+                <div className="px-6 py-4">
+                  {subscribedCategories.length === 0 ? (
+                    <p className="text-gray-500 text-sm">No additional subscriptions. Ask an admin to subscribe you to more categories.</p>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {subscribedCategories.map(cat => (
+                        <span
+                          key={cat.id}
+                          className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-100 text-blue-700 rounded-full text-sm font-medium"
+                        >
+                          <Tag size={14} />
+                          {cat.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Category Quota Info */}
+              {categoryQuota && (
+                <div className="bg-gray-50 rounded-lg border p-4">
+                  <p className="text-sm text-gray-600">
+                    <span className="font-medium">Category Quota:</span> {categoryQuota.used} / {categoryQuota.limit} categories created
+                  </p>
                 </div>
               )}
             </div>
-          </div>
+          )}
 
           {/* Dashboard Section */}
         {activeTab === 'dashboard' && (
@@ -1592,58 +1657,53 @@ export default function SuperUserPage() {
 
         {/* Tools Section */}
         {activeTab === 'tools' && (
-          <>
-              {/* Tools Tab Content */}
-              {toolsSection === 'tools' && (
-                <ToolsTab isSuperuser />
-              )}
+          <ToolsTab isSuperuser />
+        )}
 
-              {/* Backup Section */}
-              {toolsSection === 'backup' && (
-                <div className="bg-white rounded-lg border shadow-sm">
-                  <div className="px-6 py-4 border-b">
-                    <h2 className="font-semibold text-gray-900">Backup Threads</h2>
-                    <p className="text-sm text-gray-500">
-                      Export conversation threads from your assigned categories
-                    </p>
-                  </div>
-                  <div className="p-6">
-                    <div className="text-center py-8">
-                      <p className="text-gray-500 mb-4">
-                        Download threads and messages from categories you manage.
-                      </p>
-                      <Button
-                        onClick={async () => {
-                          try {
-                            const response = await fetch('/api/superuser/backup', {
-                              method: 'POST',
-                              headers: { 'Content-Type': 'application/json' },
-                              body: JSON.stringify({ includeThreads: true }),
-                            });
-                            if (!response.ok) throw new Error('Backup failed');
-                            const blob = await response.blob();
-                            const url = window.URL.createObjectURL(blob);
-                            const a = document.createElement('a');
-                            a.href = url;
-                            a.download = `threads-backup-${new Date().toISOString().split('T')[0]}.json`;
-                            document.body.appendChild(a);
-                            a.click();
-                            window.URL.revokeObjectURL(url);
-                            a.remove();
-                          } catch (err) {
-                            console.error('Backup error:', err);
-                            alert('Failed to create backup. Please try again.');
-                          }
-                        }}
-                      >
-                        <FileText size={16} className="mr-2" />
-                        Export Threads
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              )}
-          </>
+        {/* Backup Section */}
+        {activeTab === 'backup' && (
+          <div className="bg-white rounded-lg border shadow-sm">
+            <div className="px-6 py-4 border-b">
+              <h2 className="font-semibold text-gray-900">Backup Threads</h2>
+              <p className="text-sm text-gray-500">
+                Export conversation threads from your assigned categories
+              </p>
+            </div>
+            <div className="p-6">
+              <div className="text-center py-8">
+                <p className="text-gray-500 mb-4">
+                  Download threads and messages from categories you manage.
+                </p>
+                <Button
+                  onClick={async () => {
+                    try {
+                      const response = await fetch('/api/superuser/backup', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ includeThreads: true }),
+                      });
+                      if (!response.ok) throw new Error('Backup failed');
+                      const blob = await response.blob();
+                      const url = window.URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `threads-backup-${new Date().toISOString().split('T')[0]}.json`;
+                      document.body.appendChild(a);
+                      a.click();
+                      window.URL.revokeObjectURL(url);
+                      a.remove();
+                    } catch (err) {
+                      console.error('Backup error:', err);
+                      alert('Failed to create backup. Please try again.');
+                    }
+                  }}
+                >
+                  <FileText size={16} className="mr-2" />
+                  Export Threads
+                </Button>
+              </div>
+            </div>
+          </div>
         )}
         </main>
       </div>

@@ -420,6 +420,37 @@ export const TOOL_DEFAULTS: Record<string, { enabled: boolean; config: Record<st
       },
     },
   },
+  translation: {
+    enabled: false, // Disabled until at least one provider is configured
+    config: {
+      activeProvider: 'openai',
+      providers: {
+        openai: {
+          enabled: true,
+          model: 'gpt-4.1-mini',
+          temperature: 0.3,
+        },
+        gemini: {
+          enabled: true,
+          model: 'gemini-2.5-flash',
+          temperature: 0.3,
+        },
+        mistral: {
+          enabled: true,
+          model: 'mistral-small-3.2',
+          temperature: 0.3,
+        },
+      },
+      languages: {
+        en: true,
+        hi: true,
+        fr: true,
+        es: true,
+        pt: true,
+      },
+      formalStyle: true,
+    },
+  },
 };
 
 /**

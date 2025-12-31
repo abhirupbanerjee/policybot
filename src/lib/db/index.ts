@@ -469,6 +469,44 @@ function runMigrations(database: Database.Database): void {
     `);
   }
 
+  // Check and create RAG testing tables for RAG Tuning Dashboard
+  const ragTestQueriesTableExists = database.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='rag_test_queries'"
+  ).get();
+
+  if (!ragTestQueriesTableExists) {
+    database.exec(`
+      -- RAG test queries (saved test queries)
+      CREATE TABLE IF NOT EXISTS rag_test_queries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        query TEXT NOT NULL,
+        category_ids TEXT,
+        created_by TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- RAG test results (test execution history)
+      CREATE TABLE IF NOT EXISTS rag_test_results (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        query_id INTEGER,
+        test_query TEXT NOT NULL,
+        settings_snapshot TEXT NOT NULL,
+        chunks_retrieved INTEGER NOT NULL,
+        avg_similarity REAL NOT NULL,
+        latency_ms INTEGER NOT NULL,
+        top_chunks TEXT,
+        created_by TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (query_id) REFERENCES rag_test_queries(id) ON DELETE SET NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_rag_test_queries_created ON rag_test_queries(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_rag_test_results_created ON rag_test_results(created_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_rag_test_results_query ON rag_test_results(query_id);
+    `);
+  }
+
   // Migration: Update file_type CHECK constraint to include 'md' format
   // SQLite doesn't allow modifying CHECK constraints, so we recreate the table
   try {

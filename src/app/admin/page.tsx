@@ -13,6 +13,7 @@ import ToolsTab from '@/components/admin/ToolsTab';
 import StarterPromptsEditor from '@/components/admin/StarterPromptsEditor';
 import AdminSidebarMenu from '@/components/admin/AdminSidebarMenu';
 import CacheSettingsTab from '@/components/admin/CacheSettingsTab';
+import { RagTuningDashboard } from '@/components/admin/RagTuningDashboard';
 import type { GlobalDocument } from '@/types';
 
 interface AllowedUser {
@@ -129,8 +130,9 @@ interface ModelPreset {
 }
 
 type TabType = 'dashboard' | 'documents' | 'categories' | 'users' | 'settings' | 'stats' | 'prompts' | 'tools';
-type SettingsSection = 'rag' | 'llm' | 'reranker' | 'memory' | 'summarization' | 'limits' | 'backup' | 'branding' | 'cache' | 'superuser';
+type SettingsSection = 'rag' | 'rag-tuning' | 'llm' | 'reranker' | 'memory' | 'summarization' | 'limits' | 'backup' | 'branding' | 'cache' | 'superuser';
 type PromptsSection = 'system-prompt' | 'category-prompts' | 'acronyms' | 'skills';
+type ToolsSection = 'management' | 'dependencies' | 'routing';
 
 interface BrandingSettings {
   botName: string;
@@ -392,6 +394,7 @@ export default function AdminPage() {
   // RAG/LLM settings state
   const [settingsSection, setSettingsSection] = useState<SettingsSection>('llm');
   const [promptsSection, setPromptsSection] = useState<PromptsSection>('system-prompt');
+  const [toolsSection, setToolsSection] = useState<ToolsSection>('management');
 
   // LLM collapse state
   const [llmPresetsExpanded, setLlmPresetsExpanded] = useState(true);
@@ -2392,9 +2395,11 @@ export default function AdminPage() {
           activeTab={activeTab}
           settingsSection={settingsSection}
           promptsSection={promptsSection}
+          toolsSection={toolsSection}
           onTabChange={setActiveTab}
           onSettingsChange={setSettingsSection}
           onPromptsChange={setPromptsSection}
+          onToolsChange={setToolsSection}
         />
 
         {/* Main Content */}
@@ -3683,6 +3688,11 @@ export default function AdminPage() {
                     )}
                   </div>
                 </div>
+              )}
+
+              {/* RAG Tuning Section */}
+              {settingsSection === 'rag-tuning' && (
+                <RagTuningDashboard />
               )}
 
               {/* Branding Section */}
@@ -5187,7 +5197,7 @@ export default function AdminPage() {
 
         {/* Tools Tab */}
         {activeTab === 'tools' && (
-          <ToolsTab />
+          <ToolsTab activeSubTab={toolsSection} />
         )}
         </main>
       </div>

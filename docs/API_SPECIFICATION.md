@@ -3331,7 +3331,167 @@ curl -X DELETE "https://policybot.abhirup.app/api/superuser/users?userEmail=user
 
 ---
 
-### 23. Admin - Tool Routing
+### 23. Super User - Category Management
+
+Super users can view their accessible categories (both managed and subscribed) and create new categories within their quota.
+
+#### `GET /api/superuser/categories`
+
+Get super user's accessible categories (both managed and subscribed).
+
+**Authentication**: Required
+**Role**: Superuser only
+
+**Example Request**:
+
+```bash
+curl -X GET https://policybot.abhirup.app/api/superuser/categories \
+  -H "Cookie: next-auth.session-token=abc123..."
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  managedCategories: Array<{
+    id: number;
+    name: string;
+    slug: string;
+    description: string | null;
+    documentCount: number;
+    subscriberCount: number;
+    createdByMe: boolean;
+  }>;
+  subscribedCategories: Array<{
+    id: number;
+    name: string;
+    slug: string;
+    description: string | null;
+    isActive: boolean;
+  }>;
+  quota: {
+    used: number;          // Categories created by this superuser
+    limit: number;         // Max categories they can create
+    canCreate: boolean;    // Whether they can create more
+  };
+}
+```
+
+**Notes**:
+- `managedCategories` come from `super_user_categories` table (full control)
+- `subscribedCategories` come from `user_subscriptions` table (read-only access)
+- A category can appear in both lists if the superuser manages AND is subscribed to it
+
+---
+
+#### `POST /api/superuser/categories`
+
+Create a new category (within superuser's quota).
+
+**Authentication**: Required
+**Role**: Superuser only
+
+**Request Body**:
+
+```typescript
+{
+  name: string;         // Required: category name (max 100 chars)
+  description?: string; // Optional: category description
+}
+```
+
+**Example Request**:
+
+```bash
+curl -X POST https://policybot.abhirup.app/api/superuser/categories \
+  -H "Content-Type: application/json" \
+  -H "Cookie: next-auth.session-token=abc123..." \
+  -d '{
+    "name": "My Department",
+    "description": "Documents for my department"
+  }'
+```
+
+**Response** `201 Created`:
+
+```typescript
+{
+  success: true;
+  category: {
+    id: number;
+    name: string;
+    slug: string;
+    description: string | null;
+    createdBy: string;
+    createdAt: string;
+  };
+  quota: {
+    used: number;
+    limit: number;
+  };
+}
+```
+
+**Error Responses**:
+
+| Status | Error | Code | Solution |
+|--------|-------|------|----------|
+| 400 | "Category name is required" | VALIDATION_ERROR | Include name |
+| 400 | "Category name must be 100 characters or less" | VALIDATION_ERROR | Shorten name |
+| 403 | "Category limit reached..." | QUOTA_EXCEEDED | Contact admin for higher quota |
+| 409 | "Category \"X\" already exists" | DUPLICATE | Use different name |
+
+---
+
+#### `DELETE /api/superuser/categories`
+
+Delete a category created by this super user.
+
+**Authentication**: Required
+**Role**: Superuser only
+
+**Query Parameters**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `categoryId` | number | Yes | Category ID to delete |
+
+**Constraints**:
+- Can only delete categories you created
+- Deletes all documents, subscriptions, and ChromaDB data for the category
+
+**Example Request**:
+
+```bash
+curl -X DELETE "https://policybot.abhirup.app/api/superuser/categories?categoryId=5" \
+  -H "Cookie: next-auth.session-token=abc123..."
+```
+
+**Response** `200 OK`:
+
+```typescript
+{
+  success: true;
+  deleted: {
+    categoryId: number;
+    categoryName: string;
+    documentsDeleted: number;
+    deleteErrors?: string[];  // Any failed document deletions
+  };
+}
+```
+
+**Error Responses**:
+
+| Status | Error | Code | Solution |
+|--------|-------|------|----------|
+| 400 | "Category ID is required" | VALIDATION_ERROR | Include categoryId |
+| 403 | "You can only delete categories you created" | FORBIDDEN | Must be category creator |
+| 404 | "Category not found" | NOT_FOUND | Verify category ID |
+
+---
+
+### 24. Admin - Tool Routing
 
 Manage keyword and regex-based routing rules that force specific tools to be called when patterns match user messages.
 

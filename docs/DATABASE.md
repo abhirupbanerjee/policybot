@@ -597,7 +597,7 @@ Document categories, each mapping to a ChromaDB collection.
 
 ### super_user_categories
 
-Maps super users to categories they can manage.
+Maps super users to categories they can manage (full control: upload documents, manage users).
 
 | Column | Type | Description |
 |--------|------|-------------|
@@ -608,7 +608,13 @@ Maps super users to categories they can manage.
 
 ### user_subscriptions
 
-Maps regular users to categories they can query.
+Maps users to categories they can query (read-only access for chat/queries).
+
+**Hybrid Role Support:** Superusers can exist in BOTH `super_user_categories` (for management access) AND `user_subscriptions` (for read-only access to additional categories). This allows a superuser to:
+- **Manage** categories in `super_user_categories` (upload docs, manage subscribers)
+- **Query** additional categories in `user_subscriptions` (chat access only)
+
+The `getCategoriesForSuperUser()` function queries both tables to return all accessible categories.
 
 | Column | Type | Description |
 |--------|------|-------------|

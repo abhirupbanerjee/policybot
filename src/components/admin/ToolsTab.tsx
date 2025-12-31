@@ -33,6 +33,7 @@ import FunctionAPITab from './FunctionAPITab';
 import TaskPlannerTemplates from './TaskPlannerTemplates';
 import ToolRoutingTab from './ToolRoutingTab';
 import ImageGenConfig from './ImageGenConfig';
+import { ToolDependencyPanel } from './ToolDependencyPanel';
 
 // Tool interface matching API response
 interface Tool {
@@ -668,13 +669,15 @@ function GenericToolConfig({
   );
 }
 
-type ToolsSubTab = 'management' | 'routing';
+type ToolsSubTab = 'management' | 'dependencies' | 'routing';
 
 interface ToolsTabProps {
   /** If true, shows read-only view (for superusers in legacy mode) */
   readOnly?: boolean;
   /** If true, shows superuser mode with category selection and per-category config */
   isSuperuser?: boolean;
+  /** Optional controlled sub-tab from sidebar. When provided, hides internal tab UI */
+  activeSubTab?: 'management' | 'dependencies' | 'routing';
 }
 
 /**
@@ -682,9 +685,13 @@ interface ToolsTabProps {
  * @param readOnly - If true, hides all edit controls (for superuser view)
  * @param isSuperuser - If true, shows superuser mode with category-level config
  */
-export default function ToolsTab({ readOnly = false, isSuperuser = false }: ToolsTabProps) {
-  // Sub-tab state (only for admin mode)
-  const [activeSubTab, setActiveSubTab] = useState<ToolsSubTab>('management');
+export default function ToolsTab({ readOnly = false, isSuperuser = false, activeSubTab: controlledSubTab }: ToolsTabProps) {
+  // Sub-tab state (only for admin mode when not controlled from sidebar)
+  const [internalSubTab, setInternalSubTab] = useState<ToolsSubTab>('management');
+
+  // Use controlled sub-tab from sidebar if provided, otherwise use internal state
+  const activeSubTab = controlledSubTab ?? internalSubTab;
+  const isControlled = controlledSubTab !== undefined;
 
   // Admin mode state
   const [tools, setTools] = useState<Tool[]>([]);
@@ -1065,12 +1072,12 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false }: Tool
         </div>
       )}
 
-      {/* Sub-tabs (admin mode only) */}
-      {!readOnly && !isSuperuser && (
+      {/* Sub-tabs (admin mode only, hidden when controlled from sidebar) */}
+      {!readOnly && !isSuperuser && !isControlled && (
         <div className="border-b border-gray-200">
           <nav className="-mb-px flex gap-6">
             <button
-              onClick={() => setActiveSubTab('management')}
+              onClick={() => setInternalSubTab('management')}
               className={`flex items-center gap-2 py-3 px-1 border-b-2 text-sm font-medium transition-colors ${
                 activeSubTab === 'management'
                   ? 'border-blue-500 text-blue-600'
@@ -1081,7 +1088,18 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false }: Tool
               Tools Management
             </button>
             <button
-              onClick={() => setActiveSubTab('routing')}
+              onClick={() => setInternalSubTab('dependencies')}
+              className={`flex items-center gap-2 py-3 px-1 border-b-2 text-sm font-medium transition-colors ${
+                activeSubTab === 'dependencies'
+                  ? 'border-blue-500 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              <AlertCircle size={16} />
+              Dependencies
+            </button>
+            <button
+              onClick={() => setInternalSubTab('routing')}
               className={`flex items-center gap-2 py-3 px-1 border-b-2 text-sm font-medium transition-colors ${
                 activeSubTab === 'routing'
                   ? 'border-blue-500 text-blue-600'
@@ -1093,6 +1111,11 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false }: Tool
             </button>
           </nav>
         </div>
+      )}
+
+      {/* Tool Dependencies Sub-tab */}
+      {!readOnly && !isSuperuser && activeSubTab === 'dependencies' && (
+        <ToolDependencyPanel />
       )}
 
       {/* Tool Routing Sub-tab */}
