@@ -1827,53 +1827,7 @@ docker run --rm -v policy-bot_chroma_data:/data -v $BACKUP_DIR:/backup \
 
 ---
 
-## 12. LLM Model Presets
-
-Model presets are defined in code (`src/lib/db/config.ts`) and allow admins to quickly switch between optimized configurations.
-
-### Available Presets
-
-| Preset ID | Model | Provider | Use Case |
-|-----------|-------|----------|----------|
-| `gpt-4.1` | gpt-4.1 | OpenAI | Complex analysis, 1M context |
-| `gpt-4.1-mini` | gpt-4.1-mini | OpenAI | Most queries (default) |
-| `gpt-4.1-nano` | gpt-4.1-nano | OpenAI | Simple queries, fastest |
-| `gemini-2.0-flash` | gemini-2.0-flash | Google | Fast, cost-effective inference |
-| `gemini-2.5-flash-preview` | gemini-2.5-flash-preview | Google | Advanced multimodal reasoning |
-| `mistral-large-3` | mistral-large-3 | Mistral | Strong reasoning, 256K context |
-| `mistral-small-3.2` | mistral-small-3.2 | Mistral | Routine queries |
-| `ministral-8b` | ministral-8b | Mistral | Lowest cost |
-| `ollama-llama3.2` | ollama-llama3.2 | Ollama | Local, no API cost |
-| `ollama-qwen2.5` | ollama-qwen2.5 | Ollama | Local, excellent reasoning |
-
-### Preset Configuration Structure
-
-```typescript
-export interface ModelPreset {
-  id: string;
-  name: string;
-  description: string;
-  model: string;
-  llmSettings: LlmSettings;
-  ragSettings: RagSettings;
-}
-```
-
-### LiteLLM Model Routing
-
-All models are routed through LiteLLM proxy (`http://litellm:4000/v1`):
-
-| App Model Name | LiteLLM Route | Actual Model |
-|----------------|---------------|--------------|
-| `gpt-4.1-mini` | `openai/gpt-4.1-mini` | OpenAI GPT-4.1 Mini |
-| `gemini-2.0-flash` | `gemini/gemini-2.0-flash` | Google Gemini 2.0 Flash |
-| `gemini-2.5-flash-preview` | `gemini/gemini-2.5-flash-preview-05-20` | Google Gemini 2.5 Flash Preview |
-| `mistral-large-3` | `mistral/mistral-large-latest` | Mistral Large |
-| `ollama-llama3.2` | `ollama/llama3.2` | Local Llama 3.2 |
-
----
-
-## 13. Migration from JSON Files
+## 12. Migration from JSON Files
 
 If migrating from the previous JSON-based storage:
 

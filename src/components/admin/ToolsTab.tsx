@@ -24,6 +24,7 @@ import {
   Route,
   Wrench,
   ImageIcon,
+  Languages,
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Spinner from '@/components/ui/Spinner';
@@ -33,6 +34,7 @@ import FunctionAPITab from './FunctionAPITab';
 import TaskPlannerTemplates from './TaskPlannerTemplates';
 import ToolRoutingTab from './ToolRoutingTab';
 import ImageGenConfig from './ImageGenConfig';
+import TranslationConfig from './TranslationConfig';
 import { ToolDependencyPanel } from './ToolDependencyPanel';
 
 // Tool interface matching API response
@@ -126,6 +128,8 @@ function getToolIcon(toolName: string) {
       return ListTodo;
     case 'image_gen':
       return ImageIcon;
+    case 'translation':
+      return Languages;
     default:
       return Settings;
   }
@@ -1030,6 +1034,14 @@ export default function ToolsTab({ readOnly = false, isSuperuser = false, active
       case 'image_gen':
         return (
           <ImageGenConfig
+            config={editedConfig}
+            onChange={setEditedConfig}
+            disabled={saving}
+          />
+        );
+      case 'translation':
+        return (
+          <TranslationConfig
             config={editedConfig}
             onChange={setEditedConfig}
             disabled={saving}

@@ -1,8 +1,6 @@
 # Policy Bot - Solution Architecture
 
-## Executive Summary
-
-Policy Bot is a RAG-based (Retrieval-Augmented Generation) chatbot designed to help government staff query policy documents and check document compliance. It combines local vector storage for document retrieval with multi-provider LLM support via LiteLLM proxy for intelligent responses, organized by a category-based document system with role-based access control.
+Comprehensive architecture documentation for Policy Bot - an enterprise RAG platform for policy document management.
 
 ---
 
@@ -51,18 +49,18 @@ Policy Bot is a RAG-based (Retrieval-Augmented Generation) chatbot designed to h
 │                       LITELLM PROXY                                     │
 │           (Multi-Provider LLM Gateway - OpenAI Compatible)              │
 │  ┌──────────────────────────────────────────────────────────────────┐   │
-│  │  Model Routing: openai/*, mistral/*, ollama/*                    │   │
+│  │  Model Routing: openai/*, mistral/*, gemini/*, ollama/*          │   │
 │  └──────────────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────────────┘
            │
-           ├────────────────────┬────────────────────┐
-           ▼                    ▼                    ▼
-┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
-│   OPENAI API    │  │   MISTRAL AI    │  │  OLLAMA (Local) │
-│  gpt-4.1-mini   │  │ mistral-large-3 │  │   llama3.2      │
-│  gpt-4.1        │  │ mistral-small   │  │   qwen2.5       │
-│  gpt-4.1-nano   │  │ ministral-8b    │  │                 │
-└─────────────────┘  └─────────────────┘  └─────────────────┘
+           ├────────────────────┬────────────────────┬────────────────────┐
+           ▼                    ▼                    ▼                    ▼
+┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+│   OPENAI API    │  │   MISTRAL AI    │  │  GOOGLE GEMINI  │  │  OLLAMA (Local) │
+│  gpt-4.1-mini   │  │ mistral-large-3 │  │ gemini-2.0-flash│  │   llama3.2      │
+│  gpt-4.1        │  │ mistral-small   │  │ gemini-2.5-flash│  │   qwen2.5       │
+│  gpt-4.1-nano   │  │ ministral-8b    │  │                 │  │                 │
+└─────────────────┘  └─────────────────┘  └─────────────────┘  └─────────────────┘
            │
            ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -89,6 +87,7 @@ Policy Bot is a RAG-based (Retrieval-Augmented Generation) chatbot designed to h
 | Database | SQLite (better-sqlite3) | Metadata storage |
 | LLM Gateway | LiteLLM Proxy | Multi-provider LLM abstraction (OpenAI-compatible API) |
 | LLM - OpenAI | GPT-4.1, GPT-4.1-mini, GPT-4.1-nano | Chat completions with function calling |
+| LLM - Gemini | gemini-2.0-flash, gemini-2.5-flash-preview | Fast, cost-effective inference |
 | LLM - Mistral | mistral-large-3, mistral-small-3.2, ministral-8b | Alternative LLM provider |
 | LLM - Local | Ollama (llama3.2, qwen2.5) | Self-hosted models, no API cost |
 | Embeddings | OpenAI text-embedding-3-large | Vector embeddings (3072d) |
@@ -688,253 +687,3 @@ Recommended additions for production:
 - ChromaDB query latency metrics
 - Error rate dashboards
 - SQLite query performance monitoring
-
----
-
-## LiteLLM Multi-Provider Architecture
-
-Policy Bot uses LiteLLM as a unified gateway to multiple LLM providers, enabling seamless switching between models without code changes.
-
-### Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     NEXT.JS APPLICATION                         │
-│                                                                 │
-│  OPENAI_BASE_URL=http://litellm:4000/v1                        │
-│  (Uses standard OpenAI SDK)                                     │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼
-┌─────────────────────────────────────────────────────────────────┐
-│                      LITELLM PROXY                              │
-│                   (Port 4000, Docker)                           │
-│  ┌───────────────────────────────────────────────────────────┐  │
-│  │  Model Routing via litellm_config.yaml                    │  │
-│  │  - gpt-4.1       → openai/gpt-4.1                        │  │
-│  │  - gpt-4.1-mini  → openai/gpt-4.1-mini                   │  │
-│  │  - gpt-4.1-nano  → openai/gpt-4.1-nano                   │  │
-│  │  - mistral-large-3    → mistral/mistral-large-latest     │  │
-│  │  - mistral-small-3.2  → mistral/mistral-small-latest     │  │
-│  │  - ministral-8b       → mistral/ministral-8b-latest      │  │
-│  │  - ollama-llama3.2    → ollama/llama3.2                  │  │
-│  │  - ollama-qwen2.5     → ollama/qwen2.5                   │  │
-│  └───────────────────────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────────────────────┘
-         │                    │                    │
-         ▼                    ▼                    ▼
-┌─────────────┐      ┌─────────────┐      ┌─────────────┐
-│   OpenAI    │      │  Mistral AI │      │   Ollama    │
-│  api.openai │      │ api.mistral │      │  localhost  │
-│    .com     │      │    .ai      │      │   :11434    │
-└─────────────┘      └─────────────┘      └─────────────┘
-```
-
-### Benefits
-
-1. **Unified API**: Single OpenAI-compatible endpoint for all providers
-2. **Hot-Swappable Models**: Change models via admin UI without redeployment
-3. **Cost Optimization**: Use cheaper models for simple queries
-4. **Fallback Support**: Can configure model fallbacks in LiteLLM
-5. **Local Models**: Run Ollama models for zero API cost during development
-
-### Model Presets
-
-Admins can select from pre-configured model presets in the Settings page:
-
-| Preset | Model | Use Case |
-|--------|-------|----------|
-| GPT-4.1 (High Performance) | gpt-4.1 | Complex policy analysis, 1M context |
-| GPT-4.1 Mini (Balanced) | gpt-4.1-mini | Most policy queries, good accuracy |
-| GPT-4.1 Nano (Cost-Effective) | gpt-4.1-nano | Simple queries, fastest response |
-| Mistral Large 3 | mistral-large-3 | Strong reasoning, 256K context |
-| Mistral Small 3.2 | mistral-small-3.2 | Routine queries, cost-effective |
-| Ministral 8B | ministral-8b | Simplest queries, lowest cost |
-| Ollama Llama 3.2 (Local) | ollama-llama3.2 | Development, no API cost |
-| Ollama Qwen 2.5 (Local) | ollama-qwen2.5 | Development, excellent reasoning |
-
-### Configuration
-
-LiteLLM configuration is stored in `litellm-proxy/litellm_config.yaml`:
-
-```yaml
-model_list:
-  - model_name: gpt-4.1-mini
-    litellm_params:
-      model: openai/gpt-4.1-mini
-      api_key: os.environ/OPENAI_API_KEY
-
-  - model_name: mistral-large-3
-    litellm_params:
-      model: mistral/mistral-large-latest
-      api_key: os.environ/MISTRAL_API_KEY
-
-  - model_name: ollama-llama3.2
-    litellm_params:
-      model: ollama/llama3.2
-      api_base: http://host.docker.internal:11434
-```
-
-### Environment Variables
-
-| Variable | Description |
-|----------|-------------|
-| `OPENAI_BASE_URL` | Set to `http://litellm:4000/v1` in Docker |
-| `OPENAI_API_KEY` | Required for OpenAI models |
-| `MISTRAL_API_KEY` | Required for Mistral models |
-| `COHERE_API_KEY` | Required for Cohere reranking (optional) |
-
----
-
-## Docker Deployment Architecture
-
-### Container Services
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                    DOCKER COMPOSE STACK                         │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │  traefik (policy-bot-traefik)                           │   │
-│  │  - Reverse proxy, TLS termination                       │   │
-│  │  - Let's Encrypt SSL certificates                       │   │
-│  │  - Ports: 80, 443                                       │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│                              │                                  │
-│                              ▼                                  │
-│  ┌─────────────────────────────────────────────────────────┐   │
-│  │  app (policy-bot-app)                                   │   │
-│  │  - Next.js 15 application                               │   │
-│  │  - Port: 3000 (internal)                                │   │
-│  │  - Volume: app_data:/app/data                           │   │
-│  └─────────────────────────────────────────────────────────┘   │
-│         │              │              │                         │
-│         ▼              ▼              ▼                         │
-│  ┌───────────┐  ┌───────────┐  ┌───────────┐  ┌───────────┐   │
-│  │  chroma   │  │   redis   │  │  litellm  │  │ (volumes) │   │
-│  │  :8000    │  │   :6379   │  │   :4000   │  │           │   │
-│  │ chromadb/ │  │  redis:7  │  │ berriai/  │  │ app_data  │   │
-│  │  chroma   │  │  alpine   │  │ litellm   │  │ chroma_   │   │
-│  └───────────┘  └───────────┘  └───────────┘  │ redis_    │   │
-│                                               │ letsencrypt│   │
-│                                               └───────────┘   │
-└─────────────────────────────────────────────────────────────────┘
-```
-
-### Volume Persistence
-
-| Volume | Mount Point | Contents |
-|--------|-------------|----------|
-| `app_data` | `/app/data` | SQLite database, uploaded documents |
-| `chroma_data` | `/chroma/chroma` | Vector embeddings |
-| `redis_data` | `/data` | Redis AOF persistence |
-| `letsencrypt` | `/letsencrypt` | SSL certificates |
-
-### Health Checks
-
-- **Redis**: `redis-cli ping` every 30s
-- **LiteLLM**: HTTP health endpoint every 30s with 30s start period
-- **App**: Depends on Redis (healthy) and LiteLLM (healthy)
-
----
-
-## Admin Dashboard
-
-The admin dashboard provides a comprehensive interface for system management with six main tabs:
-
-### Dashboard Tab (Statistics)
-
-Real-time system overview:
-- **Database Statistics**: Users, categories, documents, threads, messages counts
-- **ChromaDB Status**: Collections count, total vectors, connection status
-- **Storage Usage**: Total bytes, documents/threads breakdown, percentage used
-- **Recent Activity**: Document uploads, user additions, setting changes
-
-### Documents Tab
-
-- Upload files (PDF, DOCX, XLSX, PPTX, images) or text content
-- Assign documents to categories or mark as global
-- View processing status (processing/ready/error)
-- Reindex individual documents or all documents
-- Delete documents and their embeddings
-
-### Categories Tab
-
-- Create, edit, delete categories
-- View document counts per category
-- Manage category slugs for URL routing
-
-### Users Tab
-
-- Add users with role assignment (admin/superuser/user)
-- Manage category subscriptions per user
-- Assign categories to super users
-- View subscription status (active/inactive)
-
-### Settings Tab
-
-Seven configuration sections accessible via sidebar:
-
-| Section | Configuration |
-|---------|--------------|
-| **System Prompt** | RAG instruction customization |
-| **LLM Settings** | Model selection, temperature, max tokens |
-| **RAG Settings** | Chunk size, overlap, similarity threshold, caching |
-| **Acronyms** | Query expansion mappings (e.g., EA → enterprise architecture) |
-| **Web Search** | Tavily API configuration and search parameters |
-| **Branding** | Bot name and icon for sidebar |
-| **Reranker** | Cohere/local provider, score thresholds |
-
-### Tools Tab
-
-Tool management with sub-tabs:
-
-| Sub-Tab | Features |
-|---------|----------|
-| **Tools Management** | Enable/disable tools, configure tool settings, edit description overrides |
-| **Tool Routing** | Create/edit routing rules, test patterns, configure force modes |
-
-**Tool Routing Features:**
-- Create keyword or regex patterns to match user messages
-- Force specific tools when patterns match (e.g., "chart" → `chart_gen`)
-- Set priority for rule evaluation order
-- Scope rules to specific categories or apply globally
-- Test routing rules against sample messages
-
----
-
-## Configuration Defaults
-
-Current default values from `config/defaults.json`:
-
-### RAG Settings
-| Setting | Default | Description |
-|---------|---------|-------------|
-| topKChunks | 15 | Number of chunks to retrieve |
-| maxContextChunks | 10 | Max chunks in LLM context |
-| similarityThreshold | 0.5 | Minimum similarity score |
-| chunkSize | 1200 | Characters per chunk |
-| chunkOverlap | 200 | Overlap between chunks |
-| cacheTTLSeconds | 3600 | Query cache TTL (1 hour) |
-
-### LLM Settings
-| Setting | Default | Description |
-|---------|---------|-------------|
-| model | gpt-4.1-mini | Default LLM model |
-| temperature | 0.2 | Response randomness |
-| maxTokens | 2000 | Max response tokens |
-
-### Reranker Settings
-| Setting | Default | Description |
-|---------|---------|-------------|
-| enabled | false | Enable chunk reranking |
-| provider | cohere | Reranker provider (cohere/local) |
-| topKForReranking | 50 | Chunks to rerank |
-| minRerankerScore | 0.3 | Minimum rerank score |
-
-### Embedding Settings
-| Setting | Default | Description |
-|---------|---------|-------------|
-| model | text-embedding-3-large | Embedding model |
-| dimensions | 3072 | Vector dimensions |
