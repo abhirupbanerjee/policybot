@@ -11,6 +11,7 @@ import SkillsTab from '@/components/admin/SkillsTab';
 import ToolsTab from '@/components/admin/ToolsTab';
 import StarterPromptsEditor from '@/components/admin/StarterPromptsEditor';
 import SuperuserSidebarMenu from '@/components/superuser/SuperuserSidebarMenu';
+import { RagTuningDashboard } from '@/components/admin/RagTuningDashboard';
 
 interface StarterPrompt {
   label: string;
@@ -161,11 +162,15 @@ export default function SuperUserPage() {
   const [docSortOption, setDocSortOption] = useState<'newest' | 'oldest' | 'largest' | 'smallest' | 'a-z' | 'z-a'>('newest');
 
   // Active tab state
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'categories' | 'users' | 'documents' | 'prompts' | 'tools' | 'backup'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'categories' | 'users' | 'documents' | 'prompts' | 'tools' | 'settings'>('dashboard');
 
   // Prompts sidebar section state
   type PromptsSection = 'global-prompt' | 'category-prompts' | 'skills';
   const [promptsSection, setPromptsSection] = useState<PromptsSection>('category-prompts');
+
+  // Settings sidebar section state
+  type SettingsSection = 'rag-tuning' | 'backup';
+  const [settingsSection, setSettingsSection] = useState<SettingsSection>('rag-tuning');
 
   // Stats state
   const [stats, setStats] = useState<SuperUserStats | null>(null);
@@ -917,8 +922,10 @@ export default function SuperUserPage() {
         <SuperuserSidebarMenu
           activeTab={activeTab}
           promptsSection={promptsSection}
+          settingsSection={settingsSection}
           onTabChange={setActiveTab}
           onPromptsChange={setPromptsSection}
+          onSettingsChange={setSettingsSection}
         />
 
         {/* Main Content */}
@@ -1660,50 +1667,57 @@ export default function SuperUserPage() {
           <ToolsTab isSuperuser />
         )}
 
-        {/* Backup Section */}
-        {activeTab === 'backup' && (
-          <div className="bg-white rounded-lg border shadow-sm">
-            <div className="px-6 py-4 border-b">
-              <h2 className="font-semibold text-gray-900">Backup Threads</h2>
-              <p className="text-sm text-gray-500">
-                Export conversation threads from your assigned categories
-              </p>
-            </div>
-            <div className="p-6">
-              <div className="text-center py-8">
-                <p className="text-gray-500 mb-4">
-                  Download threads and messages from categories you manage.
-                </p>
-                <Button
-                  onClick={async () => {
-                    try {
-                      const response = await fetch('/api/superuser/backup', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ includeThreads: true }),
-                      });
-                      if (!response.ok) throw new Error('Backup failed');
-                      const blob = await response.blob();
-                      const url = window.URL.createObjectURL(blob);
-                      const a = document.createElement('a');
-                      a.href = url;
-                      a.download = `threads-backup-${new Date().toISOString().split('T')[0]}.json`;
-                      document.body.appendChild(a);
-                      a.click();
-                      window.URL.revokeObjectURL(url);
-                      a.remove();
-                    } catch (err) {
-                      console.error('Backup error:', err);
-                      alert('Failed to create backup. Please try again.');
-                    }
-                  }}
-                >
-                  <FileText size={16} className="mr-2" />
-                  Export Threads
-                </Button>
+        {/* Settings Section */}
+        {activeTab === 'settings' && (
+          <>
+            {settingsSection === 'rag-tuning' && (
+              <RagTuningDashboard />
+            )}
+            {settingsSection === 'backup' && (
+              <div className="bg-white rounded-lg border shadow-sm">
+                <div className="px-6 py-4 border-b">
+                  <h2 className="font-semibold text-gray-900">Backup Threads</h2>
+                  <p className="text-sm text-gray-500">
+                    Export conversation threads from your assigned categories
+                  </p>
+                </div>
+                <div className="p-6">
+                  <div className="text-center py-8">
+                    <p className="text-gray-500 mb-4">
+                      Download threads and messages from categories you manage.
+                    </p>
+                    <Button
+                      onClick={async () => {
+                        try {
+                          const response = await fetch('/api/superuser/backup', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ includeThreads: true }),
+                          });
+                          if (!response.ok) throw new Error('Backup failed');
+                          const blob = await response.blob();
+                          const url = window.URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = `threads-backup-${new Date().toISOString().split('T')[0]}.json`;
+                          document.body.appendChild(a);
+                          a.click();
+                          window.URL.revokeObjectURL(url);
+                          a.remove();
+                        } catch (err) {
+                          console.error('Backup error:', err);
+                          alert('Failed to create backup. Please try again.');
+                        }
+                      }}
+                    >
+                      <FileText size={16} className="mr-2" />
+                      Export Threads
+                    </Button>
+                  </div>
+                </div>
               </div>
-            </div>
-          </div>
+            )}
+          </>
         )}
         </main>
       </div>

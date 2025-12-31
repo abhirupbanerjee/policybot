@@ -10,21 +10,24 @@ import {
   FileText,
   MessageSquare,
   Globe,
-  Archive,
+  Settings,
   ChevronDown,
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
 } from 'lucide-react';
 
-type TabType = 'dashboard' | 'categories' | 'users' | 'documents' | 'prompts' | 'tools' | 'backup';
+type TabType = 'dashboard' | 'categories' | 'users' | 'documents' | 'prompts' | 'tools' | 'settings';
 type PromptsSection = 'global-prompt' | 'category-prompts' | 'skills';
+type SettingsSection = 'rag-tuning' | 'backup';
 
 interface SuperuserSidebarMenuProps {
   activeTab: TabType;
   promptsSection: PromptsSection;
+  settingsSection: SettingsSection;
   onTabChange: (tab: TabType) => void;
   onPromptsChange: (section: PromptsSection) => void;
+  onSettingsChange: (section: SettingsSection) => void;
 }
 
 const MAIN_TABS: { id: TabType; label: string; icon: typeof LayoutDashboard }[] = [
@@ -34,7 +37,7 @@ const MAIN_TABS: { id: TabType; label: string; icon: typeof LayoutDashboard }[] 
   { id: 'documents', label: 'Documents', icon: FileText },
   { id: 'prompts', label: 'Prompts', icon: MessageSquare },
   { id: 'tools', label: 'Tools', icon: Globe },
-  { id: 'backup', label: 'Backup', icon: Archive },
+  { id: 'settings', label: 'Settings', icon: Settings },
 ];
 
 const PROMPTS_SUBMENU: { id: PromptsSection; label: string }[] = [
@@ -43,26 +46,33 @@ const PROMPTS_SUBMENU: { id: PromptsSection; label: string }[] = [
   { id: 'skills', label: 'Skills' },
 ];
 
+const SETTINGS_SUBMENU: { id: SettingsSection; label: string }[] = [
+  { id: 'rag-tuning', label: 'RAG Tuning' },
+  { id: 'backup', label: 'Backup' },
+];
+
 export default function SuperuserSidebarMenu({
   activeTab,
   promptsSection,
+  settingsSection,
   onTabChange,
   onPromptsChange,
+  onSettingsChange,
 }: SuperuserSidebarMenuProps) {
   const [isMobileOpen, setIsMobileOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(true);
-  const [expandedMenu, setExpandedMenu] = useState<'prompts' | null>(
-    activeTab === 'prompts' ? 'prompts' : null
+  const [expandedMenu, setExpandedMenu] = useState<'prompts' | 'settings' | null>(
+    activeTab === 'prompts' ? 'prompts' : activeTab === 'settings' ? 'settings' : null
   );
 
   const handleTabClick = (tabId: TabType) => {
-    if (tabId === 'prompts') {
+    if (tabId === 'prompts' || tabId === 'settings') {
       // If collapsed, expand sidebar first and show submenu
       if (isCollapsed) {
         setIsCollapsed(false);
-        setExpandedMenu('prompts');
+        setExpandedMenu(tabId);
       } else {
-        setExpandedMenu(expandedMenu === 'prompts' ? null : 'prompts');
+        setExpandedMenu(expandedMenu === tabId ? null : tabId);
       }
     } else {
       onTabChange(tabId);
@@ -76,10 +86,20 @@ export default function SuperuserSidebarMenu({
     setIsMobileOpen(false);
   };
 
+  const handleSettingsSubClick = (section: SettingsSection) => {
+    onTabChange('settings');
+    onSettingsChange(section);
+    setIsMobileOpen(false);
+  };
+
   const getCurrentLabel = () => {
     if (activeTab === 'prompts') {
       const sub = PROMPTS_SUBMENU.find(s => s.id === promptsSection);
       return `Prompts > ${sub?.label || ''}`;
+    }
+    if (activeTab === 'settings') {
+      const sub = SETTINGS_SUBMENU.find(s => s.id === settingsSection);
+      return `Settings > ${sub?.label || ''}`;
     }
     return MAIN_TABS.find(t => t.id === activeTab)?.label || '';
   };
@@ -105,7 +125,7 @@ export default function SuperuserSidebarMenu({
         {MAIN_TABS.map(tab => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
-          const hasSubmenu = tab.id === 'prompts';
+          const hasSubmenu = tab.id === 'prompts' || tab.id === 'settings';
           const isExpanded = expandedMenu === tab.id;
 
           return (
@@ -147,6 +167,25 @@ export default function SuperuserSidebarMenu({
                   ))}
                 </div>
               )}
+
+              {/* Settings Submenu */}
+              {tab.id === 'settings' && isExpanded && (
+                <div className="bg-gray-50/80">
+                  {SETTINGS_SUBMENU.map(sub => (
+                    <button
+                      key={sub.id}
+                      onClick={() => handleSettingsSubClick(sub.id)}
+                      className={`w-full pl-11 pr-4 py-2 text-left text-sm transition-colors ${
+                        activeTab === 'settings' && settingsSection === sub.id
+                          ? 'bg-blue-100 text-blue-700 font-medium'
+                          : 'text-gray-600 hover:bg-gray-100'
+                      }`}
+                    >
+                      {sub.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           );
         })}
@@ -172,7 +211,7 @@ export default function SuperuserSidebarMenu({
         {MAIN_TABS.map(tab => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.id;
-          const hasSubmenu = tab.id === 'prompts';
+          const hasSubmenu = tab.id === 'prompts' || tab.id === 'settings';
           const isExpanded = expandedMenu === tab.id && !isCollapsed;
 
           return (
@@ -206,6 +245,25 @@ export default function SuperuserSidebarMenu({
                       onClick={() => handlePromptsSubClick(sub.id)}
                       className={`w-full pl-11 pr-4 py-2 text-left text-sm transition-colors ${
                         activeTab === 'prompts' && promptsSection === sub.id
+                          ? 'bg-blue-100 text-blue-700 font-medium'
+                          : 'text-gray-600 hover:bg-gray-100'
+                      }`}
+                    >
+                      {sub.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Settings Submenu - only show when expanded and not collapsed */}
+              {tab.id === 'settings' && isExpanded && (
+                <div className="bg-gray-50/80">
+                  {SETTINGS_SUBMENU.map(sub => (
+                    <button
+                      key={sub.id}
+                      onClick={() => handleSettingsSubClick(sub.id)}
+                      className={`w-full pl-11 pr-4 py-2 text-left text-sm transition-colors ${
+                        activeTab === 'settings' && settingsSection === sub.id
                           ? 'bg-blue-100 text-blue-700 font-medium'
                           : 'text-gray-600 hover:bg-gray-100'
                       }`}
