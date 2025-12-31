@@ -47,6 +47,7 @@ export interface UserWithAssignments extends DbUser {
     categoryId: number;
     categoryName: string;
     categorySlug: string;
+    createdBy: string;
   }[];
 }
 
@@ -222,11 +223,13 @@ export function getSuperUserWithAssignments(userId: number): UserWithAssignments
     categoryId: number;
     categoryName: string;
     categorySlug: string;
+    createdBy: string;
   }>(`
     SELECT
       c.id as categoryId,
       c.name as categoryName,
-      c.slug as categorySlug
+      c.slug as categorySlug,
+      c.created_by as createdBy
     FROM super_user_categories suc
     JOIN categories c ON suc.category_id = c.id
     WHERE suc.user_id = ?

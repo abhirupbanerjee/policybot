@@ -129,7 +129,7 @@ interface ModelPreset {
 }
 
 type TabType = 'dashboard' | 'documents' | 'categories' | 'users' | 'settings' | 'stats' | 'prompts' | 'tools';
-type SettingsSection = 'rag' | 'llm' | 'reranker' | 'memory' | 'summarization' | 'limits' | 'backup' | 'branding' | 'cache';
+type SettingsSection = 'rag' | 'llm' | 'reranker' | 'memory' | 'summarization' | 'limits' | 'backup' | 'branding' | 'cache' | 'superuser';
 type PromptsSection = 'system-prompt' | 'category-prompts' | 'acronyms' | 'skills';
 
 interface BrandingSettings {
@@ -232,6 +232,12 @@ interface OptimizationResult {
 interface EmbeddingSettings {
   model: string;
   dimensions: number;
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
+interface SuperuserSettingsState {
+  maxCategoriesPerSuperuser: number;
   updatedAt?: string;
   updatedBy?: string;
 }
@@ -411,6 +417,8 @@ export default function AdminPage() {
   const [editedModelTokens, setEditedModelTokens] = useState<Record<string, number | 'default'>>({});
   const [savingModelTokens, setSavingModelTokens] = useState(false);
   const [embeddingSettings, setEmbeddingSettings] = useState<EmbeddingSettings | null>(null);
+  const [superuserSettings, setSuperuserSettings] = useState<SuperuserSettingsState | null>(null);
+  const [editedSuperuser, setEditedSuperuser] = useState<Omit<SuperuserSettingsState, 'updatedAt' | 'updatedBy'> | null>(null);
   const [transcriptionModel, setTranscriptionModel] = useState<string>('whisper-1');
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
   const [modelPresets, setModelPresets] = useState<ModelPreset[]>([]);
@@ -673,6 +681,20 @@ export default function AdminPage() {
       setSummarizationModified(false);
       setLimitsModified(false);
       setTokenLimitsModified(false);
+
+      // Load superuser settings separately
+      try {
+        const superuserResponse = await fetch('/api/admin/settings/superuser');
+        if (superuserResponse.ok) {
+          const superuserData = await superuserResponse.json();
+          setSuperuserSettings(superuserData);
+          setEditedSuperuser({
+            maxCategoriesPerSuperuser: superuserData.maxCategoriesPerSuperuser,
+          });
+        }
+      } catch (err) {
+        console.error('Failed to load superuser settings:', err);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load settings');
     } finally {
@@ -1113,7 +1135,8 @@ export default function AdminPage() {
       setEditUserSubscriptions(user.subscriptions?.map(s => s.categoryId) || []);
       setEditUserAssignedCategories([]);
     } else if (user.role === 'superuser') {
-      setEditUserSubscriptions([]);
+      // Superusers have both: category assignments (for management) and subscriptions (for read access)
+      setEditUserSubscriptions(user.subscriptions?.map(s => s.categoryId) || []);
       setEditUserAssignedCategories(user.assignedCategories?.map(c => c.categoryId) || []);
     }
   };
@@ -1156,7 +1179,7 @@ export default function AdminPage() {
           }
         }
       } else if (managingUserSubs.role === 'superuser') {
-        // Get current assignments
+        // Handle category assignments (for management access)
         const currentAssignments = managingUserSubs.assignedCategories?.map(c => c.categoryId) || [];
 
         // Add new assignments
@@ -1174,6 +1197,29 @@ export default function AdminPage() {
         for (const catId of currentAssignments) {
           if (!editUserAssignedCategories.includes(catId)) {
             await fetch(`/api/admin/super-users/${userId}/categories?categoryId=${catId}`, {
+              method: 'DELETE',
+            });
+          }
+        }
+
+        // Handle subscriptions (for read access to other categories)
+        const currentSubs = managingUserSubs.subscriptions?.map(s => s.categoryId) || [];
+
+        // Add new subscriptions
+        for (const catId of editUserSubscriptions) {
+          if (!currentSubs.includes(catId)) {
+            await fetch(`/api/admin/users/${userId}/subscriptions`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ categoryId: catId }),
+            });
+          }
+        }
+
+        // Remove old subscriptions
+        for (const catId of currentSubs) {
+          if (!editUserSubscriptions.includes(catId)) {
+            await fetch(`/api/admin/users/${userId}/subscriptions?categoryId=${catId}`, {
               method: 'DELETE',
             });
           }
@@ -3063,19 +3109,43 @@ export default function AdminPage() {
                             {user.role === 'admin' ? (
                               <span className="text-gray-400 text-xs italic">All access</span>
                             ) : user.role === 'superuser' ? (
-                              user.assignedCategories && user.assignedCategories.length > 0 ? (
-                                user.assignedCategories.map(cat => (
-                                  <span
-                                    key={cat.categoryId}
-                                    className="inline-flex items-center gap-1 px-2 py-0.5 bg-orange-100 text-orange-700 text-xs rounded-full"
-                                  >
-                                    <FolderOpen size={10} />
-                                    {cat.categoryName}
-                                  </span>
-                                ))
-                              ) : (
-                                <span className="text-gray-400 text-xs italic">No categories assigned</span>
-                              )
+                              <>
+                                {/* Assigned categories for management */}
+                                {user.assignedCategories && user.assignedCategories.length > 0 ? (
+                                  user.assignedCategories.map(cat => (
+                                    <span
+                                      key={`assigned-${cat.categoryId}`}
+                                      className="inline-flex items-center gap-1 px-2 py-0.5 bg-orange-100 text-orange-700 text-xs rounded-full"
+                                      title="Manages this category"
+                                    >
+                                      <FolderOpen size={10} />
+                                      {cat.categoryName}
+                                    </span>
+                                  ))
+                                ) : null}
+                                {/* Subscriptions for read access */}
+                                {user.subscriptions && user.subscriptions.length > 0 ? (
+                                  user.subscriptions.map(sub => (
+                                    <span
+                                      key={`sub-${sub.categoryId}`}
+                                      className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full ${
+                                        sub.isActive
+                                          ? 'bg-blue-100 text-blue-700'
+                                          : 'bg-gray-100 text-gray-500'
+                                      }`}
+                                      title="Subscribed (read access)"
+                                    >
+                                      <Tag size={10} />
+                                      {sub.categoryName}
+                                    </span>
+                                  ))
+                                ) : null}
+                                {/* Show message if no categories at all */}
+                                {(!user.assignedCategories || user.assignedCategories.length === 0) &&
+                                 (!user.subscriptions || user.subscriptions.length === 0) && (
+                                  <span className="text-gray-400 text-xs italic">No categories</span>
+                                )}
+                              </>
                             ) : (
                               user.subscriptions && user.subscriptions.length > 0 ? (
                                 user.subscriptions.map(sub => (
@@ -4655,6 +4725,94 @@ export default function AdminPage() {
               {settingsSection === 'cache' && (
                 <CacheSettingsTab />
               )}
+
+              {/* Superuser Section */}
+              {settingsSection === 'superuser' && (
+                <div className="bg-white rounded-lg border shadow-sm">
+                  <div className="px-6 py-4 border-b">
+                    <h3 className="font-semibold text-gray-900">Superuser Settings</h3>
+                    <p className="text-sm text-gray-500">Configure limits and permissions for superusers</p>
+                  </div>
+                  <div className="p-6 space-y-6">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Max Categories per Superuser
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={100}
+                        value={editedSuperuser?.maxCategoriesPerSuperuser ?? 5}
+                        onChange={(e) => setEditedSuperuser({
+                          ...editedSuperuser,
+                          maxCategoriesPerSuperuser: parseInt(e.target.value, 10) || 5,
+                        })}
+                        className="w-full max-w-xs px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                      <p className="text-sm text-gray-500 mt-1">
+                        Maximum number of categories each superuser can create (1-100)
+                      </p>
+                    </div>
+
+                    {superuserSettings?.updatedAt && (
+                      <p className="text-sm text-gray-500">
+                        Last updated: {new Date(superuserSettings.updatedAt).toLocaleString()}
+                        {superuserSettings.updatedBy && ` by ${superuserSettings.updatedBy}`}
+                      </p>
+                    )}
+
+                    <div className="flex gap-3 pt-4 border-t">
+                      <Button
+                        onClick={async () => {
+                          if (!editedSuperuser) return;
+                          setSavingSettings(true);
+                          try {
+                            const response = await fetch('/api/admin/settings/superuser', {
+                              method: 'PUT',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify(editedSuperuser),
+                            });
+                            if (!response.ok) {
+                              const data = await response.json();
+                              throw new Error(data.error || 'Failed to save');
+                            }
+                            const data = await response.json();
+                            setSuperuserSettings(data.settings);
+                          } catch (err) {
+                            setError(err instanceof Error ? err.message : 'Failed to save');
+                          } finally {
+                            setSavingSettings(false);
+                          }
+                        }}
+                        loading={savingSettings}
+                        disabled={
+                          !editedSuperuser ||
+                          editedSuperuser.maxCategoriesPerSuperuser === superuserSettings?.maxCategoriesPerSuperuser
+                        }
+                      >
+                        <Save size={16} className="mr-2" />
+                        Save Changes
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        onClick={() => {
+                          if (superuserSettings) {
+                            setEditedSuperuser({
+                              maxCategoriesPerSuperuser: superuserSettings.maxCategoriesPerSuperuser,
+                            });
+                          }
+                        }}
+                        disabled={
+                          !superuserSettings ||
+                          editedSuperuser?.maxCategoriesPerSuperuser === superuserSettings?.maxCategoriesPerSuperuser
+                        }
+                      >
+                        Reset
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              )}
           </>
         )}
 
@@ -5854,7 +6012,7 @@ export default function AdminPage() {
       <Modal
         isOpen={!!managingUserSubs}
         onClose={() => setManagingUserSubs(null)}
-        title={managingUserSubs?.role === 'superuser' ? 'Manage Assigned Categories' : 'Manage Subscriptions'}
+        title={managingUserSubs?.role === 'superuser' ? 'Manage Superuser Access' : 'Manage Subscriptions'}
       >
         <div className="space-y-4">
           <div className="flex items-center gap-2 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg">
@@ -5932,59 +6090,117 @@ export default function AdminPage() {
           )}
 
           {managingUserSubs?.role === 'superuser' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Assigned Categories
-              </label>
-              <div className="border border-gray-200 rounded-lg p-2">
-                <div className="flex flex-wrap gap-2 mb-2">
-                  {editUserAssignedCategories.length === 0 ? (
-                    <span className="text-sm text-gray-500">No categories assigned</span>
-                  ) : (
-                    editUserAssignedCategories.map(catId => {
-                      const cat = categories.find(c => c.id === catId);
-                      return cat ? (
-                        <span
-                          key={catId}
-                          className="inline-flex items-center gap-1 px-2 py-1 bg-orange-100 text-orange-700 text-xs rounded-full"
-                        >
-                          <FolderOpen size={10} />
-                          {cat.name}
-                          <button
-                            type="button"
-                            onClick={() => setEditUserAssignedCategories(ids => ids.filter(id => id !== catId))}
-                            className="hover:bg-orange-200 rounded-full p-0.5"
+            <>
+              {/* Assigned Categories - for management access */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Assigned Categories (Management)
+                </label>
+                <div className="border border-gray-200 rounded-lg p-2">
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {editUserAssignedCategories.length === 0 ? (
+                      <span className="text-sm text-gray-500">No categories assigned</span>
+                    ) : (
+                      editUserAssignedCategories.map(catId => {
+                        const cat = categories.find(c => c.id === catId);
+                        return cat ? (
+                          <span
+                            key={catId}
+                            className="inline-flex items-center gap-1 px-2 py-1 bg-orange-100 text-orange-700 text-xs rounded-full"
                           >
-                            ×
-                          </button>
-                        </span>
-                      ) : null;
-                    })
-                  )}
-                </div>
-                <select
-                  value=""
-                  onChange={(e) => {
-                    const catId = parseInt(e.target.value, 10);
-                    if (catId && !editUserAssignedCategories.includes(catId)) {
-                      setEditUserAssignedCategories([...editUserAssignedCategories, catId]);
+                            <FolderOpen size={10} />
+                            {cat.name}
+                            <button
+                              type="button"
+                              onClick={() => setEditUserAssignedCategories(ids => ids.filter(id => id !== catId))}
+                              className="hover:bg-orange-200 rounded-full p-0.5"
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ) : null;
+                      })
+                    )}
+                  </div>
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      const catId = parseInt(e.target.value, 10);
+                      if (catId && !editUserAssignedCategories.includes(catId)) {
+                        setEditUserAssignedCategories([...editUserAssignedCategories, catId]);
+                      }
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  >
+                    <option value="">Assign category...</option>
+                    {categories
+                      .filter(cat => !editUserAssignedCategories.includes(cat.id))
+                      .map(cat => (
+                        <option key={cat.id} value={cat.id}>{cat.name}</option>
+                      ))
                     }
-                  }}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-                >
-                  <option value="">Assign category...</option>
-                  {categories
-                    .filter(cat => !editUserAssignedCategories.includes(cat.id))
-                    .map(cat => (
-                      <option key={cat.id} value={cat.id}>{cat.name}</option>
-                    ))
-                  }
-                </select>
+                  </select>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Superuser can manage documents and users for these categories.
+                </p>
               </div>
-              <p className="text-xs text-gray-500 mt-1">
-                Super user can manage users subscribed to these categories.
-              </p>
-            </div>
+
+              {/* Subscriptions - for read access to other categories */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Subscriptions (Read Access)
+                </label>
+                <div className="border border-gray-200 rounded-lg p-2">
+                  <div className="flex flex-wrap gap-2 mb-2">
+                    {editUserSubscriptions.length === 0 ? (
+                      <span className="text-sm text-gray-500">No subscriptions</span>
+                    ) : (
+                      editUserSubscriptions.map(catId => {
+                        const cat = categories.find(c => c.id === catId);
+                        return cat ? (
+                          <span
+                            key={catId}
+                            className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 text-xs rounded-full"
+                          >
+                            <Tag size={10} />
+                            {cat.name}
+                            <button
+                              type="button"
+                              onClick={() => setEditUserSubscriptions(ids => ids.filter(id => id !== catId))}
+                              className="hover:bg-blue-200 rounded-full p-0.5"
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ) : null;
+                      })
+                    )}
+                  </div>
+                  <select
+                    value=""
+                    onChange={(e) => {
+                      const catId = parseInt(e.target.value, 10);
+                      if (catId && !editUserSubscriptions.includes(catId)) {
+                        setEditUserSubscriptions([...editUserSubscriptions, catId]);
+                      }
+                    }}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+                  >
+                    <option value="">Add subscription...</option>
+                    {categories
+                      .filter(cat => !editUserSubscriptions.includes(cat.id))
+                      .map(cat => (
+                        <option key={cat.id} value={cat.id}>{cat.name}</option>
+                      ))
+                    }
+                  </select>
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  Superuser can chat with and access documents in these additional categories.
+                </p>
+              </div>
+            </>
           )}
         </div>
 

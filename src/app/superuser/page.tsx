@@ -20,6 +20,7 @@ interface StarterPrompt {
 interface AssignedCategory {
   categoryId: number;
   categoryName: string;
+  createdBy?: string;
 }
 
 interface UserSubscription {
@@ -108,6 +109,19 @@ export default function SuperUserPage() {
 
   // Remove subscription state
   const [removingSub, setRemovingSub] = useState<{ email: string; categoryId: number } | null>(null);
+
+  // New user name field for subscription modal
+  const [newSubName, setNewSubName] = useState('');
+
+  // Category management state
+  const [showCreateCategory, setShowCreateCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [newCategoryDescription, setNewCategoryDescription] = useState('');
+  const [creatingCategory, setCreatingCategory] = useState(false);
+  const [categoryQuota, setCategoryQuota] = useState<{ used: number; limit: number } | null>(null);
+  const [deletingCategoryId, setDeletingCategoryId] = useState<number | null>(null);
+  const [showDeleteCategory, setShowDeleteCategory] = useState<{ id: number; name: string; documentCount: number } | null>(null);
+  const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
 
   // Documents state
   const [documents, setDocuments] = useState<ManagedDocument[]>([]);
@@ -204,9 +218,10 @@ export default function SuperUserPage() {
       setLoading(true);
 
       // Load users, documents, and stats in parallel
-      const [usersResponse, docsResponse] = await Promise.all([
+      const [usersResponse, docsResponse, sessionResponse] = await Promise.all([
         fetch('/api/superuser/users'),
         fetch('/api/superuser/documents'),
+        fetch('/api/auth/session'),
       ]);
 
       if (usersResponse.status === 403 || docsResponse.status === 403) {
@@ -225,6 +240,12 @@ export default function SuperUserPage() {
       if (docsResponse.ok) {
         const docsData = await docsResponse.json();
         setDocuments(docsData.documents || []);
+      }
+
+      // Get current user email for category ownership check
+      if (sessionResponse.ok) {
+        const sessionData = await sessionResponse.json();
+        setCurrentUserEmail(sessionData.user?.email || null);
       }
 
       // Load stats separately
@@ -278,6 +299,7 @@ export default function SuperUserPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           userEmail: newSubEmail.trim(),
+          userName: newSubName.trim() || undefined,
           categoryId: newSubCategory,
         }),
       });
@@ -290,11 +312,78 @@ export default function SuperUserPage() {
       await loadData();
       setShowAddSub(false);
       setNewSubEmail('');
+      setNewSubName('');
       setNewSubCategory(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add subscription');
     } finally {
       setAddingSub(false);
+    }
+  };
+
+  // Category management handlers
+  const handleCreateCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newCategoryName.trim()) return;
+
+    setCreatingCategory(true);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/superuser/categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newCategoryName.trim(),
+          description: newCategoryDescription.trim() || undefined,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to create category');
+      }
+
+      // Update quota from response
+      if (data.quota) {
+        setCategoryQuota(data.quota);
+      }
+
+      await loadData();
+      setShowCreateCategory(false);
+      setNewCategoryName('');
+      setNewCategoryDescription('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create category');
+    } finally {
+      setCreatingCategory(false);
+    }
+  };
+
+  const handleDeleteCategory = async () => {
+    if (!showDeleteCategory) return;
+
+    setDeletingCategoryId(showDeleteCategory.id);
+    setError(null);
+
+    try {
+      const response = await fetch(
+        `/api/superuser/categories?categoryId=${showDeleteCategory.id}`,
+        { method: 'DELETE' }
+      );
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to delete category');
+      }
+
+      await loadData();
+      setShowDeleteCategory(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete category');
+    } finally {
+      setDeletingCategoryId(null);
     }
   };
 
@@ -832,24 +921,42 @@ export default function SuperUserPage() {
 
           {/* Assigned Categories - Shown on all pages */}
           <div className="bg-white rounded-lg border shadow-sm mb-6">
-            <div className="px-6 py-4 border-b">
-              <h2 className="font-semibold text-gray-900">Your Assigned Categories</h2>
-              <p className="text-sm text-gray-500">
-                You can manage documents and user subscriptions for these categories
-              </p>
+            <div className="px-6 py-4 border-b flex items-center justify-between">
+              <div>
+                <h2 className="font-semibold text-gray-900">Your Assigned Categories</h2>
+                <p className="text-sm text-gray-500">
+                  You can manage documents and user subscriptions for these categories
+                </p>
+              </div>
+              <Button onClick={() => setShowCreateCategory(true)}>
+                <Plus size={18} className="mr-2" />
+                Create Category
+              </Button>
             </div>
             <div className="px-6 py-4">
               {assignedCategories.length === 0 ? (
-                <p className="text-gray-500 text-sm">No categories assigned to you yet.</p>
+                <p className="text-gray-500 text-sm">No categories assigned to you yet. Create one to get started.</p>
               ) : (
                 <div className="flex flex-wrap gap-2">
                   {assignedCategories.map(cat => (
                     <span
                       key={cat.categoryId}
-                      className="inline-flex items-center gap-2 px-3 py-1.5 bg-orange-100 text-orange-700 rounded-full text-sm font-medium"
+                      className="inline-flex items-center gap-2 px-3 py-1.5 bg-orange-100 text-orange-700 rounded-full text-sm font-medium group"
                     >
                       <FolderOpen size={14} />
                       {cat.categoryName}
+                      {cat.createdBy === currentUserEmail && (
+                        <button
+                          onClick={() => {
+                            const docCount = stats?.categories.find(c => c.categoryId === cat.categoryId)?.documentCount || 0;
+                            setShowDeleteCategory({ id: cat.categoryId, name: cat.categoryName, documentCount: docCount });
+                          }}
+                          className="ml-1 p-0.5 hover:bg-orange-200 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                          title="Delete category"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      )}
                     </span>
                   ))}
                 </div>
@@ -1895,9 +2002,10 @@ export default function SuperUserPage() {
         onClose={() => {
           setShowAddSub(false);
           setNewSubEmail('');
+          setNewSubName('');
           setNewSubCategory(null);
         }}
-        title="Add Subscription"
+        title="Add User Subscription"
       >
         <form onSubmit={handleAddSubscription}>
           <div className="space-y-4">
@@ -1914,7 +2022,22 @@ export default function SuperUserPage() {
                 className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               />
               <p className="text-xs text-gray-500 mt-1">
-                User must already exist in the system
+                If user doesn&apos;t exist, they will be created automatically
+              </p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                User Name
+              </label>
+              <input
+                type="text"
+                value={newSubName}
+                onChange={(e) => setNewSubName(e.target.value)}
+                placeholder="John Doe (optional, for new users)"
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Only used when creating a new user
               </p>
             </div>
             <div>
@@ -1943,6 +2066,7 @@ export default function SuperUserPage() {
               onClick={() => {
                 setShowAddSub(false);
                 setNewSubEmail('');
+                setNewSubName('');
                 setNewSubCategory(null);
               }}
               disabled={addingSub}
@@ -1954,6 +2078,110 @@ export default function SuperUserPage() {
             </Button>
           </div>
         </form>
+      </Modal>
+
+      {/* Create Category Modal */}
+      <Modal
+        isOpen={showCreateCategory}
+        onClose={() => {
+          setShowCreateCategory(false);
+          setNewCategoryName('');
+          setNewCategoryDescription('');
+        }}
+        title="Create New Category"
+      >
+        <form onSubmit={handleCreateCategory}>
+          <div className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Category Name *
+              </label>
+              <input
+                type="text"
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                placeholder="e.g., HR Policies"
+                required
+                maxLength={100}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Description
+              </label>
+              <textarea
+                value={newCategoryDescription}
+                onChange={(e) => setNewCategoryDescription(e.target.value)}
+                placeholder="Optional description for this category"
+                rows={3}
+                className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            {categoryQuota && (
+              <p className="text-sm text-gray-500">
+                Category quota: {categoryQuota.used} of {categoryQuota.limit} used
+              </p>
+            )}
+          </div>
+          <div className="flex justify-end gap-3 mt-6">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setShowCreateCategory(false);
+                setNewCategoryName('');
+                setNewCategoryDescription('');
+              }}
+              disabled={creatingCategory}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" loading={creatingCategory}>
+              Create Category
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Delete Category Confirmation Modal */}
+      <Modal
+        isOpen={!!showDeleteCategory}
+        onClose={() => setShowDeleteCategory(null)}
+        title="Delete Category"
+      >
+        <div className="space-y-4">
+          <p className="text-gray-600">
+            Are you sure you want to delete the category <strong>{showDeleteCategory?.name}</strong>?
+          </p>
+          {showDeleteCategory && showDeleteCategory.documentCount > 0 && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+              <p className="text-red-700 text-sm">
+                <strong>Warning:</strong> This will permanently delete {showDeleteCategory.documentCount} document(s)
+                associated with this category, including their files and embeddings.
+              </p>
+            </div>
+          )}
+          <p className="text-sm text-gray-500">
+            All user subscriptions to this category will also be removed.
+          </p>
+        </div>
+        <div className="flex justify-end gap-3 mt-6">
+          <Button
+            variant="secondary"
+            onClick={() => setShowDeleteCategory(null)}
+            disabled={deletingCategoryId !== null}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="danger"
+            onClick={handleDeleteCategory}
+            loading={deletingCategoryId === showDeleteCategory?.id}
+          >
+            Delete Category
+          </Button>
+        </div>
       </Modal>
 
       {/* Remove Subscription Confirmation */}

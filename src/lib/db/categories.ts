@@ -210,16 +210,17 @@ export function categoryExists(id: number): boolean {
 // ============ Category Queries ============
 
 /**
- * Get categories for a super user (their assigned categories)
+ * Get categories for a super user (their assigned categories + subscribed categories)
  */
 export function getCategoriesForSuperUser(userId: number): DbCategory[] {
   return queryAll<DbCategory>(`
-    SELECT c.id, c.name, c.slug, c.description, c.created_by, c.created_at
+    SELECT DISTINCT c.id, c.name, c.slug, c.description, c.created_by, c.created_at
     FROM categories c
-    JOIN super_user_categories suc ON c.id = suc.category_id
-    WHERE suc.user_id = ?
+    LEFT JOIN super_user_categories suc ON c.id = suc.category_id AND suc.user_id = ?
+    LEFT JOIN user_subscriptions us ON c.id = us.category_id AND us.user_id = ? AND us.is_active = 1
+    WHERE suc.user_id IS NOT NULL OR us.user_id IS NOT NULL
     ORDER BY c.name
-  `, [userId]);
+  `, [userId, userId]);
 }
 
 /**
@@ -370,4 +371,100 @@ export function getCategorySlugsByIds(ids: number[]): string[] {
   `, ids);
 
   return results.map(r => r.slug);
+}
+
+// ============ Superuser Category Management ============
+
+/**
+ * Count categories created by a specific user (by email)
+ */
+export function getCreatedCategoriesCount(createdByEmail: string): number {
+  const result = queryOne<{ count: number }>(`
+    SELECT COUNT(*) as count FROM categories WHERE created_by = ?
+  `, [createdByEmail]);
+  return result?.count ?? 0;
+}
+
+/**
+ * Get categories created by a specific user (by email)
+ */
+export function getCategoriesCreatedBy(createdByEmail: string): DbCategory[] {
+  return queryAll<DbCategory>(`
+    SELECT id, name, slug, description, created_by, created_at
+    FROM categories
+    WHERE created_by = ?
+    ORDER BY name
+  `, [createdByEmail]);
+}
+
+/**
+ * Check if a category was created by a specific user
+ */
+export function isCategoryCreatedBy(categoryId: number, email: string): boolean {
+  const result = queryOne<{ count: number }>(`
+    SELECT COUNT(*) as count FROM categories WHERE id = ? AND created_by = ?
+  `, [categoryId, email]);
+  return (result?.count ?? 0) > 0;
+}
+
+/**
+ * Get document IDs for a category (for cleanup)
+ */
+export function getDocumentIdsForCategory(categoryId: number): number[] {
+  const results = queryAll<{ document_id: number }>(`
+    SELECT document_id FROM document_categories WHERE category_id = ?
+  `, [categoryId]);
+  return results.map(r => r.document_id);
+}
+
+/**
+ * Delete a category with full cleanup of all related data
+ * This is a database-only operation - file/ChromaDB cleanup must be done separately
+ * Returns document IDs that were associated with this category for external cleanup
+ */
+export function deleteCategoryWithRelatedData(categoryId: number): { documentIds: number[]; deleted: boolean } {
+  return transaction(() => {
+    // Get document IDs before deletion (for external cleanup)
+    const documentIds = getDocumentIdsForCategory(categoryId);
+
+    // Delete in order to respect foreign keys (or rely on CASCADE)
+    // These tables have ON DELETE CASCADE, but being explicit:
+
+    // Remove document-category associations
+    execute('DELETE FROM document_categories WHERE category_id = ?', [categoryId]);
+
+    // Remove thread-category associations
+    execute('DELETE FROM thread_categories WHERE category_id = ?', [categoryId]);
+
+    // Remove user subscriptions
+    execute('DELETE FROM user_subscriptions WHERE category_id = ?', [categoryId]);
+
+    // Remove superuser assignments
+    execute('DELETE FROM super_user_categories WHERE category_id = ?', [categoryId]);
+
+    // Remove category prompts
+    execute('DELETE FROM category_prompts WHERE category_id = ?', [categoryId]);
+
+    // Remove category tool configs
+    execute('DELETE FROM category_tool_configs WHERE category_id = ?', [categoryId]);
+
+    // Remove category skills
+    execute('DELETE FROM category_skills WHERE category_id = ?', [categoryId]);
+
+    // Remove user memories for this category
+    execute('DELETE FROM user_memories WHERE category_id = ?', [categoryId]);
+
+    // Remove data source associations
+    execute('DELETE FROM data_api_categories WHERE category_id = ?', [categoryId]);
+    execute('DELETE FROM data_csv_categories WHERE category_id = ?', [categoryId]);
+    execute('DELETE FROM function_api_categories WHERE category_id = ?', [categoryId]);
+
+    // Finally delete the category
+    const result = execute('DELETE FROM categories WHERE id = ?', [categoryId]);
+
+    return {
+      documentIds,
+      deleted: result.changes > 0,
+    };
+  });
 }

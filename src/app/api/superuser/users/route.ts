@@ -3,12 +3,13 @@
  *
  * GET  /api/superuser/users - Get users subscribed to super user's categories
  * POST /api/superuser/users - Add subscription for a user to one of super user's categories
+ *                             (creates user if they don't exist)
  * DELETE /api/superuser/users - Remove subscription from one of super user's categories
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { getUserRole, getUserId } from '@/lib/users';
+import { getUserRole, getUserId, addAllowedUser } from '@/lib/users';
 import {
   getSuperUserWithAssignments,
   getUsersSubscribedToCategory,
@@ -111,11 +112,20 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { userEmail, categoryId } = body;
+    const { userEmail, categoryId, userName } = body;
 
     if (!userEmail || typeof categoryId !== 'number') {
       return NextResponse.json(
         { error: 'userEmail and categoryId are required' },
+        { status: 400 }
+      );
+    }
+
+    // Basic email validation
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(userEmail)) {
+      return NextResponse.json(
+        { error: 'Invalid email address' },
         { status: 400 }
       );
     }
@@ -134,10 +144,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get target user
-    const targetUser = dbGetUserByEmail(userEmail);
+    // Get or create target user
+    let targetUser = dbGetUserByEmail(userEmail);
+    let userCreated = false;
+
     if (!targetUser) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 });
+      // Create the user with 'user' role
+      try {
+        await addAllowedUser(userEmail, 'user', user.email, userName || undefined);
+        targetUser = dbGetUserByEmail(userEmail);
+        userCreated = true;
+
+        if (!targetUser) {
+          return NextResponse.json({ error: 'Failed to create user' }, { status: 500 });
+        }
+      } catch (err) {
+        console.error('Error creating user:', err);
+        return NextResponse.json({ error: 'Failed to create user' }, { status: 500 });
+      }
     }
 
     if (targetUser.role !== 'user') {
@@ -161,8 +185,11 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
+      userCreated,
       subscription: {
         userId: targetUser.id,
+        userEmail: targetUser.email,
+        userName: targetUser.name,
         categoryId,
         categoryName: category?.categoryName,
         isActive: true,

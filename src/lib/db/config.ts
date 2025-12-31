@@ -125,6 +125,10 @@ export interface SkillsSettings {
   debugMode: boolean;             // Log skill activation details
 }
 
+export interface SuperuserSettings {
+  maxCategoriesPerSuperuser: number;  // Max categories a superuser can create (default: 5)
+}
+
 export interface LimitsSettings {
   conversationHistoryMessages: number;  // Number of recent messages sent to LLM (default: 5)
 }
@@ -263,7 +267,8 @@ export type SettingKey =
   | 'limits-settings'
   | 'model-token-limits'
   | 'token-limits-settings'
-  | 'pwa-settings';
+  | 'pwa-settings'
+  | 'superuser-settings';
 
 // ============ Generic Operations ============
 
@@ -629,6 +634,18 @@ export function getPWASettings(): PWASettings {
   return DEFAULT_PWA_SETTINGS;
 }
 
+/**
+ * Get superuser settings
+ * Priority: SQLite > hardcoded defaults
+ */
+export function getSuperuserSettings(): SuperuserSettings {
+  const dbSettings = getSetting<SuperuserSettings>('superuser-settings');
+  if (dbSettings) return dbSettings;
+  return {
+    maxCategoriesPerSuperuser: 5,
+  };
+}
+
 // ============ Typed Setters ============
 
 /**
@@ -825,6 +842,16 @@ export function setPWASettings(settings: Partial<PWASettings>, updatedBy?: strin
   const current = getPWASettings();
   const updated = { ...current, ...settings, updatedAt: new Date().toISOString(), updatedBy };
   setSetting('pwa-settings', updated, updatedBy);
+  return updated;
+}
+
+/**
+ * Update superuser settings
+ */
+export function setSuperuserSettings(settings: Partial<SuperuserSettings>, updatedBy?: string): SuperuserSettings {
+  const current = getSuperuserSettings();
+  const updated = { ...current, ...settings };
+  setSetting('superuser-settings', updated, updatedBy);
   return updated;
 }
 

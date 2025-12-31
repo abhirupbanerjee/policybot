@@ -27,10 +27,18 @@ export async function GET() {
 
         if (userId) {
           if (u.role === 'superuser') {
+            // Get category assignments (for management access)
             const withAssignments = getSuperUserWithAssignments(userId);
             assignedCategories = withAssignments?.assignedCategories.map(c => ({
               categoryId: c.categoryId,
               categoryName: c.categoryName,
+            })) || [];
+            // Also get subscriptions (for read access to other categories)
+            const withSubs = getUserWithSubscriptions(userId);
+            subscriptions = withSubs?.subscriptions.map(s => ({
+              categoryId: s.categoryId,
+              categoryName: s.categoryName,
+              isActive: s.isActive,
             })) || [];
           } else if (u.role === 'user') {
             const withSubs = getUserWithSubscriptions(userId);

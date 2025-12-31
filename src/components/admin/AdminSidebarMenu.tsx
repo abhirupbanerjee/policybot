@@ -19,7 +19,7 @@ import {
 } from 'lucide-react';
 
 type TabType = 'dashboard' | 'documents' | 'categories' | 'users' | 'settings' | 'stats' | 'prompts' | 'tools';
-type SettingsSection = 'rag' | 'llm' | 'reranker' | 'memory' | 'summarization' | 'limits' | 'backup' | 'branding' | 'cache';
+type SettingsSection = 'rag' | 'llm' | 'reranker' | 'memory' | 'summarization' | 'limits' | 'backup' | 'branding' | 'cache' | 'superuser';
 type PromptsSection = 'system-prompt' | 'category-prompts' | 'acronyms' | 'skills';
 
 interface AdminSidebarMenuProps {
@@ -56,6 +56,7 @@ const SETTINGS_SUBMENU: { id: SettingsSection; label: string }[] = [
   { id: 'memory', label: 'Memory' },
   { id: 'summarization', label: 'Summarization' },
   { id: 'limits', label: 'Limits' },
+  { id: 'superuser', label: 'Superuser' },
   { id: 'backup', label: 'Backup' },
   { id: 'branding', label: 'Branding' },
   { id: 'cache', label: 'Cache' },
