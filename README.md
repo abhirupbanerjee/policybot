@@ -804,28 +804,7 @@ model_list:
 
 ## Documentation
 
-**Architecture & Design:**
-- [Solution Architecture](docs/SOLUTION.md) - System design, RAG pipeline, and data tools
-- [Database Schema](docs/DATABASE.md) - SQLite schema, settings, and model presets
-- [UI Wireframes](docs/UI_WIREFRAMES.md) - Admin dashboard and component designs
-
-**API Reference:**
-- [API Specification](docs/API_SPECIFICATION.md) - REST API reference
-- [OpenAPI Specification](docs/openapi.yaml) - OpenAPI 3.0 schema
-
-**Features & Configuration:**
-- [Memory, Skills & Functions](docs/Memory-Skill-Functions.md) - Skills system, tools, data sources, and function APIs
-- [Tools Reference](docs/Tools.md) - Web search, document generation, data sources, function APIs, task planner, YouTube, tool routing
-- [LiteLLM Guide](docs/liteLLM-implementation-guide.md) - Multi-provider LLM configuration
-
-**Deployment:**
-- [Infrastructure Guide](docs/INFRASTRUCTURE.md) - Docker, deployment, and cost estimation
-- [Deployment Checklist](docs/DEPLOYMENT_CHECKLIST.md) - Production deployment guide
-
-**User Manuals:**
-- [User Guide](docs/user_manuals/USER_GUIDE.md) - Guide for regular users
-- [Superuser Guide](docs/user_manuals/SUPERUSER_GUIDE.md) - Guide for department managers
-- [Admin Guide](docs/user_manuals/ADMIN_GUIDE.md) - Complete admin documentation
+See the `docs/` directory for detailed documentation on architecture, API specs, database schema, and user manuals.
 
 ## Acknowledgements
 
