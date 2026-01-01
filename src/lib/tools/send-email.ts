@@ -2,13 +2,14 @@
  * Send Email Tool
  *
  * Provides email notification functionality via SendGrid.
+ * Uses the official @sendgrid/mail package.
  * Used by share_thread tool and potentially other tools.
  *
  * Configuration is managed through the Tools admin UI.
  */
 
+import sgMail from '@sendgrid/mail';
 import { getToolConfig } from '../db/tool-config';
-import { queryOne, execute } from '../db/index';
 import type { ToolDefinition, ValidationResult } from '../tools';
 import type { SendEmailToolConfig } from '@/types';
 
@@ -98,7 +99,7 @@ export interface SendEmailResult {
 }
 
 /**
- * Send email via SendGrid
+ * Send email via SendGrid using @sendgrid/mail package
  */
 export async function sendEmail(params: SendEmailParams): Promise<SendEmailResult> {
   const { enabled, config } = getSendEmailConfig();
@@ -130,48 +131,50 @@ export async function sendEmail(params: SendEmailParams): Promise<SendEmailResul
 
   const { to, subject, text, html } = params;
 
-  const requestBody = {
-    personalizations: [{ to: [{ email: to }] }],
-    from: {
-      email: config.senderEmail,
-      name: config.senderName,
-    },
-    subject,
-    content: [
-      ...(text ? [{ type: 'text/plain', value: text }] : []),
-      ...(html ? [{ type: 'text/html', value: html }] : []),
-    ],
-  };
-
   try {
-    console.log('[SendEmail] Sending request to SendGrid API...');
+    // Set the API key for this request
+    sgMail.setApiKey(config.sendgridApiKey);
 
-    const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${config.sendgridApiKey}`,
-        'Content-Type': 'application/json',
+    console.log('[SendEmail] Sending email via @sendgrid/mail...');
+
+    const msg = {
+      to,
+      from: {
+        email: config.senderEmail,
+        name: config.senderName,
       },
-      body: JSON.stringify(requestBody),
-    });
+      subject,
+      text: text || '',
+      html: html || '',
+    };
 
-    console.log('[SendEmail] SendGrid response status:', response.status);
+    const [response] = await sgMail.send(msg);
 
-    if (response.status === 202) {
-      const messageId = response.headers.get('X-Message-Id') || undefined;
+    console.log('[SendEmail] SendGrid response status:', response.statusCode);
+
+    if (response.statusCode === 202) {
+      const messageId = response.headers['x-message-id'] as string | undefined;
       console.log('[SendEmail] Email sent successfully, messageId:', messageId);
       return { success: true, messageId };
     }
 
-    const errorBody = await response.text();
-    console.error('[SendEmail] SendGrid error:', response.status, errorBody);
-    return { success: false, error: `SendGrid error: ${response.status} - ${errorBody}` };
+    console.error('[SendEmail] Unexpected response status:', response.statusCode);
+    return { success: false, error: `SendGrid error: ${response.statusCode}` };
   } catch (error) {
     console.error('[SendEmail] Failed to send email:', error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Failed to send email',
-    };
+
+    // Extract error message from SendGrid error response
+    let errorMessage = 'Failed to send email';
+    if (error && typeof error === 'object' && 'response' in error) {
+      const sgError = error as { response?: { body?: { errors?: Array<{ message: string }> } } };
+      if (sgError.response?.body?.errors?.[0]?.message) {
+        errorMessage = sgError.response.body.errors[0].message;
+      }
+    } else if (error instanceof Error) {
+      errorMessage = error.message;
+    }
+
+    return { success: false, error: errorMessage };
   }
 }
 
