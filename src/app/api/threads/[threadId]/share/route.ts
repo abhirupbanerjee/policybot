@@ -187,7 +187,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     let emailSent = false;
     let emailError: string | undefined;
 
+    console.log('[Share] Email notification request:', {
+      sendEmail,
+      recipientEmail,
+      sendEmailAvailable: isSendEmailAvailable(),
+    });
+
     if (sendEmail && recipientEmail && isSendEmailAvailable()) {
+      console.log('[Share] Sending email notification to:', recipientEmail);
       const emailResult = await sendShareNotificationEmail({
         recipientEmail,
         sharedByName: dbUser.name || user.name || user.email,
@@ -200,7 +207,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       emailSent = emailResult.success;
       if (!emailResult.success) {
         emailError = emailResult.error;
+        console.error('[Share] Email notification failed:', emailError);
+      } else {
+        console.log('[Share] Email notification sent successfully');
       }
+    } else if (sendEmail && recipientEmail && !isSendEmailAvailable()) {
+      console.log('[Share] Email requested but send_email tool is not available');
+      emailError = 'Email notifications are not configured';
     }
 
     return NextResponse.json({

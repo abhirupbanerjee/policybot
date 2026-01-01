@@ -103,51 +103,69 @@ export interface SendEmailResult {
 export async function sendEmail(params: SendEmailParams): Promise<SendEmailResult> {
   const { enabled, config } = getSendEmailConfig();
 
+  console.log('[SendEmail] Attempting to send email:', {
+    to: params.to,
+    subject: params.subject,
+    enabled,
+    hasApiKey: !!config.sendgridApiKey,
+    senderEmail: config.senderEmail,
+  });
+
   if (!enabled) {
+    console.log('[SendEmail] Email sending is disabled');
     return { success: false, error: 'Email sending is disabled' };
   }
 
   if (!isSendGridConfigured()) {
+    console.log('[SendEmail] SendGrid not configured - missing API key or sender email');
     return { success: false, error: 'SendGrid is not configured. Please set API key and sender email.' };
   }
 
   // Check rate limit
   const rateCheck = checkEmailRateLimit();
   if (!rateCheck.allowed) {
+    console.log('[SendEmail] Rate limit exceeded');
     return { success: false, error: rateCheck.message };
   }
 
   const { to, subject, text, html } = params;
 
+  const requestBody = {
+    personalizations: [{ to: [{ email: to }] }],
+    from: {
+      email: config.senderEmail,
+      name: config.senderName,
+    },
+    subject,
+    content: [
+      ...(text ? [{ type: 'text/plain', value: text }] : []),
+      ...(html ? [{ type: 'text/html', value: html }] : []),
+    ],
+  };
+
   try {
+    console.log('[SendEmail] Sending request to SendGrid API...');
+
     const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${config.sendgridApiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        personalizations: [{ to: [{ email: to }] }],
-        from: {
-          email: config.senderEmail,
-          name: config.senderName,
-        },
-        subject,
-        content: [
-          ...(text ? [{ type: 'text/plain', value: text }] : []),
-          ...(html ? [{ type: 'text/html', value: html }] : []),
-        ],
-      }),
+      body: JSON.stringify(requestBody),
     });
+
+    console.log('[SendEmail] SendGrid response status:', response.status);
 
     if (response.status === 202) {
       const messageId = response.headers.get('X-Message-Id') || undefined;
+      console.log('[SendEmail] Email sent successfully, messageId:', messageId);
       return { success: true, messageId };
     }
 
     const errorBody = await response.text();
     console.error('[SendEmail] SendGrid error:', response.status, errorBody);
-    return { success: false, error: `SendGrid error: ${response.status}` };
+    return { success: false, error: `SendGrid error: ${response.status} - ${errorBody}` };
   } catch (error) {
     console.error('[SendEmail] Failed to send email:', error);
     return {

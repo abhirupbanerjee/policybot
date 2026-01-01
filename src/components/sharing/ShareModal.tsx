@@ -114,6 +114,10 @@ export default function ShareModal({
         if (data.share.shareUrl) {
           await copyToClipboard(data.share.shareUrl, data.share.id);
         }
+        // Show email error if email was requested but failed
+        if (config.sendEmail && data.emailError) {
+          setError(`Share created but email failed: ${data.emailError}`);
+        }
         // Reset email fields
         setConfig((prev) => ({ ...prev, sendEmail: false, recipientEmail: '' }));
       } else {
