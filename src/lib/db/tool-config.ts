@@ -451,6 +451,25 @@ export const TOOL_DEFAULTS: Record<string, { enabled: boolean; config: Record<st
       formalStyle: true,
     },
   },
+  share_thread: {
+    enabled: false, // Disabled by default until admin enables
+    config: {
+      defaultExpiryDays: 7,
+      allowDownloadsByDefault: true,
+      allowedRoles: ['admin', 'superuser', 'user'],
+      maxSharesPerThread: 10,
+      rateLimitPerHour: 20,
+    },
+  },
+  send_email: {
+    enabled: false, // Disabled until SendGrid configured
+    config: {
+      sendgridApiKey: '',
+      senderEmail: '',
+      senderName: 'Policy Bot',
+      rateLimitPerHour: 50,
+    },
+  },
 };
 
 /**

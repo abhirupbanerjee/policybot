@@ -272,6 +272,7 @@ export interface ApiError {
 export type ErrorCode =
   | 'AUTH_REQUIRED'
   | 'ADMIN_REQUIRED'
+  | 'ACCESS_DENIED'
   | 'NOT_FOUND'
   | 'VALIDATION_ERROR'
   | 'FILE_TOO_LARGE'
@@ -376,4 +377,58 @@ export interface TavilySettings {
   cacheTTLSeconds: number;
   updatedAt: string;
   updatedBy: string;
+}
+
+// ============ Thread Sharing Types ============
+
+export interface ThreadShare {
+  id: string;
+  threadId: string;
+  shareToken: string;
+  createdBy: number;
+  createdByEmail?: string;
+  createdByName?: string;
+  allowDownload: boolean;
+  expiresAt: Date | null;
+  viewCount: number;
+  createdAt: Date;
+  lastViewedAt: Date | null;
+  revokedAt: Date | null;
+  // Computed
+  isActive: boolean;
+  isExpired: boolean;
+  shareUrl?: string;
+}
+
+export interface CreateShareRequest {
+  allowDownload?: boolean;
+  expiresInDays?: number | null;
+  sendEmail?: boolean;
+  recipientEmail?: string;
+}
+
+export interface ShareAccessLog {
+  id: number;
+  shareId: string;
+  accessedBy: number;
+  accessedByEmail?: string;
+  action: 'view' | 'download';
+  resourceType?: string;
+  resourceId?: string;
+  accessedAt: Date;
+}
+
+export interface ShareThreadToolConfig {
+  defaultExpiryDays: number;
+  allowDownloadsByDefault: boolean;
+  allowedRoles: ('admin' | 'superuser' | 'user')[];
+  maxSharesPerThread: number;
+  rateLimitPerHour: number;
+}
+
+export interface SendEmailToolConfig {
+  sendgridApiKey: string;
+  senderEmail: string;
+  senderName: string;
+  rateLimitPerHour: number;
 }

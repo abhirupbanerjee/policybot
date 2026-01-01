@@ -551,6 +551,51 @@ function runMigrations(database: Database.Database): void {
       CREATE INDEX IF NOT EXISTS idx_thread_outputs_expires ON thread_outputs(expires_at);
     `);
   }
+
+  // Migration: Create thread_shares table for thread sharing feature
+  const threadSharesTableExists = database.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='thread_shares'"
+  ).get();
+
+  if (!threadSharesTableExists) {
+    database.exec(`
+      -- Thread shares for sharing threads with other users
+      CREATE TABLE IF NOT EXISTS thread_shares (
+        id TEXT PRIMARY KEY,
+        thread_id TEXT NOT NULL,
+        share_token TEXT UNIQUE NOT NULL,
+        created_by INTEGER NOT NULL,
+        allow_download INTEGER DEFAULT 1,
+        expires_at DATETIME,
+        view_count INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        last_viewed_at DATETIME,
+        revoked_at DATETIME,
+        FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE,
+        FOREIGN KEY (created_by) REFERENCES users(id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_thread_shares_token ON thread_shares(share_token);
+      CREATE INDEX IF NOT EXISTS idx_thread_shares_thread ON thread_shares(thread_id);
+      CREATE INDEX IF NOT EXISTS idx_thread_shares_creator ON thread_shares(created_by);
+
+      -- Share access log for audit
+      CREATE TABLE IF NOT EXISTS share_access_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        share_id TEXT NOT NULL,
+        accessed_by INTEGER NOT NULL,
+        action TEXT NOT NULL CHECK (action IN ('view', 'download')),
+        resource_type TEXT,
+        resource_id TEXT,
+        accessed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (share_id) REFERENCES thread_shares(id) ON DELETE CASCADE,
+        FOREIGN KEY (accessed_by) REFERENCES users(id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_share_access_log_share ON share_access_log(share_id);
+      CREATE INDEX IF NOT EXISTS idx_share_access_log_accessed ON share_access_log(accessed_at DESC);
+    `);
+  }
 }
 
 /**

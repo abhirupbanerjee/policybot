@@ -8,6 +8,8 @@ import { chartGenTool } from './tools/chart-gen';
 import { taskPlannerTool } from './tools/task-planner';
 import { imageGenTool } from './tools/image-gen';
 import { translationTool } from './tools/translation';
+import { shareThreadTool } from './tools/share-thread';
+import { sendEmailTool } from './tools/send-email';
 import { isToolEnabled as isToolEnabledDb, migrateTavilySettingsIfNeeded, ensureToolConfigsExist, getDescriptionOverride } from './db/tool-config';
 import { toolsLogger as logger } from './logger';
 
@@ -80,6 +82,8 @@ export const AVAILABLE_TOOLS: Record<string, ToolDefinition> = {
   task_planner: taskPlannerTool,
   image_gen: imageGenTool,
   translation: translationTool,
+  share_thread: shareThreadTool,
+  send_email: sendEmailTool,
 };
 
 // ============ Initialization ============

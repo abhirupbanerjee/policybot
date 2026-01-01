@@ -1,13 +1,14 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { MessageSquare, RefreshCw, BookOpen, ChevronDown, ChevronUp } from 'lucide-react';
+import { MessageSquare, RefreshCw, BookOpen, ChevronDown, ChevronUp, Share2 } from 'lucide-react';
 import type { Message, Thread, UserSubscription, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo } from '@/types';
 import MessageBubble from './MessageBubble';
 import MessageInput from './MessageInput';
 import Spinner from '@/components/ui/Spinner';
 import StarterButtons, { StarterPrompt } from './StarterButtons';
 import ProcessingIndicator from './ProcessingIndicator';
+import ShareModal from '@/components/sharing/ShareModal';
 import { useStreamingChat } from '@/hooks/useStreamingChat';
 
 interface WelcomeConfig {
@@ -47,6 +48,7 @@ export default function ChatWindow({
   const [starterPrompts, setStarterPrompts] = useState<StarterPrompt[]>([]);
   const [loadingStarters, setLoadingStarters] = useState(false);
   const [fetchedCategoryWelcome, setFetchedCategoryWelcome] = useState<WelcomeConfig | null>(null);
+  const [showShareModal, setShowShareModal] = useState(false);
 
   // Compute dynamic header based on subscriptions
   const getHeaderInfo = () => {
@@ -325,12 +327,25 @@ export default function ChatWindow({
     <div className="flex flex-col h-full">
       {/* Header */}
       <header className="sticky top-0 z-10 bg-white border-b px-4 sm:px-6 py-3 sm:py-4 shadow-sm">
-        <h1 className="text-base sm:text-lg font-semibold text-gray-900 text-center sm:text-left truncate">
-          {activeThread?.title || headerInfo.title}
-        </h1>
-        <p className="text-sm text-gray-500 hidden sm:block">
-          {headerInfo.subtitle}
-        </p>
+        <div className="flex items-center justify-between">
+          <div className="flex-1 min-w-0">
+            <h1 className="text-base sm:text-lg font-semibold text-gray-900 text-center sm:text-left truncate">
+              {activeThread?.title || headerInfo.title}
+            </h1>
+            <p className="text-sm text-gray-500 hidden sm:block">
+              {headerInfo.subtitle}
+            </p>
+          </div>
+          {activeThread && (
+            <button
+              onClick={() => setShowShareModal(true)}
+              className="ml-2 p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+              title="Share thread"
+            >
+              <Share2 size={18} />
+            </button>
+          )}
+        </div>
       </header>
 
       {/* Summarization Banner */}
@@ -470,6 +485,16 @@ export default function ChatWindow({
         currentUploads={uploads}
         onUploadComplete={handleUploadComplete}
       />
+
+      {/* Share Modal */}
+      {activeThread && (
+        <ShareModal
+          isOpen={showShareModal}
+          onClose={() => setShowShareModal(false)}
+          threadId={activeThread.id}
+          threadTitle={activeThread.title}
+        />
+      )}
     </div>
   );
 }
