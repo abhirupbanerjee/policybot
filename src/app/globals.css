@@ -18,6 +18,9 @@
 html, body {
   height: 100%;
   margin: 0;
+  /* Disable Chrome mobile pull-to-refresh */
+  /* Reference: https://developer.chrome.com/blog/overscroll-behavior */
+  overscroll-behavior-y: contain;
 }
 
 /* Fixed full-screen layout for Chrome compatibility */
@@ -28,6 +31,8 @@ html, body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  /* Prevent mobile pull-to-refresh on the app container */
+  overscroll-behavior: contain;
 }
 
 body {
