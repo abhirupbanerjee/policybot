@@ -181,6 +181,14 @@ interface LimitsSettings {
   updatedBy?: string;
 }
 
+interface UploadSettings {
+  maxFilesPerInput: number;
+  maxFileSizeMB: number;
+  allowedTypes: string[];
+  updatedAt?: string;
+  updatedBy?: string;
+}
+
 interface TokenLimitsSettings {
   promptOptimizationMaxTokens: number;
   skillsMaxTotalTokens: number;
@@ -416,6 +424,8 @@ export default function AdminPage() {
   const [editedSummarization, setEditedSummarization] = useState<Omit<SummarizationSettings, 'updatedAt' | 'updatedBy'> | null>(null);
   const [limitsSettings, setLimitsSettingsState] = useState<LimitsSettings | null>(null);
   const [editedLimits, setEditedLimits] = useState<Omit<LimitsSettings, 'updatedAt' | 'updatedBy'> | null>(null);
+  const [uploadSettings, setUploadSettingsState] = useState<UploadSettings | null>(null);
+  const [editedUpload, setEditedUpload] = useState<Omit<UploadSettings, 'updatedAt' | 'updatedBy'> | null>(null);
   const [modelTokenLimits, setModelTokenLimits] = useState<ModelTokenLimitsState | null>(null);
   const [editedModelTokens, setEditedModelTokens] = useState<Record<string, number | 'default'>>({});
   const [savingModelTokens, setSavingModelTokens] = useState(false);
@@ -446,6 +456,7 @@ export default function AdminPage() {
   const [memoryModified, setMemoryModified] = useState(false);
   const [summarizationModified, setSummarizationModified] = useState(false);
   const [limitsModified, setLimitsModified] = useState(false);
+  const [uploadModified, setUploadModified] = useState(false);
   const [tokenLimitsSettings, setTokenLimitsSettingsState] = useState<TokenLimitsSettings | null>(null);
   const [editedTokenLimits, setEditedTokenLimits] = useState<Omit<TokenLimitsSettings, 'updatedAt' | 'updatedBy'> | null>(null);
   const [tokenLimitsModified, setTokenLimitsModified] = useState(false);
@@ -649,6 +660,14 @@ export default function AdminPage() {
           conversationHistoryMessages: data.limits.conversationHistoryMessages,
         });
       }
+      if (data.uploadLimits) {
+        setUploadSettingsState(data.uploadLimits);
+        setEditedUpload({
+          maxFilesPerInput: data.uploadLimits.maxFilesPerInput,
+          maxFileSizeMB: data.uploadLimits.maxFileSizeMB,
+          allowedTypes: data.uploadLimits.allowedTypes || [],
+        });
+      }
       if (data.modelTokenLimits) {
         setModelTokenLimits(data.modelTokenLimits);
         setEditedModelTokens(data.modelTokenLimits.limits || {});
@@ -683,6 +702,7 @@ export default function AdminPage() {
       setMemoryModified(false);
       setSummarizationModified(false);
       setLimitsModified(false);
+      setUploadModified(false);
       setTokenLimitsModified(false);
 
       // Load superuser settings separately
@@ -2079,6 +2099,54 @@ export default function AdminPage() {
       });
       setLimitsModified(false);
     }
+  };
+
+  // Upload settings handlers
+  const handleSaveUpload = async () => {
+    if (!editedUpload || !uploadModified) return;
+    setSavingSettings(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/admin/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'uploadLimits', settings: editedUpload }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to save upload settings');
+      }
+
+      const data = await response.json();
+      setUploadSettingsState(data.uploadLimits);
+      setUploadModified(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save upload settings');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const handleResetUpload = () => {
+    if (uploadSettings) {
+      setEditedUpload({
+        maxFilesPerInput: uploadSettings.maxFilesPerInput,
+        maxFileSizeMB: uploadSettings.maxFileSizeMB,
+        allowedTypes: uploadSettings.allowedTypes || [],
+      });
+      setUploadModified(false);
+    }
+  };
+
+  const handleToggleFileType = (type: string) => {
+    if (!editedUpload) return;
+    const currentTypes = editedUpload.allowedTypes || [];
+    const newTypes = currentTypes.includes(type)
+      ? currentTypes.filter(t => t !== type)
+      : [...currentTypes, type];
+    setEditedUpload({ ...editedUpload, allowedTypes: newTypes });
+    setUploadModified(true);
   };
 
   const handleSaveTokenLimits = async () => {
@@ -4718,6 +4786,108 @@ export default function AdminPage() {
                       {tokenLimitsSettings?.updatedAt && (
                         <p className="text-xs text-gray-500 mt-4">
                           Last updated: {formatDate(tokenLimitsSettings.updatedAt)} by {tokenLimitsSettings.updatedBy}
+                        </p>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+
+                {/* Upload Settings Card */}
+                <div className="bg-white rounded-lg border shadow-sm">
+                  <div className="px-6 py-4 border-b">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h2 className="font-semibold text-gray-900">Upload Settings</h2>
+                        <p className="text-sm text-gray-500">Configure file upload limits and allowed types for chat</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {uploadModified && (
+                          <Button variant="secondary" onClick={handleResetUpload} disabled={savingSettings}>
+                            Reset
+                          </Button>
+                        )}
+                        <Button onClick={handleSaveUpload} disabled={!uploadModified || savingSettings} loading={savingSettings}>
+                          <Save size={18} className="mr-2" />
+                          Save
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                  {settingsLoading ? (
+                    <div className="px-6 py-12 flex justify-center"><Spinner size="lg" /></div>
+                  ) : editedUpload ? (
+                    <div className="p-6 space-y-6">
+                      {/* Max File Size */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-900 mb-1">Maximum File Size (MB)</label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="100"
+                          value={editedUpload.maxFileSizeMB}
+                          onChange={(e) => {
+                            setEditedUpload({ ...editedUpload, maxFileSizeMB: parseInt(e.target.value) || 10 });
+                            setUploadModified(true);
+                          }}
+                          className="w-full max-w-xs px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                        <p className="mt-1 text-sm text-gray-500">
+                          Maximum file size users can upload (1-100 MB)
+                        </p>
+                      </div>
+
+                      {/* Allowed File Types */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-900 mb-3">Allowed File Types</label>
+                        <div className="space-y-3">
+                          <label className="flex items-center gap-3 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={editedUpload.allowedTypes?.includes('application/pdf') || false}
+                              onChange={() => handleToggleFileType('application/pdf')}
+                              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                            />
+                            <span className="text-sm text-gray-700">PDF Documents (.pdf)</span>
+                          </label>
+                          <label className="flex items-center gap-3 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={(editedUpload.allowedTypes?.includes('image/png') && editedUpload.allowedTypes?.includes('image/jpeg')) || false}
+                              onChange={() => {
+                                const hasImages = editedUpload.allowedTypes?.includes('image/png') && editedUpload.allowedTypes?.includes('image/jpeg');
+                                let newTypes = editedUpload.allowedTypes || [];
+                                if (hasImages) {
+                                  newTypes = newTypes.filter(t => t !== 'image/png' && t !== 'image/jpeg');
+                                } else {
+                                  if (!newTypes.includes('image/png')) newTypes = [...newTypes, 'image/png'];
+                                  if (!newTypes.includes('image/jpeg')) newTypes = [...newTypes, 'image/jpeg'];
+                                }
+                                setEditedUpload({ ...editedUpload, allowedTypes: newTypes });
+                                setUploadModified(true);
+                              }}
+                              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                            />
+                            <span className="text-sm text-gray-700">Images (.png, .jpg, .jpeg)</span>
+                          </label>
+                          <label className="flex items-center gap-3 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={editedUpload.allowedTypes?.includes('text/plain') || false}
+                              onChange={() => handleToggleFileType('text/plain')}
+                              className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                            />
+                            <span className="text-sm text-gray-700">Text Files (.txt)</span>
+                          </label>
+                        </div>
+                        <p className="mt-2 text-sm text-gray-500">
+                          Select which file types users can upload in chat conversations
+                        </p>
+                      </div>
+
+                      {/* Last Updated */}
+                      {uploadSettings?.updatedAt && (
+                        <p className="text-xs text-gray-500">
+                          Last updated: {formatDate(uploadSettings.updatedAt)} by {uploadSettings.updatedBy}
                         </p>
                       )}
                     </div>

@@ -5,12 +5,20 @@ import { ArrowUp } from 'lucide-react';
 import VoiceInput from './VoiceInput';
 import FileUpload from './FileUpload';
 
+interface UrlSourceInfo {
+  filename: string;
+  originalUrl: string;
+  sourceType: 'web' | 'youtube';
+  title?: string;
+}
+
 interface MessageInputProps {
   onSend: (message: string) => void;
   disabled?: boolean;
   threadId: string | null;
   currentUploads: string[];
   onUploadComplete: (filename: string) => void;
+  onUrlSourceAdded?: (source: UrlSourceInfo) => void;
 }
 
 export default function MessageInput({
@@ -19,6 +27,7 @@ export default function MessageInput({
   threadId,
   currentUploads,
   onUploadComplete,
+  onUrlSourceAdded,
 }: MessageInputProps) {
   const [message, setMessage] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -89,6 +98,7 @@ export default function MessageInput({
               threadId={threadId}
               currentUploads={currentUploads}
               onUploadComplete={onUploadComplete}
+              onUrlSourceAdded={onUrlSourceAdded}
               disabled={disabled}
             />
           </div>

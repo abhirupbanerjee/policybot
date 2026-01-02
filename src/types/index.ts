@@ -119,6 +119,15 @@ export interface GeneratedImageInfo {
   model?: string;
 }
 
+// URL source info for web/youtube content extracted to thread
+export interface UrlSource {
+  filename: string;
+  originalUrl: string;
+  sourceType: 'web' | 'youtube';
+  title?: string;
+  extractedAt: string;
+}
+
 // Visualization data extracted from data_source or chart_gen tool
 export interface MessageVisualization {
   chartType: 'bar' | 'line' | 'pie' | 'area' | 'scatter' | 'radar' | 'table';

@@ -1,7 +1,21 @@
 'use client';
 
-import { useState, useRef, useCallback } from 'react';
-import { Paperclip, FileText, Upload, Loader2, ImageIcon } from 'lucide-react';
+import { useState, useRef, useCallback, useEffect } from 'react';
+import {
+  Paperclip,
+  FileText,
+  Upload,
+  Loader2,
+  ImageIcon,
+  Globe,
+  Youtube,
+  Link as LinkIcon,
+  X,
+  Plus,
+  CheckCircle2,
+  AlertCircle,
+  Info,
+} from 'lucide-react';
 import Modal from '@/components/ui/Modal';
 
 // Allowed file types (must match config/defaults.json)
@@ -16,24 +30,112 @@ const ALLOWED_EXTENSIONS = '.pdf,.png,.jpg,.jpeg,.txt';
 const MAX_FILE_SIZE_MB = 10;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 
+type UploadTab = 'file' | 'web' | 'youtube';
+
+interface UrlSourceInfo {
+  filename: string;
+  originalUrl: string;
+  sourceType: 'web' | 'youtube';
+  title?: string;
+}
+
 interface FileUploadProps {
   threadId: string | null;
   currentUploads: string[];
   onUploadComplete: (filename: string) => void;
+  onUrlSourceAdded?: (source: UrlSourceInfo) => void;
   disabled?: boolean;
+}
+
+// Queue item types
+type QueueItemType = 'file' | 'web' | 'youtube';
+type QueueItemStatus = 'pending' | 'uploading' | 'success' | 'error';
+
+interface QueueItem {
+  id: string;
+  type: QueueItemType;
+  name: string;
+  file?: File;
+  url?: string;
+  status: QueueItemStatus;
+  error?: string;
+}
+
+// Helper to validate YouTube URL
+function isYouTubeUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url);
+    return (
+      parsed.hostname === 'youtube.com' ||
+      parsed.hostname === 'www.youtube.com' ||
+      parsed.hostname === 'youtu.be' ||
+      parsed.hostname === 'm.youtube.com'
+    );
+  } catch {
+    return false;
+  }
+}
+
+// Helper to validate URL
+function isValidUrl(url: string): boolean {
+  try {
+    new URL(url);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Generate unique ID
+function generateId(): string {
+  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
 
 export default function FileUpload({
   threadId,
   currentUploads,
   onUploadComplete,
+  onUrlSourceAdded,
   disabled,
 }: FileUploadProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<UploadTab>('file');
   const [isDragging, setIsDragging] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [webUrl, setWebUrl] = useState('');
+  const [youtubeUrl, setYoutubeUrl] = useState('');
+  const [webEnabled, setWebEnabled] = useState(false);
+  const [youtubeEnabled, setYoutubeEnabled] = useState(false);
+  const [queue, setQueue] = useState<QueueItem[]>([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [inputError, setInputError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Check if URL extraction is available
+  useEffect(() => {
+    const checkCapabilities = async () => {
+      try {
+        const response = await fetch('/api/admin/documents/url');
+        if (response.ok) {
+          const data = await response.json();
+          setWebEnabled(data.tavilyConfigured || false);
+          setYoutubeEnabled(data.youtubeSupadataEnabled || false);
+        }
+      } catch {
+        // Silently fail - features just won't be available
+      }
+    };
+    checkCapabilities();
+  }, []);
+
+  // Reset queue when modal closes
+  useEffect(() => {
+    if (!isModalOpen) {
+      setQueue([]);
+      setWebUrl('');
+      setYoutubeUrl('');
+      setInputError(null);
+    }
+  }, [isModalOpen]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -45,68 +147,301 @@ export default function FileUpload({
     setIsDragging(false);
   }, []);
 
-  const handleFile = useCallback(async (file: File) => {
-    setError(null);
-
-    if (!threadId) {
-      setError('Please start a conversation first');
-      return;
-    }
+  // Add file to queue
+  const addFileToQueue = useCallback((file: File) => {
+    setInputError(null);
 
     if (!ALLOWED_TYPES.includes(file.type)) {
-      setError('Invalid file type. Allowed: PDF, PNG, JPG, TXT');
+      setInputError('Invalid file type. Allowed: PDF, PNG, JPG, TXT');
       return;
     }
 
     if (file.size > MAX_FILE_SIZE_BYTES) {
-      setError(`File too large (max ${MAX_FILE_SIZE_MB}MB)`);
+      setInputError(`File too large (max ${MAX_FILE_SIZE_MB}MB)`);
       return;
     }
 
-    setUploading(true);
+    // Check for duplicates
+    const isDuplicate = queue.some(
+      (item) => item.type === 'file' && item.name === file.name
+    );
+    if (isDuplicate) {
+      setInputError('This file is already in the queue');
+      return;
+    }
+
+    setQueue((prev) => [
+      ...prev,
+      {
+        id: generateId(),
+        type: 'file',
+        name: file.name,
+        file,
+        status: 'pending',
+      },
+    ]);
+  }, [queue]);
+
+  // Add web URL to queue
+  const addWebUrlToQueue = useCallback(() => {
+    setInputError(null);
+
+    if (!webUrl.trim()) {
+      setInputError('Please enter a URL');
+      return;
+    }
+
+    if (!isValidUrl(webUrl)) {
+      setInputError('Please enter a valid URL');
+      return;
+    }
+
+    // Check for duplicates
+    const isDuplicate = queue.some(
+      (item) => item.type === 'web' && item.url === webUrl
+    );
+    if (isDuplicate) {
+      setInputError('This URL is already in the queue');
+      return;
+    }
 
     try {
-      const formData = new FormData();
-      formData.append('file', file);
+      const urlObj = new URL(webUrl);
+      setQueue((prev) => [
+        ...prev,
+        {
+          id: generateId(),
+          type: 'web',
+          name: urlObj.hostname + (urlObj.pathname !== '/' ? urlObj.pathname.slice(0, 30) : ''),
+          url: webUrl,
+          status: 'pending',
+        },
+      ]);
+      setWebUrl('');
+    } catch {
+      setInputError('Invalid URL format');
+    }
+  }, [webUrl, queue]);
 
-      const response = await fetch(`/api/threads/${threadId}/upload`, {
-        method: 'POST',
-        body: formData,
-      });
+  // Add YouTube URL to queue
+  const addYoutubeUrlToQueue = useCallback(() => {
+    setInputError(null);
 
-      if (!response.ok) {
+    if (!youtubeUrl.trim()) {
+      setInputError('Please enter a YouTube URL');
+      return;
+    }
+
+    if (!isValidUrl(youtubeUrl)) {
+      setInputError('Please enter a valid URL');
+      return;
+    }
+
+    if (!isYouTubeUrl(youtubeUrl)) {
+      setInputError('Please enter a valid YouTube URL');
+      return;
+    }
+
+    // Check for duplicates
+    const isDuplicate = queue.some(
+      (item) => item.type === 'youtube' && item.url === youtubeUrl
+    );
+    if (isDuplicate) {
+      setInputError('This video is already in the queue');
+      return;
+    }
+
+    setQueue((prev) => [
+      ...prev,
+      {
+        id: generateId(),
+        type: 'youtube',
+        name: youtubeUrl.includes('youtu.be')
+          ? youtubeUrl.split('/').pop() || 'YouTube Video'
+          : new URL(youtubeUrl).searchParams.get('v') || 'YouTube Video',
+        url: youtubeUrl,
+        status: 'pending',
+      },
+    ]);
+    setYoutubeUrl('');
+  }, [youtubeUrl, queue]);
+
+  // Remove item from queue
+  const removeFromQueue = useCallback((id: string) => {
+    setQueue((prev) => prev.filter((item) => item.id !== id));
+  }, []);
+
+  // Process single upload
+  const processUpload = async (item: QueueItem): Promise<{ success: boolean; data?: Record<string, unknown>; error?: string }> => {
+    if (!threadId) {
+      return { success: false, error: 'No thread selected' };
+    }
+
+    try {
+      if (item.type === 'file' && item.file) {
+        const formData = new FormData();
+        formData.append('file', item.file);
+
+        const response = await fetch(`/api/threads/${threadId}/upload`, {
+          method: 'POST',
+          body: formData,
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          return { success: false, error: data.error || 'Upload failed' };
+        }
+
         const data = await response.json();
-        throw new Error(data.error || 'Upload failed');
+        return { success: true, data };
+      } else if (item.url) {
+        const response = await fetch(`/api/threads/${threadId}/upload`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: item.url, type: item.type }),
+        });
+
+        if (!response.ok) {
+          const data = await response.json();
+          return { success: false, error: data.error || 'Extraction failed' };
+        }
+
+        const data = await response.json();
+        return { success: true, data };
       }
 
-      const data = await response.json();
-      onUploadComplete(data.filename);
-      setIsModalOpen(false);
+      return { success: false, error: 'Invalid queue item' };
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload failed');
-    } finally {
-      setUploading(false);
+      return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
     }
-  }, [threadId, onUploadComplete]);
+  };
+
+  // Process all uploads in parallel
+  const processAllUploads = useCallback(async () => {
+    if (!threadId || queue.length === 0) return;
+
+    setIsProcessing(true);
+
+    // Mark all as uploading
+    setQueue((prev) =>
+      prev.map((item) =>
+        item.status === 'pending' ? { ...item, status: 'uploading' as QueueItemStatus } : item
+      )
+    );
+
+    // Process all in parallel
+    const pendingItems = queue.filter((item) => item.status === 'pending' || item.status === 'uploading');
+    const results = await Promise.all(
+      pendingItems.map(async (item) => {
+        const result = await processUpload(item);
+        return { item, result };
+      })
+    );
+
+    // Update queue with results
+    setQueue((prev) =>
+      prev.map((item) => {
+        const result = results.find((r) => r.item.id === item.id);
+        if (result) {
+          if (result.result.success) {
+            return { ...item, status: 'success' as QueueItemStatus };
+          } else {
+            return { ...item, status: 'error' as QueueItemStatus, error: result.result.error };
+          }
+        }
+        return item;
+      })
+    );
+
+    // Notify parent of successful uploads
+    for (const { item, result } of results) {
+      if (result.success && result.data) {
+        onUploadComplete(result.data.filename as string);
+
+        // Notify about URL sources
+        if (onUrlSourceAdded && result.data.sourceType) {
+          onUrlSourceAdded({
+            filename: result.data.filename as string,
+            originalUrl: (result.data.originalUrl as string) || item.url || '',
+            sourceType: result.data.sourceType as 'web' | 'youtube',
+            title: result.data.title as string | undefined,
+          });
+        }
+      }
+    }
+
+    setIsProcessing(false);
+
+    // Auto-close if all successful
+    const allSuccessful = results.every((r) => r.result.success);
+    if (allSuccessful && results.length > 0) {
+      setTimeout(() => {
+        setIsModalOpen(false);
+      }, 500);
+    }
+  }, [threadId, queue, onUploadComplete, onUrlSourceAdded]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
 
     const files = Array.from(e.dataTransfer.files);
-    if (files.length > 0) {
-      handleFile(files[0]);
-    }
-  }, [handleFile]);
+    files.forEach((file) => addFileToQueue(file));
+  }, [addFileToQueue]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
-    if (files && files.length > 0) {
-      handleFile(files[0]);
+    if (files) {
+      Array.from(files).forEach((file) => addFileToQueue(file));
     }
     // Reset input
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
+    }
+  };
+
+  // Tab configuration with disabled state messages
+  const tabs: { id: UploadTab; label: string; icon: React.ReactNode; enabled: boolean; disabledMessage?: string }[] = [
+    { id: 'file', label: 'File', icon: <FileText size={16} />, enabled: true },
+    {
+      id: 'web',
+      label: 'Web URL',
+      icon: <Globe size={16} />,
+      enabled: webEnabled,
+      disabledMessage: 'Web extraction requires Tavily API key. Contact admin to enable.',
+    },
+    {
+      id: 'youtube',
+      label: 'YouTube',
+      icon: <Youtube size={16} />,
+      enabled: youtubeEnabled,
+      disabledMessage: 'YouTube extraction requires Supadata API key. Contact admin to enable.',
+    },
+  ];
+
+  const pendingCount = queue.filter((item) => item.status === 'pending').length;
+  const successCount = queue.filter((item) => item.status === 'success').length;
+  const errorCount = queue.filter((item) => item.status === 'error').length;
+
+  // Get icon for queue item
+  const getQueueItemIcon = (item: QueueItem) => {
+    if (item.status === 'uploading') {
+      return <Loader2 size={14} className="animate-spin text-blue-500" />;
+    }
+    if (item.status === 'success') {
+      return <CheckCircle2 size={14} className="text-green-500" />;
+    }
+    if (item.status === 'error') {
+      return <AlertCircle size={14} className="text-red-500" />;
+    }
+
+    switch (item.type) {
+      case 'file':
+        return <FileText size={14} className="text-gray-500" />;
+      case 'web':
+        return <Globe size={14} className="text-green-500" />;
+      case 'youtube':
+        return <Youtube size={14} className="text-red-500" />;
     }
   };
 
@@ -116,7 +451,7 @@ export default function FileUpload({
         onClick={() => setIsModalOpen(true)}
         disabled={disabled || !threadId}
         className="p-2 text-gray-500 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-200"
-        title={`Attach file (PDF, PNG, JPG, TXT - max ${MAX_FILE_SIZE_MB}MB)`}
+        title="Attach content (File, Web URL, YouTube)"
         onMouseEnter={(e) => {
           if (!disabled && threadId) {
             e.currentTarget.style.color = 'var(--accent-color)';
@@ -131,86 +466,252 @@ export default function FileUpload({
 
       <Modal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
-        title="Upload File"
+        onClose={() => !isProcessing && setIsModalOpen(false)}
+        title="Add Content"
       >
-        <div
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-          className="border-2 border-dashed rounded-lg p-8 text-center transition-colors"
-          style={{
-            borderColor: isDragging ? 'var(--accent-color)' : '#d1d5db',
-            backgroundColor: isDragging ? 'var(--accent-lighter)' : 'transparent',
-          }}
-        >
-          {uploading ? (
-            <div className="flex flex-col items-center gap-3">
-              <Loader2 className="w-10 h-10 animate-spin" style={{ color: 'var(--accent-color)' }} />
-              <p className="text-gray-600">Uploading...</p>
+        {/* Tabs - show all tabs, disabled ones with tooltip */}
+        <div className="flex border-b mb-4">
+          {tabs.map((tab) => (
+            <div key={tab.id} className="relative group">
+              <button
+                onClick={() => {
+                  if (tab.enabled) {
+                    setActiveTab(tab.id);
+                    setInputError(null);
+                  }
+                }}
+                disabled={!tab.enabled}
+                className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                  !tab.enabled
+                    ? 'border-transparent text-gray-300 cursor-not-allowed'
+                    : activeTab === tab.id
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                {tab.icon}
+                {tab.label}
+              </button>
+              {/* Tooltip for disabled tabs */}
+              {!tab.enabled && tab.disabledMessage && (
+                <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50 pointer-events-none">
+                  <div className="flex items-center gap-1.5">
+                    <Info size={12} />
+                    {tab.disabledMessage}
+                  </div>
+                  <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900" />
+                </div>
+              )}
             </div>
-          ) : (
-            <>
-              <Upload className="w-10 h-10 text-gray-400 mx-auto mb-3" />
-              <p className="text-gray-600 mb-2">
-                Drag & drop a file here, or{' '}
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  className="hover:underline"
-                  style={{ color: 'var(--accent-color)' }}
-                >
-                  browse
-                </button>
-              </p>
-              <div className="flex items-center justify-center gap-4 text-sm text-gray-500">
-                <span className="flex items-center gap-1">
-                  <FileText size={14} />
-                  PDF, TXT
-                </span>
-                <span className="flex items-center gap-1">
-                  <ImageIcon size={14} />
-                  PNG, JPG
-                </span>
-                <span>Max {MAX_FILE_SIZE_MB}MB</span>
-              </div>
-            </>
-          )}
+          ))}
         </div>
+
+        {/* File Tab */}
+        {activeTab === 'file' && (
+          <div
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            className="border-2 border-dashed rounded-lg p-6 text-center transition-colors"
+            style={{
+              borderColor: isDragging ? 'var(--accent-color)' : '#d1d5db',
+              backgroundColor: isDragging ? 'var(--accent-lighter)' : 'transparent',
+            }}
+          >
+            <Upload className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+            <p className="text-gray-600 mb-2 text-sm">
+              Drag & drop files here, or{' '}
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="hover:underline"
+                style={{ color: 'var(--accent-color)' }}
+              >
+                browse
+              </button>
+            </p>
+            <div className="flex items-center justify-center gap-3 text-xs text-gray-500">
+              <span className="flex items-center gap-1">
+                <FileText size={12} />
+                PDF, TXT
+              </span>
+              <span className="flex items-center gap-1">
+                <ImageIcon size={12} />
+                PNG, JPG
+              </span>
+              <span>Max {MAX_FILE_SIZE_MB}MB</span>
+            </div>
+          </div>
+        )}
+
+        {/* Web URL Tab */}
+        {activeTab === 'web' && (
+          <div className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                Web Page URL
+              </label>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <LinkIcon size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="url"
+                    value={webUrl}
+                    onChange={(e) => setWebUrl(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && addWebUrlToQueue()}
+                    placeholder="https://example.com/article"
+                    className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                    disabled={isProcessing}
+                  />
+                </div>
+                <button
+                  onClick={addWebUrlToQueue}
+                  disabled={!webUrl.trim() || isProcessing}
+                  className="px-3 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Add to queue"
+                >
+                  <Plus size={18} />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* YouTube Tab */}
+        {activeTab === 'youtube' && (
+          <div className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                YouTube Video URL
+              </label>
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Youtube size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+                  <input
+                    type="url"
+                    value={youtubeUrl}
+                    onChange={(e) => setYoutubeUrl(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && addYoutubeUrlToQueue()}
+                    placeholder="https://youtube.com/watch?v=..."
+                    className="w-full pl-10 pr-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                    disabled={isProcessing}
+                  />
+                </div>
+                <button
+                  onClick={addYoutubeUrlToQueue}
+                  disabled={!youtubeUrl.trim() || isProcessing}
+                  className="px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                  title="Add to queue"
+                >
+                  <Plus size={18} />
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Input Error */}
+        {inputError && (
+          <div className="mt-3 p-2 bg-red-50 text-red-600 rounded-lg text-sm flex items-center gap-2">
+            <AlertCircle size={14} />
+            {inputError}
+          </div>
+        )}
+
+        {/* Queue */}
+        {queue.length > 0 && (
+          <div className="mt-4">
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="text-sm font-medium text-gray-700">
+                Upload Queue ({queue.length})
+              </h4>
+              {(successCount > 0 || errorCount > 0) && (
+                <div className="flex items-center gap-3 text-xs">
+                  {successCount > 0 && (
+                    <span className="flex items-center gap-1 text-green-600">
+                      <CheckCircle2 size={12} />
+                      {successCount} done
+                    </span>
+                  )}
+                  {errorCount > 0 && (
+                    <span className="flex items-center gap-1 text-red-600">
+                      <AlertCircle size={12} />
+                      {errorCount} failed
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="border rounded-lg divide-y max-h-48 overflow-y-auto">
+              {queue.map((item) => (
+                <div
+                  key={item.id}
+                  className={`flex items-center gap-2 px-3 py-2 text-sm ${
+                    item.status === 'error' ? 'bg-red-50' : item.status === 'success' ? 'bg-green-50' : ''
+                  }`}
+                >
+                  {getQueueItemIcon(item)}
+                  <span className="flex-1 truncate" title={item.url || item.name}>
+                    {item.name}
+                  </span>
+                  {item.error && (
+                    <span className="text-xs text-red-500 truncate max-w-[150px]" title={item.error}>
+                      {item.error}
+                    </span>
+                  )}
+                  {item.status === 'pending' && !isProcessing && (
+                    <button
+                      onClick={() => removeFromQueue(item.id)}
+                      className="p-1 text-gray-400 hover:text-red-500 transition-colors"
+                      title="Remove"
+                    >
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Upload Button */}
+        {queue.length > 0 && pendingCount > 0 && (
+          <button
+            onClick={processAllUploads}
+            disabled={isProcessing || !threadId}
+            className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+          >
+            {isProcessing ? (
+              <>
+                <Loader2 size={18} className="animate-spin" />
+                Processing {queue.filter((i) => i.status === 'uploading').length} of {queue.length}...
+              </>
+            ) : (
+              <>
+                <Upload size={18} />
+                Upload All ({pendingCount} item{pendingCount !== 1 ? 's' : ''})
+              </>
+            )}
+          </button>
+        )}
+
+        {/* Close button when done */}
+        {queue.length > 0 && pendingCount === 0 && !isProcessing && (
+          <button
+            onClick={() => setIsModalOpen(false)}
+            className="mt-4 w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-medium"
+          >
+            Close
+          </button>
+        )}
 
         <input
           ref={fileInputRef}
           type="file"
           accept={ALLOWED_EXTENSIONS}
           onChange={handleFileSelect}
+          multiple
           className="hidden"
         />
-
-        {error && (
-          <div className="mt-4 p-3 bg-red-50 text-red-600 rounded-lg text-sm">
-            {error}
-          </div>
-        )}
-
-        {currentUploads.length > 0 && (
-          <div className="mt-4">
-            <p className="text-sm text-gray-600 mb-2">
-              Uploaded files in this thread:
-            </p>
-            <div className="space-y-2">
-              {currentUploads.map((filename) => (
-                <div
-                  key={filename}
-                  className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg"
-                >
-                  <FileText size={16} style={{ color: 'var(--accent-color)' }} />
-                  <span className="text-sm text-gray-700 truncate flex-1">
-                    {filename}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
       </Modal>
     </>
   );

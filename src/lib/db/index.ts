@@ -1026,7 +1026,7 @@ function initializeDefaultSettings(database: Database.Database): void {
     'upload-limits': {
       maxFilesPerThread: 5,
       maxFileSizeMB: 10,
-      allowedTypes: ['application/pdf'],
+      allowedTypes: ['application/pdf', 'image/png', 'image/jpeg', 'text/plain'],
     },
     'acronym-mappings': {},
     'system-prompt': {

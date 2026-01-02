@@ -1,14 +1,15 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MessageSquare, RefreshCw, BookOpen, ChevronDown, ChevronUp, Share2 } from 'lucide-react';
-import type { Message, Thread, UserSubscription, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo } from '@/types';
+import type { Message, Thread, UserSubscription, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource } from '@/types';
 import MessageBubble from './MessageBubble';
 import MessageInput from './MessageInput';
 import Spinner from '@/components/ui/Spinner';
 import StarterButtons, { StarterPrompt } from './StarterButtons';
 import ProcessingIndicator from './ProcessingIndicator';
 import ShareModal from '@/components/sharing/ShareModal';
+import ArtifactsPanel from './ArtifactsPanel';
 import { useStreamingChat } from '@/hooks/useStreamingChat';
 
 interface WelcomeConfig {
@@ -43,6 +44,7 @@ export default function ChatWindow({
 }: ChatWindowProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [uploads, setUploads] = useState<string[]>([]);
+  const [urlSources, setUrlSources] = useState<UrlSource[]>([]);
   const [showSummaryDetails, setShowSummaryDetails] = useState(false);
   const [summaryData, setSummaryData] = useState<ThreadSummary | null>(null);
   const [starterPrompts, setStarterPrompts] = useState<StarterPrompt[]>([]);
@@ -113,6 +115,17 @@ export default function ChatWindow({
   const [error, setError] = useState<string | null>(null);
   const [threadId, setThreadId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Compute generated docs and images from all messages for ArtifactsPanel
+  const { generatedDocs, generatedImages } = useMemo(() => {
+    const docs: GeneratedDocumentInfo[] = [];
+    const images: GeneratedImageInfo[] = [];
+    for (const msg of messages) {
+      if (msg.generatedDocuments) docs.push(...msg.generatedDocuments);
+      if (msg.generatedImages) images.push(...msg.generatedImages);
+    }
+    return { generatedDocs: docs, generatedImages: images };
+  }, [messages]);
 
   // Streaming chat hook
   const handleStreamComplete = useCallback((
@@ -315,6 +328,49 @@ export default function ChatWindow({
     setUploads((prev) => [...prev, filename]);
   };
 
+  const handleUrlSourceAdded = (source: {
+    filename: string;
+    originalUrl: string;
+    sourceType: 'web' | 'youtube';
+    title?: string;
+  }) => {
+    setUrlSources((prev) => [
+      ...prev,
+      {
+        ...source,
+        extractedAt: new Date().toISOString(),
+      },
+    ]);
+  };
+
+  const handleRemoveUpload = async (filename: string) => {
+    if (!threadId) return;
+    try {
+      const response = await fetch(`/api/threads/${threadId}/upload?filename=${encodeURIComponent(filename)}`, {
+        method: 'DELETE',
+      });
+      if (response.ok) {
+        setUploads((prev) => prev.filter((f) => f !== filename));
+      }
+    } catch (err) {
+      console.error('Failed to remove upload:', err);
+    }
+  };
+
+  const handleRemoveUrlSource = async (filename: string) => {
+    if (!threadId) return;
+    try {
+      const response = await fetch(`/api/threads/${threadId}/upload?filename=${encodeURIComponent(filename)}`, {
+        method: 'DELETE',
+      });
+      if (response.ok) {
+        setUrlSources((prev) => prev.filter((s) => s.filename !== filename));
+      }
+    } catch (err) {
+      console.error('Failed to remove URL source:', err);
+    }
+  };
+
   const retry = () => {
     setError(null);
   };
@@ -324,9 +380,11 @@ export default function ChatWindow({
   };
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Header */}
-      <header className="sticky top-0 z-10 bg-white border-b px-4 sm:px-6 py-3 sm:py-4 shadow-sm">
+    <div className="flex h-full">
+      {/* Main Chat Area */}
+      <div className="flex-1 flex flex-col h-full min-w-0">
+        {/* Header */}
+        <header className="sticky top-0 z-10 bg-white border-b px-4 sm:px-6 py-3 sm:py-4 shadow-sm">
         <div className="flex items-center justify-between">
           <div className="flex-1 min-w-0">
             <h1 className="text-base sm:text-lg font-semibold text-gray-900 text-center sm:text-left truncate">
@@ -484,17 +542,36 @@ export default function ChatWindow({
         threadId={threadId}
         currentUploads={uploads}
         onUploadComplete={handleUploadComplete}
+        onUrlSourceAdded={handleUrlSourceAdded}
       />
 
-      {/* Share Modal */}
-      {activeThread && (
-        <ShareModal
-          isOpen={showShareModal}
-          onClose={() => setShowShareModal(false)}
-          threadId={activeThread.id}
-          threadTitle={activeThread.title}
+        {/* Share Modal */}
+        {activeThread && (
+          <ShareModal
+            isOpen={showShareModal}
+            onClose={() => setShowShareModal(false)}
+            threadId={activeThread.id}
+            threadTitle={activeThread.title}
+          />
+        )}
+      </div>
+
+      {/* Artifacts Panel - Right Sidebar (hidden on mobile) */}
+      <div className="hidden lg:block">
+        <ArtifactsPanel
+          threadId={threadId}
+          uploads={uploads}
+          generatedDocs={generatedDocs}
+          generatedImages={generatedImages}
+          urlSources={urlSources}
+          onAddContent={() => {
+            // Scroll to input area and focus
+            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+          }}
+          onRemoveUpload={handleRemoveUpload}
+          onRemoveUrlSource={handleRemoveUrlSource}
         />
-      )}
+      </div>
     </div>
   );
 }

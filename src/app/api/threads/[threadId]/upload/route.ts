@@ -2,10 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
 import { saveUpload, deleteUpload, getThread } from '@/lib/threads';
 import { getUploadLimits } from '@/lib/db/config';
+import { extractWebContent, generateFilenameFromUrl, formatWebContentForIngestion, isTavilyConfigured } from '@/lib/tools/tavily';
+import { getYouTubeConfig, extractWithSupadata } from '@/lib/tools/youtube';
+import { extractVideoId, isYouTubeUrl as checkYouTubeUrl } from '@/lib/youtube';
 import type { UploadResponse, ApiError } from '@/types';
 
 interface RouteParams {
   params: Promise<{ threadId: string }>;
+}
+
+// URL upload request body
+interface UrlUploadRequest {
+  url: string;
+  type: 'web' | 'youtube';
 }
 
 export async function POST(request: NextRequest, { params }: RouteParams) {
@@ -29,7 +38,115 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       );
     }
 
-    // Get upload limits from config
+    // Detect content type to determine if this is a file upload or URL extraction
+    const contentType = request.headers.get('content-type') || '';
+
+    // Handle URL extraction (JSON request)
+    if (contentType.includes('application/json')) {
+      const body = await request.json() as UrlUploadRequest;
+      const { url, type } = body;
+
+      if (!url || !type) {
+        return NextResponse.json<ApiError>(
+          { error: 'URL and type are required', code: 'VALIDATION_ERROR' },
+          { status: 400 }
+        );
+      }
+
+      // Validate URL
+      try {
+        new URL(url);
+      } catch {
+        return NextResponse.json<ApiError>(
+          { error: 'Invalid URL format', code: 'VALIDATION_ERROR' },
+          { status: 400 }
+        );
+      }
+
+      let content: string;
+      let filename: string;
+      let title: string | undefined;
+
+      if (type === 'youtube') {
+        // Handle YouTube URL
+        if (!checkYouTubeUrl(url)) {
+          return NextResponse.json<ApiError>(
+            { error: 'Invalid YouTube URL', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        const videoId = extractVideoId(url);
+        if (!videoId) {
+          return NextResponse.json<ApiError>(
+            { error: 'Could not extract video ID from URL', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        const { config } = getYouTubeConfig();
+        if (!config.apiKey) {
+          return NextResponse.json<ApiError>(
+            { error: 'YouTube extraction not configured. Contact admin.', code: 'NOT_CONFIGURED' },
+            { status: 400 }
+          );
+        }
+
+        try {
+          const result = await extractWithSupadata(videoId, config.apiKey, config.preferredLanguage);
+          content = `Source: YouTube Video\nURL: ${url}\nVideo ID: ${videoId}\nLanguage: ${result.language}\nExtracted: ${new Date().toISOString()}\n\n---\n\n${result.transcript}`;
+          filename = `youtube-${Date.now()}-${videoId}.txt`;
+          title = `YouTube: ${videoId}`;
+        } catch (error) {
+          return NextResponse.json<ApiError>(
+            { error: error instanceof Error ? error.message : 'Failed to extract YouTube transcript', code: 'SERVICE_ERROR' },
+            { status: 500 }
+          );
+        }
+      } else {
+        // Handle Web URL
+        if (!isTavilyConfigured()) {
+          return NextResponse.json<ApiError>(
+            { error: 'Web extraction not configured. Contact admin.', code: 'NOT_CONFIGURED' },
+            { status: 400 }
+          );
+        }
+
+        const results = await extractWebContent([url]);
+        const result = results[0];
+
+        if (!result || !result.success || !result.content) {
+          return NextResponse.json<ApiError>(
+            { error: result?.error || 'Failed to extract web content', code: 'SERVICE_ERROR' },
+            { status: 500 }
+          );
+        }
+
+        content = formatWebContentForIngestion(url, result.content);
+        filename = generateFilenameFromUrl(url);
+        try {
+          const urlObj = new URL(url);
+          title = urlObj.hostname;
+        } catch {
+          title = undefined;
+        }
+      }
+
+      // Save extracted content as text file
+      const buffer = Buffer.from(content, 'utf-8');
+      const saveResult = await saveUpload(user.id, threadId, filename, buffer);
+
+      return NextResponse.json({
+        filename: saveResult.filename,
+        size: buffer.length,
+        uploadCount: saveResult.uploadCount,
+        sourceType: type,
+        originalUrl: url,
+        title,
+      });
+    }
+
+    // Handle file upload (multipart form data)
     const uploadLimits = getUploadLimits();
     const maxFileSizeBytes = uploadLimits.maxFileSizeMB * 1024 * 1024;
 

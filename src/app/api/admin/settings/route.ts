@@ -109,6 +109,7 @@ export async function GET() {
     const limitsMeta = getSettingMetadata('limits-settings');
     const modelTokensMeta = getSettingMetadata('model-token-limits');
     const tokenLimitsMeta = getSettingMetadata('token-limits-settings');
+    const uploadMeta = getSettingMetadata('upload-limits');
 
     return NextResponse.json({
       rag: {
@@ -175,7 +176,11 @@ export async function GET() {
         updatedAt: tokenLimitsMeta?.updatedAt || new Date().toISOString(),
         updatedBy: tokenLimitsMeta?.updatedBy || 'system',
       },
-      uploadLimits,
+      uploadLimits: {
+        ...uploadLimits,
+        updatedAt: uploadMeta?.updatedAt || new Date().toISOString(),
+        updatedBy: uploadMeta?.updatedBy || 'system',
+      },
       retentionSettings,
       availableModels: getAvailableModels(),
       modelPresets: MODEL_PRESETS,
