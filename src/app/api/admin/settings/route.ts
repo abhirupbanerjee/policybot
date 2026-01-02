@@ -477,11 +477,18 @@ export async function PUT(request: NextRequest) {
       }
 
       case 'uploadLimits': {
-        const { maxFilesPerInput, maxFileSizeMB, allowedTypes } = settings;
+        const { maxFilesPerInput, maxFilesPerThread, maxFileSizeMB, allowedTypes } = settings;
 
-        if (typeof maxFilesPerInput !== 'number' || maxFilesPerInput < 1 || maxFilesPerInput > 10) {
+        if (typeof maxFilesPerThread !== 'number' || maxFilesPerThread < 0 || maxFilesPerThread > 100) {
           return NextResponse.json<ApiError>(
-            { error: 'Max files per input must be between 1 and 10', code: 'VALIDATION_ERROR' },
+            { error: 'Max files per thread must be between 0 and 100', code: 'VALIDATION_ERROR' },
+            { status: 400 }
+          );
+        }
+
+        if (typeof maxFilesPerInput !== 'number' || maxFilesPerInput < 0 || maxFilesPerInput > maxFilesPerThread) {
+          return NextResponse.json<ApiError>(
+            { error: `Max files per input must be between 0 and ${maxFilesPerThread} (max per thread)`, code: 'VALIDATION_ERROR' },
             { status: 400 }
           );
         }
@@ -502,6 +509,7 @@ export async function PUT(request: NextRequest) {
 
         result = setUploadLimits({
           maxFilesPerInput,
+          maxFilesPerThread,
           maxFileSizeMB,
           allowedTypes,
         }, user.email);

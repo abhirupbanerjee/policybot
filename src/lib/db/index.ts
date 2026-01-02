@@ -1024,7 +1024,8 @@ function initializeDefaultSettings(database: Database.Database): void {
       cacheTTLSeconds: 3600,
     },
     'upload-limits': {
-      maxFilesPerThread: 5,
+      maxFilesPerInput: 5,
+      maxFilesPerThread: 10,
       maxFileSizeMB: 10,
       allowedTypes: ['application/pdf', 'image/png', 'image/jpeg', 'text/plain'],
     },

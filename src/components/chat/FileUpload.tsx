@@ -117,7 +117,8 @@ export default function FileUpload({
         const response = await fetch('/api/admin/documents/url');
         if (response.ok) {
           const data = await response.json();
-          setWebEnabled(data.tavilyConfigured || false);
+          // API returns webEnabled (not tavilyConfigured)
+          setWebEnabled(data.webEnabled || false);
           setYoutubeEnabled(data.youtubeSupadataEnabled || false);
         }
       } catch {
@@ -492,14 +493,14 @@ export default function FileUpload({
                 {tab.icon}
                 {tab.label}
               </button>
-              {/* Tooltip for disabled tabs */}
+              {/* Tooltip for disabled tabs - positioned below to avoid modal overflow */}
               {!tab.enabled && tab.disabledMessage && (
-                <div className="absolute left-1/2 -translate-x-1/2 bottom-full mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50 pointer-events-none">
-                  <div className="flex items-center gap-1.5">
-                    <Info size={12} />
-                    {tab.disabledMessage}
+                <div className="absolute left-0 top-full mt-1 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg opacity-0 group-hover:opacity-100 transition-opacity z-50 pointer-events-none shadow-lg max-w-xs">
+                  <div className="flex items-start gap-1.5">
+                    <Info size={12} className="flex-shrink-0 mt-0.5" />
+                    <span>{tab.disabledMessage}</span>
                   </div>
-                  <div className="absolute left-1/2 -translate-x-1/2 top-full w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900" />
+                  <div className="absolute left-4 bottom-full w-0 h-0 border-l-4 border-r-4 border-b-4 border-transparent border-b-gray-900" />
                 </div>
               )}
             </div>

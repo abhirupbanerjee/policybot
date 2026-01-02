@@ -427,6 +427,13 @@ export async function getUploadPaths(
     .map(u => u.filepath);
 }
 
+/**
+ * Get the number of uploads in a thread
+ */
+export function getThreadUploadCount(threadId: string): number {
+  return dbGetThreadUploadCount(threadId);
+}
+
 // ============ Category Operations ============
 
 /**

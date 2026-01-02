@@ -72,6 +72,20 @@ The SQLite database (`data/policy-bot.db`) stores all structured metadata with A
                                                 │ acknowledged_at │
                                                 │ acknowledged_by │
                                                 └─────────────────┘
+
+┌─────────────────┐     ┌─────────────────┐
+│  thread_shares  │     │share_access_log │
+│─────────────────│     │─────────────────│
+│ id (PK)         │◄────│ share_id (FK)   │
+│ thread_id (FK)  │     │ id (PK)         │
+│ share_token     │     │ accessed_by(FK) │
+│ created_by (FK) │     │ action          │
+│ allow_download  │     │ resource_type   │
+│ expires_at      │     │ resource_id     │
+│ view_count      │     │ accessed_at     │
+│ revoked_at      │     └─────────────────┘
+│ created_at      │
+└─────────────────┘
 ```
 
 ### Complete Schema Definition
@@ -542,6 +556,44 @@ CREATE TABLE IF NOT EXISTS archived_messages (
 
 CREATE INDEX IF NOT EXISTS idx_archived_messages_thread ON archived_messages(thread_id);
 CREATE INDEX IF NOT EXISTS idx_archived_messages_summary ON archived_messages(summary_id);
+
+-- ============ Thread Sharing ============
+
+-- Thread share links
+CREATE TABLE IF NOT EXISTS thread_shares (
+  id TEXT PRIMARY KEY,                    -- UUID
+  thread_id TEXT NOT NULL,
+  share_token TEXT UNIQUE NOT NULL,       -- URL-safe cryptographic token
+  created_by INTEGER NOT NULL,            -- User who created the share
+  allow_download INTEGER DEFAULT 1,       -- Can download attachments
+  expires_at DATETIME,                    -- NULL = never expires
+  view_count INTEGER DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  last_viewed_at DATETIME,
+  revoked_at DATETIME,                    -- NULL = active
+  FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE,
+  FOREIGN KEY (created_by) REFERENCES users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_thread_shares_token ON thread_shares(share_token);
+CREATE INDEX IF NOT EXISTS idx_thread_shares_thread ON thread_shares(thread_id);
+CREATE INDEX IF NOT EXISTS idx_thread_shares_creator ON thread_shares(created_by);
+
+-- Share access audit log
+CREATE TABLE IF NOT EXISTS share_access_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  share_id TEXT NOT NULL,
+  accessed_by INTEGER NOT NULL,           -- User who accessed
+  action TEXT NOT NULL CHECK (action IN ('view', 'download')),
+  resource_type TEXT,                     -- 'upload' or 'output' for downloads
+  resource_id TEXT,                       -- ID of downloaded resource
+  accessed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (share_id) REFERENCES thread_shares(id) ON DELETE CASCADE,
+  FOREIGN KEY (accessed_by) REFERENCES users(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_share_access_log_share ON share_access_log(share_id);
+CREATE INDEX IF NOT EXISTS idx_share_access_log_user ON share_access_log(accessed_by);
 
 -- ============ Triggers ============
 
@@ -1112,6 +1164,42 @@ Original messages preserved after summarization.
 | created_at | DATETIME | Original message timestamp |
 | archived_at | DATETIME | When archived |
 | summary_id | INTEGER | FK to thread_summaries.id |
+
+### thread_shares
+
+Secure share links for conversation threads.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | TEXT | UUID primary key |
+| thread_id | TEXT | FK to threads.id |
+| share_token | TEXT | Unique URL-safe cryptographic token (32 bytes, base64) |
+| created_by | INTEGER | FK to users.id (share creator) |
+| allow_download | INTEGER | 1=allow file downloads, 0=view only |
+| expires_at | DATETIME | Expiration timestamp (NULL = never expires) |
+| view_count | INTEGER | Number of times share has been viewed |
+| created_at | DATETIME | Share creation timestamp |
+| last_viewed_at | DATETIME | Most recent view timestamp |
+| revoked_at | DATETIME | Revocation timestamp (NULL = active) |
+
+**Share token generation:**
+```typescript
+const token = crypto.randomBytes(32).toString('base64url');
+```
+
+### share_access_log
+
+Audit trail for share access events.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INTEGER | Auto-increment primary key |
+| share_id | TEXT | FK to thread_shares.id |
+| accessed_by | INTEGER | FK to users.id (viewer) |
+| action | TEXT | `view` or `download` |
+| resource_type | TEXT | `upload` or `output` (for downloads) |
+| resource_id | TEXT | ID of downloaded resource |
+| accessed_at | DATETIME | Access timestamp |
 
 ---
 

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
-import { saveUpload, deleteUpload, getThread } from '@/lib/threads';
+import { saveUpload, deleteUpload, getThread, getThreadUploadCount } from '@/lib/threads';
 import { getUploadLimits } from '@/lib/db/config';
 import { extractWebContent, generateFilenameFromUrl, formatWebContentForIngestion, isTavilyConfigured } from '@/lib/tools/tavily';
 import { getYouTubeConfig, extractWithSupadata } from '@/lib/tools/youtube';
@@ -35,6 +35,17 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return NextResponse.json<ApiError>(
         { error: 'Thread not found', code: 'NOT_FOUND' },
         { status: 404 }
+      );
+    }
+
+    // Get upload limits and check per-thread limit
+    const uploadLimits = getUploadLimits();
+    const currentUploadCount = getThreadUploadCount(threadId);
+
+    if (uploadLimits.maxFilesPerThread > 0 && currentUploadCount >= uploadLimits.maxFilesPerThread) {
+      return NextResponse.json<ApiError>(
+        { error: `Thread has reached maximum file limit (${uploadLimits.maxFilesPerThread})`, code: 'THREAD_UPLOAD_LIMIT' },
+        { status: 400 }
       );
     }
 
@@ -147,7 +158,6 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     }
 
     // Handle file upload (multipart form data)
-    const uploadLimits = getUploadLimits();
     const maxFileSizeBytes = uploadLimits.maxFileSizeMB * 1024 * 1024;
 
     const formData = await request.formData();

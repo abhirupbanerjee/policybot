@@ -15,10 +15,12 @@ This document describes the AI tools system that extends the bot's capabilities 
 7. [Function API Tool](#function-api-tool)
 8. [Task Planner Tool](#task-planner-tool)
 9. [YouTube Tool](#youtube-tool)
-10. [Tool Routing](#tool-routing)
-11. [Tool Configuration](#tool-configuration)
-12. [Category-Level Overrides](#category-level-overrides)
-13. [API Reference](#api-reference)
+10. [Thread Sharing Tool](#thread-sharing-tool)
+11. [Email Tool](#email-tool)
+12. [Tool Routing](#tool-routing)
+13. [Tool Configuration](#tool-configuration)
+14. [Category-Level Overrides](#category-level-overrides)
+15. [API Reference](#api-reference)
 
 ---
 
@@ -1195,6 +1197,206 @@ interface YouTubeConfig {
 > 3. Recommended solutions
 >
 > Source: YouTube video "Policy Implementation Guide"
+
+---
+
+## Thread Sharing Tool
+
+### Purpose
+
+Enables users to share conversation threads with colleagues via secure, expiring links. Shared threads require authentication to view, ensuring data remains protected.
+
+### Features
+
+- **Secure Share Links**: Cryptographically generated tokens (32 bytes, URL-safe base64)
+- **Expiration Control**: Optional expiry dates for time-limited access
+- **Download Permissions**: Toggle whether recipients can download attached files
+- **View Tracking**: Track how many times a shared thread has been viewed
+- **Access Logging**: Audit trail of who accessed shared content
+- **Email Notifications**: Optional email alerts when sharing (requires `send_email` tool)
+
+### Configuration
+
+```typescript
+interface ShareThreadConfig {
+  defaultExpiryDays: number;        // Default share expiry (7 = 7 days, null = never)
+  allowDownloadsByDefault: boolean; // Default download permission
+  allowedRoles: ('admin' | 'superuser' | 'user')[]; // Who can share
+  maxSharesPerThread: number;       // Limit shares per thread (default: 10)
+  rateLimitPerHour: number;         // Admin-configurable rate limit
+}
+```
+
+### Default Configuration
+
+```json
+{
+  "enabled": false,
+  "config": {
+    "defaultExpiryDays": 7,
+    "allowDownloadsByDefault": true,
+    "allowedRoles": ["admin", "superuser", "user"],
+    "maxSharesPerThread": 10,
+    "rateLimitPerHour": 20
+  }
+}
+```
+
+### User Interface
+
+#### Sharing a Thread
+
+1. Click the **Share** button on a thread in the sidebar
+2. Configure share settings:
+   - **Allow Downloads**: Toggle file download permissions
+   - **Expiry**: Set expiration (7 days, 30 days, 90 days, or never)
+   - **Email Notification**: Optionally send email to recipients
+3. Click **Create Share Link**
+4. Copy the generated link or send via email
+
+#### Managing Shares
+
+- View active shares for your threads
+- See view count for each share
+- Revoke shares at any time
+
+### Shared Thread View
+
+When a recipient accesses a shared link:
+
+1. They must authenticate (sign in required)
+2. They see the full conversation history
+3. Sources and citations are visible
+4. Generated files appear inline with their messages
+5. If downloads are enabled, files can be downloaded
+
+### Example Usage
+
+**User clicks Share on a thread:**
+
+**Share Modal:**
+> Share this conversation
+>
+> 🔗 Copy Link  |  📧 Send Email
+>
+> Options:
+> - [x] Allow file downloads
+> - Expires: 7 days ▼
+>
+> [Create Share]
+
+**After creating:**
+> ✅ Share link created!
+>
+> `https://policybot.example.com/shared/abc123xyz...`
+>
+> Link expires: Jan 8, 2026
+
+### API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/threads/[threadId]/share` | Create new share |
+| GET | `/api/threads/[threadId]/share` | List shares for thread |
+| PATCH | `/api/shares/[shareId]` | Update share settings |
+| DELETE | `/api/shares/[shareId]` | Revoke share |
+| GET | `/api/shared/[token]` | View shared thread |
+| GET | `/api/shared/[token]/download/[type]/[id]` | Download file |
+
+---
+
+## Email Tool
+
+### Purpose
+
+Enables sending email notifications via SendGrid. Used by other tools (like `share_thread`) to send alerts and notifications.
+
+### Features
+
+- **SendGrid Integration**: Reliable email delivery
+- **Admin-Configurable Sender**: Customize sender email and name
+- **Rate Limiting**: Prevent abuse with configurable limits
+
+### Configuration
+
+```typescript
+interface SendEmailConfig {
+  sendgridApiKey: string;      // SendGrid API key
+  senderEmail: string;         // Sender email address
+  senderName: string;          // Display name (default: "Policy Bot")
+  rateLimitPerHour: number;    // Rate limit (default: 50)
+}
+```
+
+### Default Configuration
+
+```json
+{
+  "enabled": false,
+  "config": {
+    "sendgridApiKey": "",
+    "senderEmail": "",
+    "senderName": "Policy Bot",
+    "rateLimitPerHour": 50
+  }
+}
+```
+
+### Setup
+
+1. Navigate to **Admin > Tools > Email**
+2. Enable the tool
+3. Enter your SendGrid API key
+4. Configure sender email (must be verified in SendGrid)
+5. Set sender name
+6. Save and test
+
+### Email Templates
+
+#### Thread Share Notification
+
+When a user shares a thread with email notification:
+
+```
+Subject: [User Name] shared a conversation with you
+
+Hi,
+
+[User Name] has shared a Policy Bot conversation with you:
+
+"[Thread Title]"
+
+View the conversation: [Share Link]
+
+This link will expire on [Expiry Date].
+
+---
+Policy Bot
+```
+
+### Example Usage
+
+The email tool is typically used by other tools rather than directly by users:
+
+```typescript
+// Used internally by share_thread tool
+await sendShareNotification({
+  recipientEmail: 'colleague@example.com',
+  sharedBy: 'John Doe',
+  threadTitle: 'Leave Policy Discussion',
+  shareUrl: 'https://policybot.example.com/shared/abc123',
+  expiresAt: new Date('2026-01-08')
+});
+```
+
+### Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| Emails not sending | Verify SendGrid API key is valid |
+| Emails going to spam | Verify sender domain in SendGrid |
+| Rate limit errors | Increase `rateLimitPerHour` or wait |
+| Invalid sender | Use a verified sender email in SendGrid |
 
 ---
 

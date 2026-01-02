@@ -183,6 +183,7 @@ interface LimitsSettings {
 
 interface UploadSettings {
   maxFilesPerInput: number;
+  maxFilesPerThread: number;
   maxFileSizeMB: number;
   allowedTypes: string[];
   updatedAt?: string;
@@ -664,6 +665,7 @@ export default function AdminPage() {
         setUploadSettingsState(data.uploadLimits);
         setEditedUpload({
           maxFilesPerInput: data.uploadLimits.maxFilesPerInput,
+          maxFilesPerThread: data.uploadLimits.maxFilesPerThread ?? 10,
           maxFileSizeMB: data.uploadLimits.maxFileSizeMB,
           allowedTypes: data.uploadLimits.allowedTypes || [],
         });
@@ -2132,6 +2134,7 @@ export default function AdminPage() {
     if (uploadSettings) {
       setEditedUpload({
         maxFilesPerInput: uploadSettings.maxFilesPerInput,
+        maxFilesPerThread: uploadSettings.maxFilesPerThread ?? 10,
         maxFileSizeMB: uploadSettings.maxFileSizeMB,
         allowedTypes: uploadSettings.allowedTypes || [],
       });
@@ -4817,6 +4820,55 @@ export default function AdminPage() {
                     <div className="px-6 py-12 flex justify-center"><Spinner size="lg" /></div>
                   ) : editedUpload ? (
                     <div className="p-6 space-y-6">
+                      {/* Max Files Per Upload */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-900 mb-1">Max Files Per Upload</label>
+                        <input
+                          type="number"
+                          min="0"
+                          max={editedUpload.maxFilesPerThread || 10}
+                          value={editedUpload.maxFilesPerInput}
+                          onChange={(e) => {
+                            const value = parseInt(e.target.value) || 0;
+                            const maxPerThread = editedUpload.maxFilesPerThread || 10;
+                            setEditedUpload({
+                              ...editedUpload,
+                              maxFilesPerInput: Math.min(value, maxPerThread)
+                            });
+                            setUploadModified(true);
+                          }}
+                          className="w-full max-w-xs px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                        <p className="mt-1 text-sm text-gray-500">
+                          Maximum files per upload batch (0 disables, must be ≤ Max Files Per Thread)
+                        </p>
+                      </div>
+
+                      {/* Max Files Per Thread */}
+                      <div>
+                        <label className="block text-sm font-medium text-gray-900 mb-1">Max Files Per Thread</label>
+                        <input
+                          type="number"
+                          min="0"
+                          max="100"
+                          value={editedUpload.maxFilesPerThread}
+                          onChange={(e) => {
+                            const newMax = parseInt(e.target.value) || 0;
+                            setEditedUpload({
+                              ...editedUpload,
+                              maxFilesPerThread: newMax,
+                              // Auto-adjust maxFilesPerInput if it exceeds new maxFilesPerThread
+                              maxFilesPerInput: Math.min(editedUpload.maxFilesPerInput, newMax)
+                            });
+                            setUploadModified(true);
+                          }}
+                          className="w-full max-w-xs px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                        <p className="mt-1 text-sm text-gray-500">
+                          Maximum total files allowed per thread (0-100, 0 disables uploads)
+                        </p>
+                      </div>
+
                       {/* Max File Size */}
                       <div>
                         <label className="block text-sm font-medium text-gray-900 mb-1">Maximum File Size (MB)</label>

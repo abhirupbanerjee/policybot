@@ -37,6 +37,12 @@ An enterprise RAG platform for policy document management and intelligent queryi
 - **Thread Summarization** - Compress long conversations
 - **Reranking** - Cohere API or local Transformers.js
 
+### Collaboration
+- **Thread Sharing** - Share conversations via secure links with expiration
+- **Email Notifications** - Optional SendGrid integration for share alerts
+- **Access Control** - Authentication required to view shared content
+- **Download Control** - Configurable file download permissions per share
+
 ### Tools
 - **Web Search** - Tavily integration for current information
 - **Data Sources** - Query external APIs and CSV files
@@ -44,11 +50,6 @@ An enterprise RAG platform for policy document management and intelligent queryi
 - **Chart Generation** - Visualize data in responses
 - **Task Planning** - Multi-step workflow execution
 - **YouTube** - Extract and query video transcripts
-
-### Progressive Web App
-- Installable on desktop/mobile
-- Offline support with automatic reconnection
-- Custom theming
 
 ## Directory Structure
 

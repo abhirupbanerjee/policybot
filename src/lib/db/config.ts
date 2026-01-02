@@ -49,6 +49,7 @@ export interface TavilySettings {
 
 export interface UploadLimits {
   maxFilesPerInput: number;
+  maxFilesPerThread: number;
   maxFileSizeMB: number;
   allowedTypes: string[];
 }

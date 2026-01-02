@@ -13,12 +13,13 @@ This guide explains how to use Policy Bot as a regular user to chat with the AI 
 5. [Working with Documents](#5-working-with-documents)
 6. [Voice Input](#6-voice-input)
 7. [Using Tools](#7-using-tools)
-8. [Categories & Subscriptions](#8-categories--subscriptions)
-9. [Mobile & PWA](#9-mobile--pwa)
-10. [Personalization](#10-personalization)
-11. [Tips & Best Practices](#11-tips--best-practices)
-12. [Troubleshooting](#12-troubleshooting)
-13. [Quick Reference](#13-quick-reference)
+8. [Sharing Threads](#8-sharing-threads)
+9. [Categories & Subscriptions](#9-categories--subscriptions)
+10. [Mobile Access](#10-mobile-access)
+11. [Personalization](#11-personalization)
+12. [Tips & Best Practices](#12-tips--best-practices)
+13. [Troubleshooting](#13-troubleshooting)
+14. [Quick Reference](#14-quick-reference)
 
 ---
 
@@ -36,7 +37,7 @@ As a user, you can:
 - Use voice input for hands-free questioning
 - Access documents from your subscribed categories
 - Personalize the interface with custom colors
-- Install Policy Bot as an app on mobile or desktop
+- Access Policy Bot from any device with a web browser
 
 ### Role Overview
 
@@ -282,7 +283,76 @@ For complex multi-step requests:
 
 ---
 
-## 8. Categories & Subscriptions
+## 8. Sharing Threads
+
+### What is Thread Sharing?
+
+Thread sharing allows you to share a conversation with colleagues via a secure link. Recipients must sign in to view the shared thread, keeping your organization's information protected.
+
+### Sharing a Thread
+
+1. Hover over a thread in the sidebar
+2. Click the **Share** icon (or right-click and select "Share")
+3. Configure share options:
+   - **Allow Downloads**: Let recipients download attached files
+   - **Expiration**: Set when the link expires (7, 30, 90 days, or never)
+   - **Email Notification**: Optionally notify recipients by email
+4. Click **Create Share Link**
+5. Copy the link to share
+
+### Share Options
+
+| Option | Description |
+|--------|-------------|
+| **Allow Downloads** | Recipients can download files attached to the thread |
+| **Expiration** | Link becomes invalid after this time |
+| **Email Notification** | Send an email with the link (if enabled by admin) |
+
+### Viewing a Shared Thread
+
+When someone shares a thread with you:
+
+1. Click the share link you received
+2. Sign in if not already logged in
+3. View the conversation with all messages and sources
+4. Generated files appear inline with their associated messages
+5. Download files if the share creator allowed downloads
+
+### Managing Your Shares
+
+To view or revoke shares you've created:
+
+1. Click the Share icon on the thread
+2. View **Active Shares** showing:
+   - View count
+   - Expiration date
+   - Download permission
+3. Click **Revoke** to disable a share link
+
+### Share Limitations
+
+- You can only share your own threads
+- Shares require authentication to view
+- Expired or revoked shares show an error message
+- Your admin may have disabled sharing
+
+### Example
+
+**Sharing a policy discussion:**
+
+1. You have a thread about leave policy clarifications
+2. Click Share on the thread
+3. Enable "Allow Downloads" (thread has a PDF summary)
+4. Set expiration to 7 days
+5. Enter colleague's email for notification
+6. Click **Create Share**
+7. Colleague receives email with link
+8. They sign in and view the conversation
+9. They can download the PDF summary
+
+---
+
+## 9. Categories & Subscriptions
 
 ### Understanding Categories
 
@@ -315,50 +385,30 @@ If you need access to additional categories:
 
 ---
 
-## 9. Mobile & PWA
+## 10. Mobile Access
 
-### Progressive Web App
+### Responsive Design
 
-Policy Bot is a Progressive Web App (PWA), which means you can install it like a native app.
-
-### Installing on Mobile
-
-**iOS (Safari):**
-1. Open Policy Bot in Safari
-2. Tap the Share button
-3. Select **Add to Home Screen**
-4. Tap **Add**
-
-**Android (Chrome):**
-1. Open Policy Bot in Chrome
-2. Tap the three-dot menu
-3. Select **Install app** or **Add to Home Screen**
-4. Tap **Install**
-
-### Installing on Desktop
-
-**Chrome/Edge:**
-1. Look for the install icon in the address bar
-2. Click **Install**
-3. Policy Bot opens as a standalone app
+Policy Bot is fully responsive and works on any device with a modern web browser.
 
 ### Mobile Features
 
-- **Swipe gestures** - Swipe to navigate between threads
-- **Offline banner** - Shows when you're offline
-- **Automatic reconnection** - Reconnects when network is available
 - **Touch-friendly UI** - Optimized for touch interactions
+- **Responsive layout** - Adapts to any screen size
+- **Swipe gestures** - Navigate between threads on mobile
 
-### Offline Support
+### Supported Browsers
 
-When offline:
-- You can view cached messages and documents
-- New messages are queued and sent when online
-- An offline banner indicates connection status
+| Browser | Desktop | Mobile |
+|---------|---------|--------|
+| Chrome | ✅ | ✅ |
+| Safari | ✅ | ✅ |
+| Firefox | ✅ | ✅ |
+| Edge | ✅ | ✅ |
 
 ---
 
-## 10. Personalization
+## 11. Personalization
 
 ### Custom Accent Color
 
@@ -391,7 +441,7 @@ Depending on your organization's configuration:
 
 ---
 
-## 11. Tips & Best Practices
+## 12. Tips & Best Practices
 
 ### Asking Better Questions
 
@@ -431,7 +481,7 @@ The AI:
 
 ---
 
-## 12. Troubleshooting
+## 13. Troubleshooting
 
 ### Common Issues
 
@@ -456,7 +506,7 @@ The AI:
 **Solutions:**
 1. Check your internet connection
 2. Wait a moment and refresh
-3. Check for the offline banner
+3. Try again in a few moments
 
 #### Voice input not working
 
@@ -492,7 +542,7 @@ If you encounter issues:
 
 ---
 
-## 13. Quick Reference
+## 14. Quick Reference
 
 ### Keyboard Shortcuts
 
@@ -528,14 +578,6 @@ If you encounter issues:
 | [WEB] | Web search result |
 | Score: X.XX | Source relevance (0-1) |
 
-### Offline Status
-
-| Indicator | Meaning |
-|-----------|---------|
-| 🟢 Online | Connected and ready |
-| 🔴 Offline | No connection, using cache |
-| 🟡 Reconnecting | Attempting to reconnect |
-
 ### Category Access
 
 | Status | Meaning |
@@ -546,4 +588,4 @@ If you encounter issues:
 
 ---
 
-*Last updated: December 2024 (v1.1 - Updated role descriptions for hybrid superuser model)*
+*Last updated: January 2025 (v1.2 - Added thread sharing feature documentation)*

@@ -71,6 +71,7 @@ export interface TavilyConfig {
 
 export interface UploadConfig {
   maxFilesPerInput: number;
+  maxFilesPerThread: number;
   maxFileSizeMB: number;
   allowedTypes: string[];
 }
@@ -427,7 +428,8 @@ function getHardcodedDefaults(): AppConfig {
       cacheTTLSeconds: 3600,
     },
     upload: {
-      maxFilesPerInput: 1,
+      maxFilesPerInput: 5,
+      maxFilesPerThread: 10,
       maxFileSizeMB: 10,
       allowedTypes: ['application/pdf', 'image/png', 'image/jpeg', 'text/plain'],
     },

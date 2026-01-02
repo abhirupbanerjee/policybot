@@ -520,6 +520,8 @@ Policy Bot includes these built-in tools:
 | **YouTube Transcript** | Extract video transcripts |
 | **Task Planner** | Multi-step task management |
 | **Function APIs** | Call external APIs |
+| **Thread Sharing** | Share conversations via secure links |
+| **Email (SendGrid)** | Send email notifications |
 
 ### Global Tool Configuration
 
@@ -583,6 +585,35 @@ Override global settings per category:
 |---------|-------------|
 | **Enabled** | Allow multi-step planning |
 | **Max Tasks** | Maximum tasks per plan |
+
+#### Thread Sharing
+
+| Setting | Description |
+|---------|-------------|
+| **Enabled** | Allow users to share threads |
+| **Default Expiry Days** | Default link expiration (7, 30, 90, or never) |
+| **Allow Downloads by Default** | Default download permission |
+| **Allowed Roles** | Which roles can share (admin, superuser, user) |
+| **Max Shares per Thread** | Limit shares per thread |
+| **Rate Limit** | Maximum shares per hour |
+
+#### Email (SendGrid)
+
+| Setting | Description |
+|---------|-------------|
+| **Enabled** | Enable email notifications |
+| **SendGrid API Key** | Your SendGrid API key |
+| **Sender Email** | Verified sender email address |
+| **Sender Name** | Display name for emails |
+| **Rate Limit** | Maximum emails per hour |
+
+**Email Setup:**
+1. Create a SendGrid account at sendgrid.com
+2. Verify your sender email/domain
+3. Generate an API key with "Mail Send" permission
+4. Enter the API key in the Email tool settings
+5. Configure sender email (must match verified sender)
+6. Test by sharing a thread with email notification
 
 ### Testing Tools
 
@@ -878,7 +909,6 @@ Configure system-wide settings.
 | Setting | Description |
 |---------|-------------|
 | **Accent Color** | Primary theme color for the application (users can customize) |
-| **PWA Enabled** | Enable Progressive Web App features for mobile installation |
 
 ### AI Configuration
 
@@ -1080,6 +1110,34 @@ View system activity:
 3. Cancel stuck documents and retry
 4. Contact support for persistent issues
 
+#### Thread Sharing Not Working
+
+**Causes:**
+- Thread sharing tool disabled
+- User's role not allowed to share
+- Rate limit exceeded
+
+**Solutions:**
+1. Verify `share_thread` tool is enabled in Tools settings
+2. Check `allowedRoles` configuration includes the user's role
+3. Review rate limit settings if users report blocked shares
+4. Check server logs for detailed error messages
+
+#### Email Notifications Not Sending
+
+**Causes:**
+- Email tool not enabled
+- Invalid SendGrid API key
+- Sender email not verified
+- Rate limit exceeded
+
+**Solutions:**
+1. Enable the `send_email` tool in Tools settings
+2. Verify SendGrid API key is correct and active
+3. Ensure sender email is verified in SendGrid dashboard
+4. Check SendGrid activity logs for delivery issues
+5. Increase rate limit if needed
+
 ### Error Messages
 
 | Error | Meaning | Solution |
@@ -1177,4 +1235,4 @@ User
 
 ---
 
-*Last updated: December 2024 (v2.2 - Added superuser hybrid role support, superuser subscriptions management, category creation quotas)*
+*Last updated: January 2025 (v2.3 - Added thread sharing and email notification tool configuration)*
