@@ -34,6 +34,7 @@ Policy Bot is an AI-powered assistant that helps you find information in your or
 As a user, you can:
 - Chat with the AI assistant about policies and procedures
 - Upload documents to your conversation threads for analysis
+- Upload images for visual analysis (with vision-capable models)
 - Use voice input for hands-free questioning
 - Access documents from your subscribed categories
 - Personalize the interface with custom colors
@@ -215,6 +216,22 @@ A common use case is checking your documents against policies:
 - Keep file names descriptive
 - Upload before asking questions about the content
 - Documents are only available in the current thread
+
+### Image Analysis
+
+If your organization uses a vision-capable model (GPT-4.1, Gemini, or Mistral Large), you can upload images for analysis:
+
+1. Click the **Attachment** (📎) button
+2. Select an image file (PNG, JPG, JPEG, WebP, GIF)
+3. Ask questions about the image content
+
+**Example uses:**
+- "What does this flowchart show?"
+- "Analyze this expense receipt"
+- "Extract the data from this table image"
+- "Does this diagram match our process documentation?"
+
+**Note:** Image analysis requires a vision-capable model to be configured by your admin.
 
 ---
 
@@ -588,4 +605,4 @@ If you encounter issues:
 
 ---
 
-*Last updated: January 2025 (v1.2 - Added thread sharing feature documentation)*
+*Last updated: January 2025 (v1.3 - Added image analysis and thread sharing documentation)*

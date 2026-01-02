@@ -922,6 +922,23 @@ Configure system-wide settings.
 | **Memory Extraction Tokens** | Maximum tokens for memory extraction |
 | **Prompt Max Tokens** | Maximum tokens for prompt context |
 
+#### Vision-Capable Models
+
+The following models support image analysis (multimodal):
+
+| Model | Provider | Vision Support |
+|-------|----------|----------------|
+| gpt-4.1 | OpenAI | ✅ |
+| gpt-4.1-mini | OpenAI | ✅ |
+| gpt-4.1-nano | OpenAI | ✅ |
+| gemini-2.5-pro | Google | ✅ |
+| gemini-2.5-flash | Google | ✅ |
+| gemini-2.5-flash-lite | Google | ✅ |
+| mistral-large-3 | Mistral | ✅ |
+| mistral-small-3.2 | Mistral | ✅ |
+
+When a vision-capable model is configured, users can upload images in their chat threads for analysis.
+
 ### Embedding Settings
 
 | Setting | Description |
@@ -1235,4 +1252,4 @@ User
 
 ---
 
-*Last updated: January 2025 (v2.3 - Added thread sharing and email notification tool configuration)*
+*Last updated: January 2025 (v2.4 - Added vision-capable models, thread sharing and email notification)*

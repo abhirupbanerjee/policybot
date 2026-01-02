@@ -57,10 +57,11 @@ Comprehensive architecture documentation for Policy Bot - an enterprise RAG plat
            ▼                    ▼                    ▼                    ▼
 ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
 │   OPENAI API    │  │   MISTRAL AI    │  │  GOOGLE GEMINI  │  │  OLLAMA (Local) │
-│  gpt-4.1-mini   │  │ mistral-large-3 │  │ gemini-2.0-flash│  │   llama3.2      │
-│  gpt-4.1        │  │ mistral-small   │  │ gemini-2.5-flash│  │   qwen2.5       │
-│  gpt-4.1-nano   │  │ ministral-8b    │  │                 │  │                 │
+│  gpt-4.1 (V)    │  │ mistral-large-3 │  │ gemini-2.5-pro  │  │   llama3.2      │
+│  gpt-4.1-mini(V)│  │   (V)           │  │   (V)           │  │   qwen2.5       │
+│  gpt-4.1-nano(V)│  │ mistral-small   │  │ gemini-2.5-flash│  │   phi4          │
 └─────────────────┘  └─────────────────┘  └─────────────────┘  └─────────────────┘
+                     (V) = Vision/Multimodal capable
            │
            ▼
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -86,10 +87,10 @@ Comprehensive architecture documentation for Policy Bot - an enterprise RAG plat
 | Backend | Next.js API Routes | REST API |
 | Database | SQLite (better-sqlite3) | Metadata storage |
 | LLM Gateway | LiteLLM Proxy | Multi-provider LLM abstraction (OpenAI-compatible API) |
-| LLM - OpenAI | GPT-4.1, GPT-4.1-mini, GPT-4.1-nano | Chat completions with function calling |
-| LLM - Gemini | gemini-2.0-flash, gemini-2.5-flash-preview | Fast, cost-effective inference |
-| LLM - Mistral | mistral-large-3, mistral-small-3.2, ministral-8b | Alternative LLM provider |
-| LLM - Local | Ollama (llama3.2, qwen2.5) | Self-hosted models, no API cost |
+| LLM - OpenAI | GPT-4.1, GPT-4.1-mini, GPT-4.1-nano | Chat completions with function calling + vision |
+| LLM - Gemini | gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite | Fast inference with vision support |
+| LLM - Mistral | mistral-large-3, mistral-small-3.2 | Alternative LLM provider with vision |
+| LLM - Local | Ollama (llama3.2, qwen2.5, phi4) | Self-hosted models, no API cost |
 | Embeddings | OpenAI text-embedding-3-large | Vector embeddings (3072d) |
 | Transcription | OpenAI whisper-1 | Voice-to-text |
 | OCR | Azure Document Intelligence, Mistral OCR | PDF/image text extraction |
@@ -199,6 +200,49 @@ User Query
 - **Local Transformers.js** (`Xenova/all-MiniLM-L6-v2`): No API cost, slower first load
 
 Reranking improves result quality by using a cross-encoder model to score each chunk against the query, then filtering by minimum score threshold.
+
+### 2.1 Multimodal/Vision Support
+
+When using a vision-capable model, users can upload images alongside their questions for visual analysis:
+
+```
+User uploads image + question
+    │
+    ▼
+┌─────────────────┐
+│ Read image as   │
+│ base64 data     │
+└─────────────────┘
+    │
+    ▼
+┌─────────────────┐
+│ Build multimodal│──── Combines text context + image content
+│ message content │
+└─────────────────┘
+    │
+    ▼
+┌─────────────────────────────────────────────┐
+│ Generate with Vision Model                   │
+│ - GPT-4.1, Gemini 2.5, Mistral Large 3      │
+│ - Image passed as base64 data URL           │
+│ - Detail level: high for better analysis    │
+└─────────────────────────────────────────────┘
+    │
+    ▼
+┌─────────────────┐
+│ Return Response │
+│ + Sources       │
+└─────────────────┘
+```
+
+**Vision-Capable Models**:
+| Provider | Models | Image Format |
+|----------|--------|--------------|
+| OpenAI | gpt-4.1, gpt-4.1-mini, gpt-4.1-nano | Base64 data URL |
+| Google | gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite | Base64 (auto-converted by LiteLLM) |
+| Mistral | mistral-large-3, mistral-small-3.2 | Base64 data URL |
+
+**Implementation**: Images are passed as `ImageContent` objects with base64 encoding, MIME type, and filename. The `generateResponseWithTools()` function builds multimodal content parts when images are present.
 
 ### 3. Document Ingestion
 

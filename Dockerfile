@@ -39,6 +39,10 @@ COPY --from=builder /app/public ./public
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
 
+# Copy ONNX runtime native libraries for local reranker (Transformers.js)
+# Only copy linux/x64 binaries needed for production
+COPY --from=builder /app/node_modules/onnxruntime-node/bin/napi-v3/linux/x64 ./node_modules/onnxruntime-node/bin/napi-v3/linux/x64
+
 # Create data directory
 RUN mkdir -p /app/data && chown -R nextjs:nodejs /app/data
 
