@@ -31,8 +31,11 @@ html, body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  /* Prevent mobile pull-to-refresh on the app container */
-  overscroll-behavior: contain;
+}
+
+/* Scrollable container that prevents mobile pull-to-refresh */
+.scroll-container {
+  overscroll-behavior-y: contain;
 }
 
 body {

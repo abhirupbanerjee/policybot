@@ -15,7 +15,6 @@ export default function Home() {
   const [activeThread, setActiveThread] = useState<Thread | null>(null);
   const [userSubscriptions, setUserSubscriptions] = useState<UserSubscription[]>([]);
   const [brandingName, setBrandingName] = useState<string>('Policy Bot');
-  const [brandingIcon, setBrandingIcon] = useState<string>('policy');
   const [showShareModal, setShowShareModal] = useState(false);
 
   // Sidebar visibility states (persisted to localStorage)
@@ -75,7 +74,6 @@ export default function Home() {
         if (brandingResponse.ok) {
           const brandingData = await brandingResponse.json();
           setBrandingName(brandingData.botName || 'Policy Bot');
-          setBrandingIcon(brandingData.icon || 'policy');
         }
       } catch (err) {
         console.error('Failed to load user data:', err);
@@ -112,17 +110,8 @@ export default function Home() {
     console.log('Remove URL source:', filename);
   };
 
-  // Compute header title based on active thread or branding
-  const getHeaderTitle = () => {
-    if (activeThread) {
-      return activeThread.title;
-    }
-    const activeSubscriptions = userSubscriptions.filter(s => s.isActive);
-    if (activeSubscriptions.length === 1) {
-      return `${activeSubscriptions[0].categoryName} Assistant`;
-    }
-    return brandingName;
-  };
+  // Header always shows the bot name (branding)
+  const getHeaderTitle = () => brandingName;
 
   // Get user role for WelcomeScreen
   const userRole = (session?.user as { role?: string })?.role as 'user' | 'superuser' | 'admin' | undefined;
@@ -132,7 +121,6 @@ export default function Home() {
       {/* Full-width header */}
       <AppHeader
         title={getHeaderTitle()}
-        brandingIcon={brandingIcon}
         onToggleLeftSidebar={() => setLeftSidebarOpen(!leftSidebarOpen)}
         onToggleRightSidebar={() => setRightSidebarOpen(!rightSidebarOpen)}
         leftSidebarOpen={leftSidebarOpen}

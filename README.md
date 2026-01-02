@@ -17,6 +17,7 @@ An enterprise RAG platform for policy document management and intelligent queryi
 ### Core Features
 - **RAG-Powered Q&A** - Natural language queries with source citations
 - **Multi-Provider LLM** - OpenAI, Mistral, Gemini, Ollama via LiteLLM
+- **Vision/Multimodal** - Analyze images with vision-capable models (GPT-4.1, Gemini, Mistral)
 - **Voice Input** - Whisper transcription for audio questions
 - **Streaming Responses** - Real-time chat with typing indicators
 
