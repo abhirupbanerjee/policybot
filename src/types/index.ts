@@ -248,6 +248,21 @@ export interface UploadResponse {
   uploadCount: number;
 }
 
+// ============ Multimodal Content Types ============
+
+/**
+ * Image content for multimodal LLM requests
+ * Used to pass images visually to vision-capable models
+ */
+export interface ImageContent {
+  /** Base64 encoded image data */
+  base64: string;
+  /** MIME type (e.g., 'image/png', 'image/jpeg') */
+  mimeType: string;
+  /** Original filename for context */
+  filename: string;
+}
+
 export interface AdminDocumentsResponse {
   documents: GlobalDocument[];
   totalChunks: number;

@@ -50,8 +50,6 @@ export const TOOL_CAPABLE_MODELS = new Set([
   'mistral-large-3',
   'mistral-medium-3.1',
   'mistral-small-3.2',
-  'ministral-8b',
-  'ministral-3b',
   // Google - Gemini Family
   'gemini-2.5-pro',
   'gemini-2.5-flash',

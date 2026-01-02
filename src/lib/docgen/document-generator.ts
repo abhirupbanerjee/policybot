@@ -158,6 +158,31 @@ export class DocumentGenerator {
       ? new Date(Date.now() + this.config.expirationDays * 24 * 60 * 60 * 1000).toISOString()
       : null;
 
+    // Validate threadId exists if provided (foreign key constraint)
+    const effectiveThreadId = options.threadId;
+    if (effectiveThreadId) {
+      const threadExists = queryOne<{ id: string }>('SELECT id FROM threads WHERE id = ?', [effectiveThreadId]);
+      if (!threadExists) {
+        console.error('[DocGen] Thread not found in database:', effectiveThreadId);
+        throw new Error(`Thread ${effectiveThreadId} not found - cannot save generated document`);
+      }
+    } else {
+      console.warn('[DocGen] No threadId provided - document will not be saved to database');
+      // Return early with in-memory result (no database persistence)
+      return {
+        id: 0, // No database ID
+        threadId: undefined,
+        messageId: options.messageId || null,
+        filename,
+        filepath,
+        fileType: options.format,
+        fileSize: buffer.length,
+        downloadUrl: '', // Not accessible without database entry
+        expiresAt: null,
+        createdAt: new Date().toISOString(),
+      } as unknown as GeneratedDocument;
+    }
+
     // Store in database
     const result = execute(
       `INSERT INTO thread_outputs (
@@ -165,7 +190,7 @@ export class DocumentGenerator {
         generation_config, expires_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       [
-        options.threadId || 'standalone',
+        effectiveThreadId,
         options.messageId || null,
         filename,
         filepath,
@@ -187,7 +212,7 @@ export class DocumentGenerator {
 
     return {
       id: docId,
-      threadId: options.threadId || 'standalone',
+      threadId: effectiveThreadId,
       messageId: options.messageId || null,
       filename,
       filepath,

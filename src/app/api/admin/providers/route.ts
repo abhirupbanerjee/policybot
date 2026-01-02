@@ -43,8 +43,6 @@ const MODEL_CONFIG = {
     { model: 'mistral-large-3', name: 'Mistral Large 3', provider: 'mistral' },
     { model: 'mistral-medium-3.1', name: 'Mistral Medium 3.1', provider: 'mistral' },
     { model: 'mistral-small-3.2', name: 'Mistral Small 3.2', provider: 'mistral' },
-    { model: 'ministral-8b', name: 'Ministral 8B', provider: 'mistral' },
-    { model: 'ministral-3b', name: 'Ministral 3B', provider: 'mistral' },
     // Gemini
     { model: 'gemini-2.5-pro', name: 'Gemini 2.5 Pro', provider: 'gemini' },
     { model: 'gemini-2.5-flash', name: 'Gemini 2.5 Flash', provider: 'gemini' },

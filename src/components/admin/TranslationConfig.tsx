@@ -42,8 +42,7 @@ const PROVIDER_MODELS = {
   ],
   mistral: [
     { id: 'mistral-large-3', name: 'Mistral Large 3 (Best quality)' },
-    { id: 'mistral-small-3.2', name: 'Mistral Small 3.2 (Balanced)' },
-    { id: 'ministral-8b', name: 'Ministral 8B (Fastest)' },
+    { id: 'mistral-small-3.2', name: 'Mistral Small 3.2 (Fastest)' },
   ],
 };
 

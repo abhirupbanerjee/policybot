@@ -254,21 +254,6 @@ function getHardcodedDefaults(): AppConfig {
         cacheEnabled: true,
         cacheTTLSeconds: 3600,
       },
-      'ministral-8b': {
-        name: 'Ministral 8B (Cost-Effective)',
-        description: 'Lightweight Mistral model for simple queries at lowest cost',
-        provider: 'mistral',
-        temperature: 0.2,
-        maxTokens: 1000,
-        topKChunks: 10,
-        maxContextChunks: 8,
-        similarityThreshold: 0.5,
-        chunkSize: 1200,
-        chunkOverlap: 200,
-        queryExpansionEnabled: true,
-        cacheEnabled: true,
-        cacheTTLSeconds: 3600,
-      },
       'gemini-2.5-pro': {
         name: 'Gemini 2.5 Pro (High Performance)',
         description: "Google's flagship reasoning model with 1M context and thinking capabilities",
@@ -431,7 +416,7 @@ function getHardcodedDefaults(): AppConfig {
       maxFilesPerInput: 5,
       maxFilesPerThread: 10,
       maxFileSizeMB: 10,
-      allowedTypes: ['application/pdf', 'image/png', 'image/jpeg', 'text/plain'],
+      allowedTypes: ['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'text/plain'],
     },
     retention: {
       threadRetentionDays: 90,
@@ -467,7 +452,6 @@ function getHardcodedDefaults(): AppConfig {
       toolCapable: [
         'gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano',
         'mistral-large-3', 'mistral-medium-3.1', 'mistral-small-3.2',
-        'ministral-8b', 'ministral-3b',
         'gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite',
         'ollama-llama3.2', 'ollama-mistral', 'ollama-qwen2.5', 'ollama-gemma3', 'ollama-gpt-oss',
       ],

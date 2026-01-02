@@ -1027,7 +1027,7 @@ function initializeDefaultSettings(database: Database.Database): void {
       maxFilesPerInput: 5,
       maxFilesPerThread: 10,
       maxFileSizeMB: 10,
-      allowedTypes: ['application/pdf', 'image/png', 'image/jpeg', 'text/plain'],
+      allowedTypes: ['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'text/plain'],
     },
     'acronym-mappings': {},
     'system-prompt': {

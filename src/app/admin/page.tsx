@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Upload, RefreshCw, Trash2, FileText, AlertCircle, Users, UserPlus, Shield, User, Settings, Save, FolderOpen, Plus, Edit2, BarChart3, Database, HardDrive, Globe, Tag, Landmark, DollarSign, Activity, Layers, Server, ScrollText, ChevronUp, ChevronDown, ChevronsUpDown, Search, X, Cpu, Mic, Sparkles, Wand2, CheckCircle, Youtube, Filter, SortAsc } from 'lucide-react';
+import { ArrowLeft, Upload, RefreshCw, Trash2, FileText, AlertCircle, Users, UserPlus, Shield, User, Settings, Save, FolderOpen, Plus, Edit2, BarChart3, Database, HardDrive, Globe, Tag, Landmark, DollarSign, Activity, Layers, Server, ScrollText, ChevronUp, ChevronDown, ChevronsUpDown, Search, X, Cpu, Mic, Sparkles, Wand2, CheckCircle, Youtube, Filter, SortAsc, ImageIcon } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import Spinner from '@/components/ui/Spinner';
@@ -3479,6 +3479,33 @@ export default function AdminPage() {
                     ))}
                   </div>
 
+                  {/* Multimodal/Vision Support Info Card */}
+                  <div className="bg-blue-50 rounded-lg border border-blue-200 p-4">
+                    <div className="flex items-start gap-3">
+                      <ImageIcon className="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <h3 className="font-medium text-blue-900">Image/Vision Support</h3>
+                        <p className="text-sm text-blue-700 mt-1">
+                          Users can upload images (PNG, JPG, WebP) in chat. Images are sent visually to the LLM for analysis.
+                        </p>
+                        <div className="mt-3 space-y-2 text-sm">
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-700">✓ Vision</span>
+                            <span className="text-blue-800">GPT-4.1 family, Gemini 2.5/3, Mistral Large 3, Mistral Small 3.2</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-600">— No Vision</span>
+                            <span className="text-blue-800">Ollama models (text-only fallback via OCR)</span>
+                          </div>
+                        </div>
+                        <p className="text-xs text-blue-600 mt-3">
+                          Note: LiteLLM proxy handles format conversion between providers automatically.
+                          Models without vision support will receive OCR-extracted text instead.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Per-Model Token Limits Card */}
                   <div className="bg-white rounded-lg border shadow-sm">
                     <div
@@ -4904,22 +4931,23 @@ export default function AdminPage() {
                           <label className="flex items-center gap-3 cursor-pointer">
                             <input
                               type="checkbox"
-                              checked={(editedUpload.allowedTypes?.includes('image/png') && editedUpload.allowedTypes?.includes('image/jpeg')) || false}
+                              checked={(editedUpload.allowedTypes?.includes('image/png') && editedUpload.allowedTypes?.includes('image/jpeg') && editedUpload.allowedTypes?.includes('image/webp')) || false}
                               onChange={() => {
-                                const hasImages = editedUpload.allowedTypes?.includes('image/png') && editedUpload.allowedTypes?.includes('image/jpeg');
+                                const hasImages = editedUpload.allowedTypes?.includes('image/png') && editedUpload.allowedTypes?.includes('image/jpeg') && editedUpload.allowedTypes?.includes('image/webp');
                                 let newTypes = editedUpload.allowedTypes || [];
                                 if (hasImages) {
-                                  newTypes = newTypes.filter(t => t !== 'image/png' && t !== 'image/jpeg');
+                                  newTypes = newTypes.filter(t => t !== 'image/png' && t !== 'image/jpeg' && t !== 'image/webp');
                                 } else {
                                   if (!newTypes.includes('image/png')) newTypes = [...newTypes, 'image/png'];
                                   if (!newTypes.includes('image/jpeg')) newTypes = [...newTypes, 'image/jpeg'];
+                                  if (!newTypes.includes('image/webp')) newTypes = [...newTypes, 'image/webp'];
                                 }
                                 setEditedUpload({ ...editedUpload, allowedTypes: newTypes });
                                 setUploadModified(true);
                               }}
                               className="w-4 h-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
                             />
-                            <span className="text-sm text-gray-700">Images (.png, .jpg, .jpeg)</span>
+                            <span className="text-sm text-gray-700">Images (.png, .jpg, .jpeg, .webp)</span>
                           </label>
                           <label className="flex items-center gap-3 cursor-pointer">
                             <input

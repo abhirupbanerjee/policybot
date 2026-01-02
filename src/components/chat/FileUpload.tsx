@@ -23,10 +23,11 @@ const ALLOWED_TYPES = [
   'application/pdf',
   'image/png',
   'image/jpeg',
+  'image/webp',
   'text/plain',
 ];
 
-const ALLOWED_EXTENSIONS = '.pdf,.png,.jpg,.jpeg,.txt';
+const ALLOWED_EXTENSIONS = '.pdf,.png,.jpg,.jpeg,.webp,.txt';
 const MAX_FILE_SIZE_MB = 10;
 const MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024;
 

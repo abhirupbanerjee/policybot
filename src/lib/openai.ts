@@ -1,5 +1,5 @@
 import OpenAI from 'openai';
-import type { Message, ToolCall, StreamingCallbacks, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo } from '@/types';
+import type { Message, ToolCall, StreamingCallbacks, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, ImageContent } from '@/types';
 import { getLlmSettings, getEmbeddingSettings, getLimitsSettings, getEffectiveMaxTokens } from './db/config';
 import { getToolDisplayName } from './streaming/utils';
 import { getToolDefinitions, executeTool } from './tools';
@@ -117,7 +117,8 @@ export async function generateResponseWithTools(
   userMessage: string,
   enableTools: boolean = true,
   categoryIds?: number[],
-  callbacks?: StreamingCallbacks
+  callbacks?: StreamingCallbacks,
+  images?: ImageContent[]
 ): Promise<{
   content: string;
   toolCalls?: ToolCall[];
@@ -163,11 +164,44 @@ export async function generateResponseWithTools(
     }
   }
 
-  // Add context + user question
-  messages.push({
-    role: 'user',
-    content: `Organizational Knowledge Base:\n${context}\n\n---\n\nQuestion: ${userMessage}`,
-  });
+  // Add context + user question (with optional images for multimodal)
+  const textContent = `Organizational Knowledge Base:\n${context}\n\n---\n\nQuestion: ${userMessage}`;
+
+  if (images && images.length > 0) {
+    // Build multimodal content with images
+    const contentParts: OpenAI.Chat.ChatCompletionContentPart[] = [
+      { type: 'text', text: textContent },
+    ];
+
+    // Add each image as visual content
+    for (const img of images) {
+      contentParts.push({
+        type: 'image_url',
+        image_url: {
+          url: `data:${img.mimeType};base64,${img.base64}`,
+          detail: 'high', // Use high detail for better analysis
+        },
+      });
+      // Add filename context so LLM knows which image is which
+      contentParts.push({
+        type: 'text',
+        text: `[Above image: ${img.filename}]`,
+      });
+    }
+
+    messages.push({
+      role: 'user',
+      content: contentParts,
+    });
+
+    logger.info(`Multimodal request with ${images.length} image(s)`);
+  } else {
+    // Standard text-only message
+    messages.push({
+      role: 'user',
+      content: textContent,
+    });
+  }
 
   // Prepare completion params - pass categoryIds for dynamic Function API tools
   const tools = effectiveEnableTools ? getToolDefinitions(categoryIds) : undefined;

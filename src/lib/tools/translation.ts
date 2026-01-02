@@ -149,7 +149,7 @@ export const translationTool: ToolDefinition = {
                 type: 'string',
                 title: 'Model',
                 description: 'Mistral model for translation',
-                enum: ['mistral-large-3', 'mistral-small-3.2', 'ministral-8b'],
+                enum: ['mistral-large-3', 'mistral-small-3.2'],
                 default: 'mistral-small-3.2',
               },
               temperature: {

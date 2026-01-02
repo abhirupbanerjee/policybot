@@ -12,7 +12,8 @@ import { NextRequest } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { getCurrentUser } from '@/lib/auth';
 import { getUserByEmail } from '@/lib/db/users';
-import { getThread, addMessage, getMessages, getUploadPaths, getThreadCategorySlugsForQuery } from '@/lib/threads';
+import { getThread, addMessage, getMessages, getUploadDetails, getThreadCategorySlugsForQuery } from '@/lib/threads';
+import { readFileBuffer } from '@/lib/storage';
 import { linkOutputsToMessage } from '@/lib/db/threads';
 import { getMemoryContext, processConversationForMemory } from '@/lib/memory';
 import { countTokens, updateThreadTokenCount, shouldSummarize, summarizeThread, getThreadSummary, formatSummaryForContext } from '@/lib/summarization';
@@ -26,7 +27,7 @@ import {
   performRAGRetrieval,
   STREAMING_CONFIG,
 } from '@/lib/streaming';
-import type { Message, StreamEvent, StreamChatRequest, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo } from '@/types';
+import type { Message, StreamEvent, StreamChatRequest, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, ImageContent } from '@/types';
 
 export async function POST(request: NextRequest) {
   const encoder = createSSEEncoder();
@@ -127,8 +128,30 @@ export async function POST(request: NextRequest) {
           summaryContext = formatSummaryForContext(existingSummary.summary);
         }
 
-        // Get user uploads
-        const uploadPaths = await getUploadPaths(user.id, threadId);
+        // Get user uploads - separate images from documents
+        const uploadDetails = await getUploadDetails(user.id, threadId);
+
+        // Document paths for RAG text extraction (PDFs, DOCX, etc.)
+        // Also include images for OCR text extraction as additional context
+        const allDocPaths = [
+          ...uploadDetails.documents.map(d => d.filepath),
+          ...uploadDetails.images.map(i => i.filepath), // Images also get OCR text extraction
+        ];
+
+        // Load images as base64 for multimodal visual content
+        const imageContents: ImageContent[] = [];
+        for (const img of uploadDetails.images) {
+          try {
+            const buffer = await readFileBuffer(img.filepath);
+            imageContents.push({
+              base64: buffer.toString('base64'),
+              mimeType: img.mimeType,
+              filename: img.filename,
+            });
+          } catch (err) {
+            console.warn(`Failed to load image ${img.filename}:`, err);
+          }
+        }
 
         // Create assistant message ID for context
         const assistantMessageId = uuidv4();
@@ -148,7 +171,7 @@ export async function POST(request: NextRequest) {
             const ragResult = await performRAGRetrieval(
               message,
               categorySlugs,
-              uploadPaths,
+              allDocPaths,
               memoryContext,
               summaryContext,
               send
@@ -171,6 +194,7 @@ export async function POST(request: NextRequest) {
             const recentHistory = conversationHistory.slice(0, -1).slice(-historyLimit);
 
             // Execute tools with streaming callbacks
+            // Pass images for multimodal visual analysis (in addition to OCR text in context)
             const toolResult = await generateResponseWithTools(
               ragResult.systemPrompt,
               recentHistory,
@@ -200,7 +224,8 @@ export async function POST(request: NextRequest) {
                     send({ type: 'artifact', subtype: 'image', data: img });
                   }
                 },
-              }
+              },
+              imageContents.length > 0 ? imageContents : undefined
             );
 
             // Extract web sources from tool history

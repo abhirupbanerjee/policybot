@@ -16,7 +16,7 @@ import {
   deleteFile,
   writeFileBuffer,
 } from './storage';
-import { isSupportedExtension } from './document-extractor';
+import { isSupportedExtension, getMimeTypeFromFilename, isImage } from './document-extractor';
 import { getUserId } from './users';
 import { getUploadLimits } from './db/config';
 import {
@@ -425,6 +425,63 @@ export async function getUploadPaths(
   return uploads
     .filter(u => isSupportedExtension(u.filename))
     .map(u => u.filepath);
+}
+
+/**
+ * Upload details with type information for multimodal processing
+ */
+export interface UploadDetail {
+  filepath: string;
+  filename: string;
+  mimeType: string;
+  isImage: boolean;
+  fileSize: number;
+}
+
+/**
+ * Get detailed information about all uploaded files
+ * Separates images from documents for multimodal LLM processing
+ */
+export async function getUploadDetails(
+  userId: string,
+  threadId: string
+): Promise<{ images: UploadDetail[]; documents: UploadDetail[] }> {
+  const numericUserId = await getUserId(userId);
+  if (!numericUserId) {
+    return { images: [], documents: [] };
+  }
+
+  // Verify ownership
+  if (!dbUserOwnsThread(numericUserId, threadId)) {
+    return { images: [], documents: [] };
+  }
+
+  const uploads = dbGetThreadUploads(threadId);
+  const images: UploadDetail[] = [];
+  const documents: UploadDetail[] = [];
+
+  for (const upload of uploads) {
+    if (!isSupportedExtension(upload.filename)) {
+      continue;
+    }
+
+    const mimeType = getMimeTypeFromFilename(upload.filename);
+    const detail: UploadDetail = {
+      filepath: upload.filepath,
+      filename: upload.filename,
+      mimeType,
+      isImage: isImage(mimeType),
+      fileSize: upload.file_size,
+    };
+
+    if (detail.isImage) {
+      images.push(detail);
+    } else {
+      documents.push(detail);
+    }
+  }
+
+  return { images, documents };
 }
 
 /**

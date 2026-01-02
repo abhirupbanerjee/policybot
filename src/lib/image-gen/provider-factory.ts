@@ -12,7 +12,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { getToolConfig } from '@/lib/db/tool-config';
-import { execute } from '@/lib/db/index';
+import { execute, queryOne } from '@/lib/db/index';
 import { getRequestContext } from '@/lib/request-context';
 import { generateWithDalle } from './providers/openai-dalle';
 import { generateWithGemini } from './providers/gemini-imagen';
@@ -274,36 +274,54 @@ async function saveImage(
     throw new Error('No thread context available for image generation');
   }
 
+  // Verify thread exists before inserting (to provide better error message)
+  const threadExists = queryOne<{ id: string }>('SELECT id FROM threads WHERE id = ?', [threadId]);
+  if (!threadExists) {
+    console.error('[ImageGen] Thread not found in database:', { threadId, context });
+    throw new Error(`Thread ${threadId} not found - cannot save generated image`);
+  }
+
   // Store in database (using thread_outputs table like document generator)
-  const result = execute(
-    `INSERT INTO thread_outputs (
-      thread_id, message_id, filename, filepath, file_type, file_size,
-      generation_config, expires_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
+  let result;
+  try {
+    result = execute(
+      `INSERT INTO thread_outputs (
+        thread_id, message_id, filename, filepath, file_type, file_size,
+        generation_config, expires_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        threadId,
+        null, // message_id
+        filename,
+        filepath,
+        'image', // file_type
+        metadata.sizeBytes,
+        JSON.stringify({
+          provider,
+          model,
+          prompt: args.prompt,
+          enhancedPrompt: metadata.enhancedPrompt,
+          revisedPrompt: metadata.revisedPrompt,
+          style: args.style,
+          aspectRatio: args.aspectRatio,
+          width: metadata.width,
+          height: metadata.height,
+          format: metadata.format,
+          generationTimeMs: metadata.generationTimeMs,
+          thumbnailFilename,
+        }),
+        null, // expires_at (images don't expire by default)
+      ]
+    );
+  } catch (dbError) {
+    console.error('[ImageGen] Database error saving image:', {
+      error: dbError instanceof Error ? dbError.message : dbError,
       threadId,
-      null, // message_id
       filename,
       filepath,
-      'image', // file_type
-      metadata.sizeBytes,
-      JSON.stringify({
-        provider,
-        model,
-        prompt: args.prompt,
-        enhancedPrompt: metadata.enhancedPrompt,
-        revisedPrompt: metadata.revisedPrompt,
-        style: args.style,
-        aspectRatio: args.aspectRatio,
-        width: metadata.width,
-        height: metadata.height,
-        format: metadata.format,
-        generationTimeMs: metadata.generationTimeMs,
-        thumbnailFilename,
-      }),
-      null, // expires_at (images don't expire by default)
-    ]
-  );
+    });
+    throw dbError;
+  }
 
   const docId = result.lastInsertRowid as number;
 
