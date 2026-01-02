@@ -20,6 +20,16 @@ html, body {
   margin: 0;
 }
 
+/* Fixed full-screen layout for Chrome compatibility */
+/* Reference: https://github.com/philipwalton/flexbugs/issues/197 */
+.fixed-layout {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 body {
   color: rgb(var(--foreground-rgb));
   background: rgb(var(--background-rgb));

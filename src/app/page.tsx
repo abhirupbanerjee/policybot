@@ -128,7 +128,7 @@ export default function Home() {
   const userRole = (session?.user as { role?: string })?.role as 'user' | 'superuser' | 'admin' | undefined;
 
   return (
-    <div className="flex flex-col h-full bg-gray-50">
+    <div className="fixed-layout bg-gray-50">
       {/* Full-width header */}
       <AppHeader
         title={getHeaderTitle()}

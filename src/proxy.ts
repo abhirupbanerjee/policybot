@@ -3,18 +3,11 @@ import { NextResponse } from 'next/server';
 
 export default withAuth(
   function proxy() {
-    // Auth disabled in dev
-    if (process.env.AUTH_DISABLED === 'true') {
-      return NextResponse.next();
-    }
     return NextResponse.next();
   },
   {
     callbacks: {
-      authorized: ({ token }) => {
-        if (process.env.AUTH_DISABLED === 'true') return true;
-        return !!token;
-      },
+      authorized: ({ token }) => !!token,
     },
   }
 );
