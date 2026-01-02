@@ -358,7 +358,7 @@ export default function ChatWindow({
   };
 
   return (
-    <div className="flex-1 flex flex-col min-w-0">
+    <div className="flex-1 flex flex-col min-w-0 min-h-0">
       {/* Summarization Banner */}
       {activeThread?.isSummarized && summaryData && (
         <div
