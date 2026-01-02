@@ -557,7 +557,7 @@ export default function ChatWindow({
       </div>
 
       {/* Artifacts Panel - Right Sidebar (hidden on mobile) */}
-      <div className="hidden lg:block">
+      <div className="hidden lg:flex lg:shrink-0">
         <ArtifactsPanel
           threadId={threadId}
           uploads={uploads}

@@ -43,13 +43,13 @@ export default function Home() {
   };
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-gray-50 overflow-hidden">
       <ThreadSidebar
         onThreadSelect={handleThreadSelect}
         onThreadCreated={handleThreadCreated}
         selectedThreadId={activeThread?.id}
       />
-      <main className="flex-1 flex flex-col lg:ml-0 min-w-0">
+      <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <ChatWindow
           activeThread={activeThread}
           onThreadCreated={handleThreadCreated}
