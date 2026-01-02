@@ -63,6 +63,7 @@ interface SharedData {
   }>;
   outputs?: Array<{
     id: number;
+    messageId: string | null;
     filename: string;
     fileType: string;
     fileSize: number;
@@ -201,6 +202,15 @@ export default function SharedThreadPage({ params }: PageProps) {
 
   const { share, thread, messages, permissions, uploads, outputs } = data;
 
+  // Helper to get outputs for a specific message
+  const getOutputsForMessage = (messageId: string) => {
+    if (!outputs || !permissions.canDownload) return [];
+    return outputs.filter(o => o.messageId === messageId);
+  };
+
+  // Get outputs without a message_id (thread-level outputs)
+  const orphanOutputs = outputs?.filter(o => !o.messageId) || [];
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
@@ -279,40 +289,81 @@ export default function SharedThreadPage({ params }: PageProps) {
       {/* Messages */}
       <div className="max-w-4xl mx-auto px-4 py-6">
         <div className="space-y-4">
-          {messages.map((message) => (
-            <div
-              key={message.id}
-              className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-            >
-              <div
-                className={`max-w-[80%] rounded-2xl px-4 py-3 ${
-                  message.role === 'user'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white border text-gray-900'
-                }`}
-              >
-                <div className={`markdown-content ${message.role === 'user' ? 'text-white' : ''}`}>
-                  <ReactMarkdown
-                    remarkPlugins={[remarkGfm]}
-                    components={MarkdownComponents}
-                  >
-                    {message.content}
-                  </ReactMarkdown>
-                </div>
+          {messages.map((message) => {
+            const messageOutputs = getOutputsForMessage(message.id);
+
+            return (
+              <div key={message.id}>
                 <div
-                  className={`text-xs mt-2 ${
-                    message.role === 'user' ? 'text-blue-200' : 'text-gray-400'
-                  }`}
+                  className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
                 >
-                  {formatTime(message.createdAt)}
+                  <div
+                    className={`max-w-[80%] rounded-2xl px-4 py-3 ${
+                      message.role === 'user'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-white border text-gray-900'
+                    }`}
+                  >
+                    <div className={`markdown-content ${message.role === 'user' ? 'text-white' : ''}`}>
+                      <ReactMarkdown
+                        remarkPlugins={[remarkGfm]}
+                        components={MarkdownComponents}
+                      >
+                        {message.content}
+                      </ReactMarkdown>
+                    </div>
+                    <div
+                      className={`text-xs mt-2 ${
+                        message.role === 'user' ? 'text-blue-200' : 'text-gray-400'
+                      }`}
+                    >
+                      {formatTime(message.createdAt)}
+                    </div>
+                  </div>
                 </div>
+
+                {/* Inline outputs for this message */}
+                {messageOutputs.length > 0 && (
+                  <div className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'} mt-2`}>
+                    <div className="max-w-[80%] space-y-2">
+                      {messageOutputs.map((file) => (
+                        <div
+                          key={file.id}
+                          className="flex items-center justify-between bg-white border rounded-lg p-3"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            {file.fileType === 'image' ? (
+                              <ImageIcon size={18} className="text-gray-400 shrink-0" />
+                            ) : (
+                              <FileText size={18} className="text-gray-400 shrink-0" />
+                            )}
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-gray-900 truncate">
+                                {file.filename}
+                              </p>
+                              <p className="text-xs text-gray-500">
+                                {formatFileSize(file.fileSize)} • {file.fileType.toUpperCase()}
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => handleDownload('output', file.id, file.filename)}
+                            className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg ml-2"
+                          >
+                            <Download size={16} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
 
-        {/* Files Section */}
-        {permissions.canDownload && ((uploads && uploads.length > 0) || (outputs && outputs.length > 0)) && (
+        {/* Files Section - Only show uploads and orphan outputs (outputs without message_id) */}
+        {permissions.canDownload && ((uploads && uploads.length > 0) || orphanOutputs.length > 0) && (
           <div className="mt-8 border-t pt-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Files</h2>
 
@@ -348,11 +399,11 @@ export default function SharedThreadPage({ params }: PageProps) {
               </div>
             )}
 
-            {outputs && outputs.length > 0 && (
+            {orphanOutputs.length > 0 && (
               <div>
                 <h3 className="text-sm font-medium text-gray-700 mb-2">Generated Files</h3>
                 <div className="space-y-2">
-                  {outputs.map((file) => (
+                  {orphanOutputs.map((file) => (
                     <div
                       key={file.id}
                       className="flex items-center justify-between bg-white border rounded-lg p-3"

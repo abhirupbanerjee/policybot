@@ -144,6 +144,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         })),
         outputs: outputs.map(o => ({
           id: o.id,
+          messageId: o.message_id,  // Include message_id for inline rendering
           filename: o.filename,
           fileType: o.file_type,
           fileSize: o.file_size,
