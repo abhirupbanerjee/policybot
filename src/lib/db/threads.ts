@@ -480,6 +480,20 @@ export function getThreadOutputs(threadId: string): DbThreadOutput[] {
   `, [threadId]);
 }
 
+/**
+ * Link unlinked outputs to a message
+ * Called after assistant message is saved to associate outputs generated during tool execution
+ * with the message that produced them.
+ */
+export function linkOutputsToMessage(threadId: string, messageId: string): number {
+  const result = execute(`
+    UPDATE thread_outputs
+    SET message_id = ?
+    WHERE thread_id = ? AND message_id IS NULL
+  `, [messageId, threadId]);
+  return result.changes;
+}
+
 // ============ Cleanup ============
 
 /**

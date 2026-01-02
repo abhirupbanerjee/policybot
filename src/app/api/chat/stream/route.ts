@@ -13,6 +13,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getCurrentUser } from '@/lib/auth';
 import { getUserByEmail } from '@/lib/db/users';
 import { getThread, addMessage, getMessages, getUploadPaths, getThreadCategorySlugsForQuery } from '@/lib/threads';
+import { linkOutputsToMessage } from '@/lib/db/threads';
 import { getMemoryContext, processConversationForMemory } from '@/lib/memory';
 import { countTokens, updateThreadTokenCount, shouldSummarize, summarizeThread, getThreadSummary, formatSummaryForContext } from '@/lib/summarization';
 import { getMemorySettings, getSummarizationSettings, getLimitsSettings } from '@/lib/db/config';
@@ -259,6 +260,12 @@ export async function POST(request: NextRequest) {
 
             await addMessage(user.id, threadId, assistantMessage);
             updateThreadTokenCount(threadId, countTokens(fullContent));
+
+            // Link any generated outputs (documents, images) to this message
+            // This must happen after addMessage since message_id is a foreign key
+            if (documents.length > 0 || images.length > 0) {
+              linkOutputsToMessage(threadId, assistantMessageId);
+            }
 
             // Background tasks (non-blocking)
             if (summarizationSettings.enabled && shouldSummarize(threadId)) {
