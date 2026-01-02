@@ -49,7 +49,7 @@ export default function Home() {
         onThreadCreated={handleThreadCreated}
         selectedThreadId={activeThread?.id}
       />
-      <main className="flex-1 flex flex-col lg:ml-0">
+      <main className="flex-1 flex flex-col lg:ml-0 min-w-0">
         <ChatWindow
           activeThread={activeThread}
           onThreadCreated={handleThreadCreated}
