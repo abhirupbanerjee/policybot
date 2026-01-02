@@ -2,8 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Plus, MessageSquare, Trash2, Menu, X, Settings, LogOut, Brain,
-  Landmark, DollarSign, BarChart3, FileText, Database, Activity, Layers, Globe, Server, ScrollText, BookOpen
+  Plus, MessageSquare, Trash2, Settings, LogOut, Brain, BookOpen
 } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
 import Link from 'next/link';
@@ -11,22 +10,6 @@ import type { Thread } from '@/types';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import CategorySelector from '@/components/ui/CategorySelector';
-import { useSwipeGesture } from '@/hooks/useSwipeGesture';
-
-// Icon mapping for branding
-const ICON_COMPONENTS: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
-  government: Landmark,
-  operations: Settings,
-  finance: DollarSign,
-  kpi: BarChart3,
-  logs: FileText,
-  data: Database,
-  monitoring: Activity,
-  architecture: Layers,
-  internet: Globe,
-  systems: Server,
-  policy: ScrollText,
-};
 
 // Color palette for subscription badges
 const SUBSCRIPTION_COLORS = [
@@ -47,18 +30,17 @@ const getCategoryColor = (categoryId: number) => {
   return SUBSCRIPTION_COLORS[categoryId % SUBSCRIPTION_COLORS.length];
 };
 
-interface BrandingData {
-  botName: string;
-  botIcon: string;
-}
-
 interface ThreadSidebarProps {
+  isOpen: boolean;
+  onToggle: () => void;
   onThreadSelect?: (thread: Thread | null) => void;
   onThreadCreated?: (thread: Thread) => void;
   selectedThreadId?: string | null;
 }
 
 export default function ThreadSidebar({
+  isOpen,
+  onToggle,
   onThreadSelect,
   onThreadCreated,
   selectedThreadId,
@@ -66,25 +48,17 @@ export default function ThreadSidebar({
   const { data: session } = useSession();
   const [threads, setThreads] = useState<Thread[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isOpen, setIsOpen] = useState(false);
   const [deleteThread, setDeleteThread] = useState<Thread | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [showNewThreadModal, setShowNewThreadModal] = useState(false);
   const [newThreadTitle, setNewThreadTitle] = useState('');
   const [newThreadCategories, setNewThreadCategories] = useState<number[]>([]);
   const [creating, setCreating] = useState(false);
-  const [branding, setBranding] = useState<BrandingData>({ botName: 'Policy Bot', botIcon: 'policy' });
 
   const userRole = (session?.user as { role?: string })?.role;
   const isAdmin = userRole === 'admin';
   const isSuperUser = userRole === 'superuser';
   const isRegularUser = userRole === 'user';
-
-  // Enable swipe gestures for mobile sidebar
-  useSwipeGesture({
-    onSwipeRight: () => setIsOpen(true),
-    onSwipeLeft: () => setIsOpen(false),
-  });
 
   // Regular users must select exactly one category per thread
   const requiresSingleCategory = isRegularUser;
@@ -110,22 +84,6 @@ export default function ThreadSidebar({
   useEffect(() => {
     loadThreads();
   }, [loadThreads]);
-
-  // Load branding settings
-  useEffect(() => {
-    const loadBranding = async () => {
-      try {
-        const response = await fetch('/api/branding');
-        if (response.ok) {
-          const data = await response.json();
-          setBranding({ botName: data.botName, botIcon: data.botIcon });
-        }
-      } catch (err) {
-        console.error('Failed to load branding:', err);
-      }
-    };
-    loadBranding();
-  }, []);
 
   const openNewThreadModal = () => {
     setNewThreadTitle('');
@@ -160,7 +118,6 @@ export default function ThreadSidebar({
         setThreads((prev) => [newThread, ...prev]);
         onThreadSelect?.(newThread);
         onThreadCreated?.(newThread);
-        setIsOpen(false);
         setShowNewThreadModal(false);
       }
     } catch (err) {
@@ -247,39 +204,17 @@ export default function ThreadSidebar({
 
   const groupedThreads = groupThreadsByDate(threads);
 
+  // Don't render if collapsed on desktop
+  if (!isOpen) {
+    return null;
+  }
+
   return (
     <>
-      {/* Mobile menu button */}
-      <button
-        onClick={() => setIsOpen(!isOpen)}
-        className="lg:hidden fixed top-4 left-4 z-50 p-2 bg-white rounded-lg shadow-md"
-      >
-        {isOpen ? <X size={20} /> : <Menu size={20} />}
-      </button>
-
       {/* Sidebar */}
-      <aside
-        className={`
-          fixed inset-y-0 left-0 z-40
-          lg:static lg:inset-auto lg:z-auto
-          w-72 bg-white border-r flex flex-col shrink-0
-          transform transition-transform duration-200 ease-in-out
-          ${isOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0
-        `}
-      >
-        {/* Header */}
-        <div className="p-4 border-b">
-          <div className="flex items-center gap-2">
-            {(() => {
-              const IconComponent = ICON_COMPONENTS[branding.botIcon] || ScrollText;
-              return <IconComponent size={24} className="text-blue-600" />;
-            })()}
-            <h1 className="text-xl font-bold text-gray-900">{branding.botName}</h1>
-          </div>
-        </div>
-
+      <aside className="w-72 bg-white border-r flex flex-col shrink-0 h-full">
         {/* New Thread Button */}
-        <div className="p-4">
+        <div className="p-4 border-b">
           <Button onClick={openNewThreadModal} className="w-full">
             <Plus size={18} className="mr-2" />
             New Thread
@@ -301,7 +236,7 @@ export default function ThreadSidebar({
           ) : (
             Object.entries(groupedThreads).map(([group, groupThreads]) => (
               <div key={group} className="mb-4">
-                <h3 className="text-xs font-medium text-gray-500 uppercase px-2 mb-2">
+                <h3 className="text-xs font-medium text-gray-500 uppercase px-2 mb-2 mt-3">
                   {group}
                 </h3>
                 <div className="space-y-1">
@@ -317,7 +252,6 @@ export default function ThreadSidebar({
                       `}
                       onClick={() => {
                         onThreadSelect?.(thread);
-                        setIsOpen(false);
                       }}
                     >
                       <MessageSquare size={16} className="shrink-0 opacity-50" />
@@ -376,7 +310,6 @@ export default function ThreadSidebar({
             <Link
               href="/admin"
               className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-              onClick={() => setIsOpen(false)}
             >
               <Settings size={16} />
               Admin Dashboard
@@ -386,7 +319,6 @@ export default function ThreadSidebar({
             <Link
               href="/superuser"
               className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-              onClick={() => setIsOpen(false)}
             >
               <Settings size={16} />
               Manage
@@ -396,7 +328,6 @@ export default function ThreadSidebar({
             <Link
               href="/profile"
               className="flex items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-              onClick={() => setIsOpen(false)}
             >
               <Brain size={16} />
               Your Memory
@@ -426,14 +357,6 @@ export default function ThreadSidebar({
           )}
         </div>
       </aside>
-
-      {/* Mobile overlay */}
-      {isOpen && (
-        <div
-          className="fixed inset-0 bg-black/20 z-30 lg:hidden"
-          onClick={() => setIsOpen(false)}
-        />
-      )}
 
       {/* Delete confirmation modal */}
       <Modal

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { MessageSquare, RefreshCw, BookOpen, ChevronDown, ChevronUp, Share2 } from 'lucide-react';
+import { MessageSquare, RefreshCw, BookOpen, ChevronDown, ChevronUp } from 'lucide-react';
 import type { Message, Thread, UserSubscription, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource } from '@/types';
 import MessageBubble from './MessageBubble';
 import MessageInput from './MessageInput';
@@ -9,7 +9,6 @@ import Spinner from '@/components/ui/Spinner';
 import StarterButtons, { StarterPrompt } from './StarterButtons';
 import ProcessingIndicator from './ProcessingIndicator';
 import ShareModal from '@/components/sharing/ShareModal';
-import ArtifactsPanel from './ArtifactsPanel';
 import { useStreamingChat } from '@/hooks/useStreamingChat';
 
 interface WelcomeConfig {
@@ -22,9 +21,19 @@ interface ChatWindowProps {
   onThreadCreated?: (thread: Thread) => void;
   userSubscriptions?: UserSubscription[];
   brandingName?: string;
-  brandingSubtitle?: string;           // Custom subtitle from branding settings
-  globalWelcome?: WelcomeConfig;       // Global welcome fallback from branding
-  categoryWelcome?: WelcomeConfig;     // Per-category welcome (takes priority)
+  brandingSubtitle?: string;
+  globalWelcome?: WelcomeConfig;
+  categoryWelcome?: WelcomeConfig;
+  showShareModal?: boolean;
+  onCloseShareModal?: () => void;
+  // Callbacks for artifacts data
+  onArtifactsChange?: (data: {
+    threadId: string | null;
+    uploads: string[];
+    generatedDocs: GeneratedDocumentInfo[];
+    generatedImages: GeneratedImageInfo[];
+    urlSources: UrlSource[];
+  }) => void;
 }
 
 interface ThreadSummary {
@@ -41,6 +50,9 @@ export default function ChatWindow({
   brandingSubtitle,
   globalWelcome,
   categoryWelcome,
+  showShareModal = false,
+  onCloseShareModal,
+  onArtifactsChange,
 }: ChatWindowProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [uploads, setUploads] = useState<string[]>([]);
@@ -50,27 +62,23 @@ export default function ChatWindow({
   const [starterPrompts, setStarterPrompts] = useState<StarterPrompt[]>([]);
   const [loadingStarters, setLoadingStarters] = useState(false);
   const [fetchedCategoryWelcome, setFetchedCategoryWelcome] = useState<WelcomeConfig | null>(null);
-  const [showShareModal, setShowShareModal] = useState(false);
 
   // Compute dynamic header based on subscriptions
   const getHeaderInfo = () => {
     const activeSubscriptions = userSubscriptions.filter(s => s.isActive);
 
     if (activeSubscriptions.length === 0) {
-      // No subscriptions (admin/superuser) - use branding
       return {
         title: brandingName,
         subtitle: brandingSubtitle || `Ask questions about policy documents`,
       };
     } else if (activeSubscriptions.length === 1) {
-      // Single subscription - use category name
       const categoryName = activeSubscriptions[0].categoryName;
       return {
         title: `${categoryName} Assistant`,
         subtitle: brandingSubtitle || `Ask questions about ${categoryName}`,
       };
     } else {
-      // Multiple subscriptions - GEA Global Assistant
       return {
         title: 'GEA Global Assistant',
         subtitle: brandingSubtitle || 'Ask questions about GEA Global',
@@ -80,30 +88,26 @@ export default function ChatWindow({
 
   const headerInfo = getHeaderInfo();
 
-  // Compute welcome screen content with priority: fetched category > prop category > global > default
+  // Compute welcome screen content
   const getWelcomeContent = () => {
-    // Priority 1: Fetched category-specific welcome (from API)
     if (fetchedCategoryWelcome?.title || fetchedCategoryWelcome?.message) {
       return {
         title: fetchedCategoryWelcome.title || `Welcome to ${headerInfo.title}`,
         message: fetchedCategoryWelcome.message || headerInfo.subtitle,
       };
     }
-    // Priority 2: Prop-passed category-specific welcome
     if (categoryWelcome?.title || categoryWelcome?.message) {
       return {
         title: categoryWelcome.title || `Welcome to ${headerInfo.title}`,
         message: categoryWelcome.message || headerInfo.subtitle,
       };
     }
-    // Priority 3: Global branding welcome
     if (globalWelcome?.title || globalWelcome?.message) {
       return {
         title: globalWelcome.title || `Welcome to ${headerInfo.title}`,
         message: globalWelcome.message || headerInfo.subtitle,
       };
     }
-    // Priority 4: Hardcoded fallback
     return {
       title: `Welcome to ${headerInfo.title}`,
       message: headerInfo.subtitle,
@@ -116,7 +120,7 @@ export default function ChatWindow({
   const [threadId, setThreadId] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Compute generated docs and images from all messages for ArtifactsPanel
+  // Compute generated docs and images from all messages
   const { generatedDocs, generatedImages } = useMemo(() => {
     const docs: GeneratedDocumentInfo[] = [];
     const images: GeneratedImageInfo[] = [];
@@ -127,6 +131,17 @@ export default function ChatWindow({
     return { generatedDocs: docs, generatedImages: images };
   }, [messages]);
 
+  // Notify parent of artifacts changes
+  useEffect(() => {
+    onArtifactsChange?.({
+      threadId,
+      uploads,
+      generatedDocs,
+      generatedImages,
+      urlSources,
+    });
+  }, [threadId, uploads, generatedDocs, generatedImages, urlSources, onArtifactsChange]);
+
   // Streaming chat hook
   const handleStreamComplete = useCallback((
     messageId: string,
@@ -136,7 +151,6 @@ export default function ChatWindow({
     documents: GeneratedDocumentInfo[],
     images: GeneratedImageInfo[]
   ) => {
-    // Add completed assistant message to the list
     const assistantMessage: Message = {
       id: messageId,
       role: 'assistant',
@@ -159,7 +173,6 @@ export default function ChatWindow({
   const {
     state: streamingState,
     sendMessage: sendStreamingMessage,
-    // abort: abortStreaming, // Available for future use (e.g., cancel button)
     toggleProcessingDetails,
     reset: resetStreaming,
   } = useStreamingChat({
@@ -169,13 +182,11 @@ export default function ChatWindow({
 
   // Load thread messages when active thread changes
   useEffect(() => {
-    // Reset streaming state when thread changes
     resetStreaming();
 
     if (activeThread) {
       setThreadId(activeThread.id);
       loadThread(activeThread.id);
-      // Load summary data if thread is summarized
       if (activeThread.isSummarized) {
         loadSummaryData(activeThread.id);
       } else {
@@ -192,7 +203,6 @@ export default function ChatWindow({
   // Load starter prompts and category welcome for single-category threads
   useEffect(() => {
     const loadCategoryData = async () => {
-      // Only load for threads with exactly one category and no messages
       if (!activeThread || messages.length > 0) {
         setStarterPrompts([]);
         setFetchedCategoryWelcome(null);
@@ -212,7 +222,6 @@ export default function ChatWindow({
         if (response.ok) {
           const data = await response.json();
           setStarterPrompts(data.starterPrompts || []);
-          // Extract category welcome data
           if (data.welcomeTitle || data.welcomeMessage) {
             setFetchedCategoryWelcome({
               title: data.welcomeTitle || undefined,
@@ -257,7 +266,7 @@ export default function ChatWindow({
     }
   };
 
-  // Auto-scroll to bottom (on messages change or streaming content update)
+  // Auto-scroll to bottom
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, streamingState.currentContent]);
@@ -300,7 +309,6 @@ export default function ChatWindow({
   const sendMessage = useCallback(async (content: string) => {
     setError(null);
 
-    // Create thread if needed
     let currentThreadId = threadId;
     if (!currentThreadId) {
       currentThreadId = await createThread();
@@ -310,7 +318,6 @@ export default function ChatWindow({
       }
     }
 
-    // Add user message optimistically
     const userMessage: Message = {
       id: `user-${Date.now()}`,
       role: 'user',
@@ -320,7 +327,6 @@ export default function ChatWindow({
     setMessages((prev) => [...prev, userMessage]);
     setLoading(true);
 
-    // Use streaming for response
     await sendStreamingMessage(content, currentThreadId);
   }, [threadId, createThread, sendStreamingMessage]);
 
@@ -343,34 +349,6 @@ export default function ChatWindow({
     ]);
   };
 
-  const handleRemoveUpload = async (filename: string) => {
-    if (!threadId) return;
-    try {
-      const response = await fetch(`/api/threads/${threadId}/upload?filename=${encodeURIComponent(filename)}`, {
-        method: 'DELETE',
-      });
-      if (response.ok) {
-        setUploads((prev) => prev.filter((f) => f !== filename));
-      }
-    } catch (err) {
-      console.error('Failed to remove upload:', err);
-    }
-  };
-
-  const handleRemoveUrlSource = async (filename: string) => {
-    if (!threadId) return;
-    try {
-      const response = await fetch(`/api/threads/${threadId}/upload?filename=${encodeURIComponent(filename)}`, {
-        method: 'DELETE',
-      });
-      if (response.ok) {
-        setUrlSources((prev) => prev.filter((s) => s.filename !== filename));
-      }
-    } catch (err) {
-      console.error('Failed to remove URL source:', err);
-    }
-  };
-
   const retry = () => {
     setError(null);
   };
@@ -380,32 +358,7 @@ export default function ChatWindow({
   };
 
   return (
-    <div className="flex h-full">
-      {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col h-full min-w-0">
-        {/* Header */}
-        <header className="sticky top-0 z-10 bg-white border-b px-4 sm:px-6 py-3 sm:py-4 shadow-sm">
-        <div className="flex items-center justify-between">
-          <div className="flex-1 min-w-0">
-            <h1 className="text-base sm:text-lg font-semibold text-gray-900 text-center sm:text-left truncate">
-              {activeThread?.title || headerInfo.title}
-            </h1>
-            <p className="text-sm text-gray-500 hidden sm:block">
-              {headerInfo.subtitle}
-            </p>
-          </div>
-          {activeThread && (
-            <button
-              onClick={() => setShowShareModal(true)}
-              className="ml-2 p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
-              title="Share thread"
-            >
-              <Share2 size={18} />
-            </button>
-          )}
-        </div>
-      </header>
-
+    <div className="flex-1 flex flex-col h-full min-w-0">
       {/* Summarization Banner */}
       {activeThread?.isSummarized && summaryData && (
         <div
@@ -460,7 +413,7 @@ export default function ChatWindow({
               }
             </p>
 
-            {/* Starter Prompts - only show for single-category threads */}
+            {/* Starter Prompts */}
             {starterPrompts.length > 0 && (
               <div className="max-w-2xl w-full">
                 <StarterButtons
@@ -480,13 +433,11 @@ export default function ChatWindow({
         {/* Streaming UI */}
         {streamingState.isStreaming && (
           <>
-            {/* Processing Indicator */}
             <ProcessingIndicator
               details={streamingState.processingDetails}
               onToggleExpand={toggleProcessingDetails}
             />
 
-            {/* Streaming Message */}
             {streamingState.currentContent && (
               <MessageBubble
                 message={{
@@ -505,7 +456,7 @@ export default function ChatWindow({
           </>
         )}
 
-        {/* Legacy loading indicator (fallback) */}
+        {/* Legacy loading indicator */}
         {loading && !streamingState.isStreaming && (
           <div className="flex justify-start mb-4">
             <div className="bg-gray-100 rounded-2xl px-4 py-3">
@@ -545,33 +496,15 @@ export default function ChatWindow({
         onUrlSourceAdded={handleUrlSourceAdded}
       />
 
-        {/* Share Modal */}
-        {activeThread && (
-          <ShareModal
-            isOpen={showShareModal}
-            onClose={() => setShowShareModal(false)}
-            threadId={activeThread.id}
-            threadTitle={activeThread.title}
-          />
-        )}
-      </div>
-
-      {/* Artifacts Panel - Right Sidebar (hidden on mobile) */}
-      <div className="hidden lg:flex lg:shrink-0">
-        <ArtifactsPanel
-          threadId={threadId}
-          uploads={uploads}
-          generatedDocs={generatedDocs}
-          generatedImages={generatedImages}
-          urlSources={urlSources}
-          onAddContent={() => {
-            // Scroll to input area and focus
-            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-          }}
-          onRemoveUpload={handleRemoveUpload}
-          onRemoveUrlSource={handleRemoveUrlSource}
+      {/* Share Modal */}
+      {activeThread && (
+        <ShareModal
+          isOpen={showShareModal}
+          onClose={() => onCloseShareModal?.()}
+          threadId={activeThread.id}
+          threadTitle={activeThread.title}
         />
-      </div>
+      )}
     </div>
   );
 }
