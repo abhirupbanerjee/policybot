@@ -102,11 +102,6 @@ export default function Home() {
     setArtifactsData(data);
   }, []);
 
-  const handleAddContent = () => {
-    // This could open an upload modal or similar - for now just a placeholder
-    // The actual upload functionality is in MessageInput
-  };
-
   const handleRemoveUpload = (filename: string) => {
     // TODO: Implement upload removal if needed
     console.log('Remove upload:', filename);
@@ -192,7 +187,6 @@ export default function Home() {
           generatedDocs={artifactsData.generatedDocs}
           generatedImages={artifactsData.generatedImages}
           urlSources={artifactsData.urlSources}
-          onAddContent={handleAddContent}
           onRemoveUpload={handleRemoveUpload}
           onRemoveUrlSource={handleRemoveUrlSource}
         />

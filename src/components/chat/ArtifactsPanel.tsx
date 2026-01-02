@@ -11,7 +11,6 @@ import {
   Youtube,
   Sparkles,
   X,
-  Plus,
   PanelRightClose,
   PanelRightOpen
 } from 'lucide-react';
@@ -24,7 +23,6 @@ interface ArtifactsPanelProps {
   generatedDocs: GeneratedDocumentInfo[];
   generatedImages: GeneratedImageInfo[];
   urlSources: UrlSource[];
-  onAddContent: () => void;
   onRemoveUpload?: (filename: string) => void;
   onRemoveUrlSource?: (filename: string) => void;
 }
@@ -52,7 +50,6 @@ export default function ArtifactsPanel({
   generatedDocs,
   generatedImages,
   urlSources,
-  onAddContent,
   onRemoveUpload,
   onRemoveUrlSource,
 }: ArtifactsPanelProps) {
@@ -109,13 +106,6 @@ export default function ArtifactsPanel({
             <span className="text-xs font-medium text-gray-600">{totalCount}</span>
           </div>
         )}
-        <button
-          onClick={onAddContent}
-          className="p-2 text-gray-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors mt-auto"
-          title="Add content"
-        >
-          <Plus size={20} />
-        </button>
       </div>
     );
   }
@@ -336,17 +326,6 @@ export default function ArtifactsPanel({
             )}
           </>
         )}
-      </div>
-
-      {/* Add Content Button */}
-      <div className="p-3 border-t">
-        <button
-          onClick={onAddContent}
-          className="w-full flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
-        >
-          <Plus size={16} />
-          Add Content
-        </button>
       </div>
     </div>
   );

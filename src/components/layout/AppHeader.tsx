@@ -59,7 +59,7 @@ export default function AppHeader({
   const IconComponent = ICON_COMPONENTS[brandingIcon] || ScrollText;
 
   return (
-    <header className="sticky top-0 z-30 bg-white border-b px-4 py-3 shadow-sm">
+    <header className="shrink-0 bg-white border-b px-4 py-3 shadow-sm">
       <div className="flex items-center justify-between">
         {/* Left section: Toggle + Logo + Title */}
         <div className="flex items-center gap-3">
