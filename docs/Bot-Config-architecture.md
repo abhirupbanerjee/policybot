@@ -1,6 +1,10 @@
 # Bot Configuration Architecture
 
-This document describes the key configuration components that control how the AI assistant behaves and responds to users.
+This document describes the key configuration components that control how the AI assistant behaves and responds to users. It provides an architectural overview of how prompts, skills, tools, and memory work together.
+
+**Related Documentation:**
+- [Tools.md](Tools.md) - Detailed tool configuration, OpenAI schemas, and usage examples
+- [DATABASE.md](DATABASE.md) - Complete database schema reference
 
 ---
 
@@ -10,10 +14,10 @@ This document describes the key configuration components that control how the AI
 2. [Starter Prompts](#2-starter-prompts)
 3. [Category Prompts](#3-category-prompts)
 4. [Skills](#4-skills)
-5. [Tools](#5-tools)
+5. [Tools](#5-tools) - Overview of all 9 tools with references to Tools.md
 6. [Data Sources](#6-data-sources)
 7. [Function APIs](#7-function-apis)
-8. [Memory](#8-memory)
+8. [Memory](#8-memory) - Memory extraction and thread summarization
 9. [Prompt Assembly Flow](#9-prompt-assembly-flow)
 10. [Comparison Table](#10-comparison-table)
 
@@ -184,105 +188,86 @@ interface SkillsSettings {
 
 ## 5. Tools
 
-**What it is:** Capabilities that extend the AI beyond text generation. Tools can perform web searches, generate documents, create visualizations, etc.
+**What it is:** Capabilities that extend the AI beyond text generation. Tools can perform web searches, generate documents, create visualizations, query data, and more.
+
+> **Full Documentation:** See [Tools.md](Tools.md) for complete configuration details, OpenAI schemas, and usage examples.
 
 ### Tool Categories
 
-| Category | Description | Example |
-|----------|-------------|---------|
-| **Autonomous** | LLM-triggered via OpenAI function calling | `web_search`, `data_source`, `function_api` |
-| **Processor** | Post-response output processors | `doc_gen` |
+| Category | Description | Execution |
+|----------|-------------|-----------|
+| **Autonomous** | LLM-triggered via OpenAI function calling | LLM decides when to call |
+| **Processor** | Post-response output processors | Triggered by response content |
+
+### Available Tools Overview
+
+| Tool | Type | Purpose | Prerequisites |
+|------|------|---------|---------------|
+| **web_search** | Autonomous | Search the web via Tavily API | Tavily API key |
+| **doc_gen** | Processor | Generate PDF, DOCX, Markdown documents | None |
+| **data_source** | Autonomous | Query APIs and CSV files with filtering/aggregation | None |
+| **chart_gen** | Autonomous | Create visualizations from LLM-constructed data | data_source enabled |
+| **function_api** | Autonomous | Dynamic function calling with OpenAI schemas | None |
+| **task_planner** | Autonomous | Multi-step task plans with progress tracking | None |
+| **youtube** | Autonomous | Extract YouTube video transcripts | Supadata API key (optional) |
+| **share_thread** | UI | Share conversation threads via secure links | None |
+| **send_email** | Internal | Send email notifications via SendGrid | SendGrid API key |
 
 ### Storage
 - **Table:** `tool_configs` - Global tool configurations
 - **Table:** `category_tool_configs` - Category-level overrides
 - **Table:** `tool_config_audit` - Audit trail of changes
-
-### Available Tools
-
-#### Web Search (`web_search`) - Autonomous
-```typescript
-{
-  enabled: false,  // Requires API key
-  config: {
-    apiKey: string,
-    defaultTopic: 'general' | 'news' | 'finance',
-    defaultSearchDepth: 'basic' | 'advanced',
-    maxResults: 5,
-    includeDomains: string[],
-    excludeDomains: string[],
-    cacheTTLSeconds: 3600
-  }
-}
-```
-
-#### Document Generator (`doc_gen`) - Processor
-```typescript
-{
-  enabled: true,
-  config: {
-    defaultFormat: 'pdf',
-    enabledFormats: ['pdf', 'docx', 'md'],
-    branding: { /* logo, colors, etc */ },
-    expirationDays: 30
-  }
-}
-```
-
-#### Data Source (`data_source`) - Autonomous
-```typescript
-{
-  enabled: true,
-  config: {
-    cacheTTLSeconds: 3600,
-    timeout: 30,
-    defaultLimit: 30,
-    maxLimit: 200,
-    defaultChartType: 'bar',
-    enabledChartTypes: ['bar', 'line', 'pie', 'area', 'scatter', 'radar', 'table']
-  }
-}
-```
-- Queries external APIs and CSV data sources
-- Category-based access control
-- Supports filtering, sorting, aggregation
-- Automatic visualization recommendations
-- See [Data Sources](#6-data-sources) for full details
-
-#### Function API (`function_api`) - Autonomous
-```typescript
-{
-  enabled: true,
-  config: {
-    globalEnabled: true
-  }
-}
-```
-- Dynamic function calling with OpenAI-format schemas
-- Admin-configured external API endpoints
-- Category-based access control
-- See [Function APIs](#7-function-apis) for full details
+- **Table:** `tool_routing_rules` - Keyword/regex rules for forcing tool calls
 
 ### Category Overrides
 - Tools can have category-specific configurations
 - Category override takes precedence if set
 - Falls back to global config if category override is null
-- Useful for custom branding per category
+- Useful for custom branding, templates, or domain filters per category
 
-### Autonomous Tool Execution Flow
+### Tool Execution Flow
 ```
-1. OpenAI receives enabled tool definitions
-2. LLM decides to call tool → returns tool_call with args
-3. Backend executes tool
-4. Tool result returned to LLM
-5. LLM generates final response using tool results
+1. User message received
+2. Tool Routing checks for keyword/regex matches → may force tool_choice
+3. OpenAI receives enabled tool definitions
+4. LLM decides to call tool → returns tool_call with args
+5. Backend executes tool
+6. Tool result returned to LLM
+7. LLM generates final response using tool results
 ```
+
+### Tool Routing
+
+Automatic forcing of specific tools based on keyword or regex patterns in user messages.
+
+| Force Mode | Effect |
+|------------|--------|
+| `required` | Force this specific tool to be called |
+| `preferred` | Force some tool call (LLM picks which) |
+| `suggested` | Hint but don't force |
+
+> See [Tools.md § Tool Routing](Tools.md#tool-routing) for rule configuration.
+
+### Tool Dependencies
+
+Some tools require API keys or other tools to be enabled:
+
+| Tool | Requires |
+|------|----------|
+| `web_search` | TAVILY_API_KEY |
+| `chart_gen` | `data_source` enabled |
+| `send_email` | SENDGRID_API_KEY |
+| `youtube` | SUPADATA_API_KEY (optional) |
+
+> See [Tools.md § Tool Dependencies](Tools.md#tool-dependencies) for the full dependency panel.
 
 ---
 
 ## 6. Data Sources
 
 **What it is:** External data connections (APIs and CSV files) that the AI can query to retrieve structured information. Data sources are linked to categories for access control.
+
+> **Full Documentation:** See [Tools.md § Data Source Tool](Tools.md#data-source-tool) for complete query capabilities, visualization options, and examples.
 
 ### Storage
 - **Table:** `data_api_configs` - API data source configurations
@@ -293,8 +278,22 @@ interface SkillsSettings {
 
 ### Data Source Types
 
-#### API Data Sources
-External REST APIs with configurable authentication and response mapping.
+| Type | Description |
+|------|-------------|
+| **API Data Sources** | External REST APIs with authentication and response mapping |
+| **CSV Data Sources** | Uploaded CSV files with automatic column inference |
+
+### Key Features
+
+| Feature | Description |
+|---------|-------------|
+| **Filtering** | Field-based filters: eq, ne, gt, lt, gte, lte, contains, in |
+| **Sorting** | Sort by any field, ascending or descending |
+| **Pagination** | Limit and offset for large datasets |
+| **Aggregation** | Server-side group_by with count/sum/avg/min/max |
+| **Visualization** | Auto-selected charts: bar, line, pie, area, scatter, radar, table |
+
+### API Data Source Structure
 
 ```typescript
 interface DataAPIConfig {
@@ -369,6 +368,8 @@ Admin → Create API/CSV configs → Link to categories → Test connection → 
 
 **What it is:** Dynamic function calling capability using OpenAI-format tool schemas. Administrators configure external APIs with explicit function definitions that the LLM can invoke directly.
 
+> **Full Documentation:** See [Tools.md § Function API Tool](Tools.md#function-api-tool) for complete configuration, endpoint mapping, and examples.
+
 ### Key Difference from Data Sources
 - **Data Sources**: Focus on data retrieval with querying/filtering
 - **Function APIs**: Support arbitrary API operations (GET/POST/PUT/DELETE) with structured schemas
@@ -384,30 +385,12 @@ interface FunctionAPIConfig {
   id: string;
   name: string;                              // Display name
   description: string;
-
-  // API Connection
   baseUrl: string;                           // e.g., "https://api.example.com"
   authType: 'api_key' | 'bearer' | 'basic' | 'none';
-  authHeader?: string;                       // e.g., "X-API-Key"
-  authCredentials?: string;                  // Encrypted
-
-  // Function Definitions (OpenAI format)
   toolsSchema: OpenAI.Chat.ChatCompletionTool[];
-
-  // Endpoint Mappings
-  endpointMappings: Record<string, {
-    method: 'GET' | 'POST' | 'PUT' | 'DELETE';
-    path: string;                            // Relative to baseUrl
-  }>;
-
-  // Settings
-  timeoutSeconds: number;
-  cacheTTLSeconds: number;
-  isEnabled: boolean;
-  status: 'active' | 'inactive' | 'error' | 'untested';
-
-  // Access Control
+  endpointMappings: Record<string, { method: string; path: string; }>;
   categoryIds: number[];
+  status: 'active' | 'inactive' | 'error' | 'untested';
 }
 ```
 
@@ -471,24 +454,82 @@ interface FunctionExecutionResult {
 
 ## 8. Memory
 
-**What it is:** Persistent conversation context that allows follow-up questions and maintains continuity within threads.
+**What it is:** Persistent conversation context that allows follow-up questions and maintains continuity within threads. Includes extracted facts that persist across sessions.
 
-### Current Implementation
-- **Storage:** SQLite `messages` table
-- **Scope:** Per-thread conversation history
-- **Limit:** Configurable message window (default: 5 messages)
+### Storage
+- **Table:** `messages` - Per-thread conversation history
+- **Table:** `user_memories` - Extracted facts per user/category
+- **Table:** `thread_summaries` - Summarized long threads
+- **Table:** `archived_messages` - Original messages preserved after summarization
+
+### Memory Extraction
+
+The system automatically extracts important facts from conversations and stores them for future reference.
+
+```typescript
+interface MemorySettings {
+  enabled: boolean;
+  extractionThreshold: number;      // Min messages before extraction
+  maxFactsPerCategory: number;      // Max facts stored per category
+  autoExtractOnThreadEnd: boolean;  // Extract when thread ends
+  extractionMaxTokens: number;      // Token budget for extraction
+}
+```
+
+**How it works:**
+1. After N messages, system analyzes conversation for key facts
+2. Facts are extracted using LLM (e.g., "User prefers PDF format")
+3. Facts stored in `user_memories` table by category
+4. Injected into future prompts for personalization
+
+**API:**
+- `GET /api/user/memory` - View extracted memories
+- `DELETE /api/user/memory` - Clear memories
+- `GET /api/admin/memory/stats` - Memory extraction statistics
+
+### Thread Summarization
+
+Long threads are automatically summarized to reduce token usage while preserving context.
+
+```typescript
+interface SummarizationSettings {
+  enabled: boolean;
+  tokenThreshold: number;           // Trigger at this token count
+  keepRecentMessages: number;       // Messages to keep unsummarized
+  summaryMaxTokens: number;         // Max tokens for summary
+  archiveOriginalMessages: boolean; // Preserve originals in archive
+}
+```
+
+**How it works:**
+1. When thread token count exceeds threshold
+2. Older messages are summarized by LLM
+3. Original messages moved to `archived_messages`
+4. Summary stored in `thread_summaries`
+5. Summary injected into context instead of full history
+
+**API:**
+- `GET /api/threads/{id}/summary` - Get thread summary
+- `GET /api/threads/{id}/archived` - Get archived messages
+- `GET /api/admin/summarization/stats` - Summarization statistics
+
+### Conversation History
+
+```typescript
+interface LimitsSettings {
+  conversationHistoryMessages: number;  // Messages included in context (default: 10)
+}
+```
 
 ### Example
 ```
 User: "What is our leave policy?"
 Bot: [responds with leave policy details]
-User: "What about section 3?"  ← Bot understands context
-```
+User: "What about section 3?"  ← Bot understands from thread context
 
-### Planned Enhancements
-- User-category-wise persistent memory
-- Thread summarization for cost optimization
-- Memory extraction for key facts across sessions
+[Later session, different thread]
+Bot: "I recall you previously asked about leave policy..." ← From extracted memory
+```
 
 ---
 

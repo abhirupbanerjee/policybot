@@ -176,6 +176,40 @@ When `AUTH_DISABLED=true` in environment:
 | PATCH | `/api/admin/tool-routing/{id}` | Yes | Admin | Update routing rule |
 | DELETE | `/api/admin/tool-routing/{id}` | Yes | Admin | Delete routing rule |
 | POST | `/api/admin/tool-routing/test` | Yes | Admin | Test routing with message |
+| POST | `/api/threads/{id}/share` | Yes | Owner | Create share link for thread |
+| DELETE | `/api/threads/{id}/share` | Yes | Owner | Revoke share link |
+| GET | `/api/shared/{token}` | No | - | Access shared thread (public) |
+| GET | `/api/shared/{token}/download/{type}/{id}` | No | - | Download shared attachment |
+| GET | `/api/shares/{shareId}` | Yes | Owner | Get share details |
+| DELETE | `/api/shares/{shareId}` | Yes | Owner | Revoke specific share |
+| GET | `/api/chat/export` | Yes | Any | Export thread as PDF/DOCX |
+| POST | `/api/admin/documents/url` | Yes | Admin | Ingest document from URL |
+| POST | `/api/superuser/documents/url` | Yes | Superuser | Ingest document from URL |
+| GET | `/api/documents/{id}/download` | Yes | Any | Download document file |
+| GET | `/api/user/memory` | Yes | Any | Get user's extracted memories |
+| DELETE | `/api/user/memory` | Yes | Any | Clear user memories |
+| GET | `/api/admin/memory/stats` | Yes | Admin | Get memory extraction stats |
+| GET | `/api/admin/summarization/stats` | Yes | Admin | Get summarization stats |
+| GET | `/api/admin/backup` | Yes | Admin | Download system backup |
+| POST | `/api/admin/backup/restore` | Yes | Admin | Restore from backup |
+| GET | `/api/superuser/backup` | Yes | Superuser | Download category backup |
+| GET | `/api/admin/cache` | Yes | Admin | Get cache statistics |
+| DELETE | `/api/admin/cache` | Yes | Admin | Clear cache |
+| GET | `/api/tools/status` | Yes | Any | Check tool availability status |
+| GET | `/api/admin/settings/superuser` | Yes | Admin | Get superuser settings |
+| PATCH | `/api/admin/settings/superuser` | Yes | Admin | Update superuser settings |
+| GET | `/api/admin/tools/dependencies` | Yes | Admin | Get tool dependencies |
+| PATCH | `/api/admin/tools/dependencies` | Yes | Admin | Update tool dependencies |
+| GET | `/api/admin/rag-testing/results` | Yes | Admin | Get RAG test results |
+| POST | `/api/admin/rag-testing/run` | Yes | Admin | Run RAG test queries |
+| GET | `/api/admin/tools/task-planner/templates` | Yes | Admin | List task planner templates |
+| POST | `/api/admin/tools/task-planner/templates` | Yes | Admin | Create task planner template |
+| GET | `/api/admin/tools/task-planner/templates/{key}` | Yes | Admin | Get template by key |
+| PUT | `/api/admin/tools/task-planner/templates/{key}` | Yes | Admin | Update template |
+| DELETE | `/api/admin/tools/task-planner/templates/{key}` | Yes | Admin | Delete template |
+| POST | `/api/admin/branding/icon` | Yes | Admin | Upload custom bot icon |
+| GET | `/api/threads/{id}/summary` | Yes | Owner | Get thread summary |
+| GET | `/api/threads/{id}/archived` | Yes | Owner | Get archived messages |
 
 ---
 

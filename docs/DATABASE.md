@@ -557,6 +557,56 @@ CREATE TABLE IF NOT EXISTS archived_messages (
 CREATE INDEX IF NOT EXISTS idx_archived_messages_thread ON archived_messages(thread_id);
 CREATE INDEX IF NOT EXISTS idx_archived_messages_summary ON archived_messages(summary_id);
 
+-- ============ Task Plans ============
+
+CREATE TABLE IF NOT EXISTS task_plans (
+  id TEXT PRIMARY KEY,                    -- UUID
+  thread_id TEXT NOT NULL,
+  template_key TEXT,                      -- Links to task_planner_templates
+  name TEXT NOT NULL,
+  status TEXT NOT NULL CHECK (status IN ('pending', 'in_progress', 'completed', 'failed', 'cancelled')),
+  tasks TEXT NOT NULL,                    -- JSON array of task objects
+  current_task_index INTEGER DEFAULT 0,
+  results TEXT,                           -- JSON array of task results
+  placeholders TEXT,                      -- JSON object of placeholder values
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  completed_at DATETIME,
+  FOREIGN KEY (thread_id) REFERENCES threads(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_task_plans_thread ON task_plans(thread_id);
+CREATE INDEX IF NOT EXISTS idx_task_plans_status ON task_plans(status);
+
+-- ============ RAG Testing ============
+
+CREATE TABLE IF NOT EXISTS rag_test_queries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  query TEXT NOT NULL,
+  expected_docs TEXT,                     -- JSON array of expected document names
+  category_ids TEXT,                      -- JSON array of category IDs to test
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  created_by TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS rag_test_results (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  query_id INTEGER NOT NULL,
+  run_id TEXT NOT NULL,                   -- Groups results from same test run
+  top_k INTEGER NOT NULL,
+  similarity_threshold REAL NOT NULL,
+  reranker_enabled INTEGER NOT NULL,
+  retrieved_docs TEXT NOT NULL,           -- JSON array of retrieved docs
+  precision_score REAL,
+  recall_score REAL,
+  latency_ms INTEGER,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (query_id) REFERENCES rag_test_queries(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_rag_test_results_query ON rag_test_results(query_id);
+CREATE INDEX IF NOT EXISTS idx_rag_test_results_run ON rag_test_results(run_id);
+
 -- ============ Thread Sharing ============
 
 -- Thread share links
@@ -1164,6 +1214,56 @@ Original messages preserved after summarization.
 | created_at | DATETIME | Original message timestamp |
 | archived_at | DATETIME | When archived |
 | summary_id | INTEGER | FK to thread_summaries.id |
+
+### task_plans
+
+Active and completed task plans from the Task Planner tool.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | TEXT | UUID primary key |
+| thread_id | TEXT | FK to threads.id |
+| template_key | TEXT | Links to task_planner_templates (NULL for ad-hoc) |
+| name | TEXT | Plan display name |
+| status | TEXT | `pending`, `in_progress`, `completed`, `failed`, `cancelled` |
+| tasks | TEXT | JSON array of task objects with id, description, status |
+| current_task_index | INTEGER | Index of currently executing task |
+| results | TEXT | JSON array of task results/outputs |
+| placeholders | TEXT | JSON object of substituted placeholder values |
+| created_at | DATETIME | Plan creation timestamp |
+| updated_at | DATETIME | Last status change timestamp |
+| completed_at | DATETIME | Completion timestamp |
+
+### rag_test_queries
+
+Test queries for RAG tuning evaluation.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INTEGER | Auto-increment primary key |
+| query | TEXT | Test question text |
+| expected_docs | TEXT | JSON array of expected document names |
+| category_ids | TEXT | JSON array of category IDs to test |
+| created_at | DATETIME | Creation timestamp |
+| created_by | TEXT | Admin email who created |
+
+### rag_test_results
+
+Results from RAG test query runs.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INTEGER | Auto-increment primary key |
+| query_id | INTEGER | FK to rag_test_queries.id |
+| run_id | TEXT | Groups results from same test run |
+| top_k | INTEGER | Top K setting used |
+| similarity_threshold | REAL | Similarity threshold used |
+| reranker_enabled | INTEGER | 1=reranker on, 0=off |
+| retrieved_docs | TEXT | JSON array of retrieved document info |
+| precision_score | REAL | Precision metric |
+| recall_score | REAL | Recall metric |
+| latency_ms | INTEGER | Query latency in milliseconds |
+| created_at | DATETIME | Result creation timestamp |
 
 ### thread_shares
 

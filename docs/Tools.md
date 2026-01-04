@@ -1584,6 +1584,85 @@ Custom descriptions can make tools more prescriptive, telling the LLM exactly wh
 
 ---
 
+## Tool Dependencies
+
+### Purpose
+
+The Tool Dependencies panel provides a visual overview of tool prerequisites and validation status. It helps administrators understand which tools require API keys, environment variables, or other tools to function.
+
+### Features
+
+- **Prerequisites Check**: Shows which API keys or environment variables each tool requires
+- **Cross-Tool Dependencies**: Displays tools that depend on other tools
+- **Validation Status**: Real-time validation of whether dependencies are met
+- **Source Tracking**: Shows whether API keys are from settings or environment variables
+
+### Dependency Registry
+
+| Tool | Prerequisites | Notes |
+|------|--------------|-------|
+| `web_search` | Tavily API key | Can be set via TAVILY_API_KEY env var or admin settings |
+| `doc_gen` | None | No external dependencies |
+| `data_source` | None | No external dependencies |
+| `chart_gen` | `data_source` enabled | Requires Data Source tool to be active |
+| `function_api` | None | No external dependencies |
+| `task_planner` | None | No external dependencies |
+| `youtube` | Supadata API key (optional) | Falls back to npm package if no API key |
+| `share_thread` | None | No external dependencies |
+| `send_email` | SendGrid API key | Required for email notifications |
+
+### Admin UI
+
+Access via **Admin > Tools > Dependencies**:
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ Tool Dependencies                                             │
+├──────────────────────────────────────────────────────────────┤
+│ ✅ Document Generator                                         │
+│    Ready - no external dependencies                          │
+├──────────────────────────────────────────────────────────────┤
+│ ⚠️ Web Search                                                 │
+│    Tavily API key required                                   │
+│    └── TAVILY_API_KEY: Not set                               │
+├──────────────────────────────────────────────────────────────┤
+│ ⚠️ Chart Generator                                            │
+│    Requires Data Source tool to be enabled                   │
+│    └── data_source: ❌ Disabled                              │
+└──────────────────────────────────────────────────────────────┘
+```
+
+### Validation Response
+
+```typescript
+interface DependencyValidation {
+  ok: boolean;
+  message: string;
+  details?: {
+    envVars?: Array<{ name: string; set: boolean; source?: string }>;
+    tools?: Array<{ name: string; enabled: boolean }>;
+  };
+}
+
+interface ToolDependencyStatus {
+  name: string;
+  displayName: string;
+  description: string;
+  enabled: boolean;
+  validation: DependencyValidation;
+  canEnable: boolean;
+  missingDependencies: string[];
+}
+```
+
+### API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/admin/tools/dependencies` | Get all tool dependency statuses |
+
+---
+
 ## Tool Configuration
 
 ### Database Schema

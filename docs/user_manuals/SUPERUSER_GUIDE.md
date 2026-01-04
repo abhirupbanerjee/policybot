@@ -12,8 +12,8 @@ This guide explains how to use the Superuser Dashboard to manage your assigned c
 4. [Users Tab](#4-users-tab)
 5. [Documents Tab](#5-documents-tab)
 6. [Prompts Tab](#6-prompts-tab)
-7. [Skills Tab](#7-skills-tab)
-8. [Tools Tab](#8-tools-tab)
+7. [Tools Tab](#7-tools-tab)
+8. [Settings Tab](#8-settings-tab)
 9. [Task Planner Templates](#9-task-planner-templates)
 10. [Data Sources](#10-data-sources)
 11. [Permissions Summary](#11-permissions-summary)
@@ -343,7 +343,15 @@ You can only delete documents that you uploaded:
 
 ## 6. Prompts Tab
 
-The Prompts tab lets you customize AI behavior for your managed categories.
+The Prompts tab lets you customize AI behavior for your managed categories. It has three subsections accessible from the sidebar.
+
+### Prompts Submenu
+
+| Section | Purpose |
+|---------|---------|
+| **Global Prompt** | View the global system prompt (read-only) |
+| **Category Prompts** | Edit category-specific addendums and starter prompts |
+| **Skills** | View available AI skills (read-only) |
 
 ### Understanding Prompt Hierarchy
 
@@ -413,17 +421,13 @@ To remove category customizations and use only the global prompt:
 2. Click **Reset to Global**
 3. Confirm the action
 
----
+### Skills (Read-Only)
 
-## 7. Skills Tab
+The Skills section within Prompts shows AI skills configured for Policy Bot.
 
-The Skills tab shows AI skills configured for Policy Bot.
-
-### What are Skills?
+**What are Skills?**
 
 Skills are specialized behaviors that extend the AI assistant's capabilities. They inject custom instructions based on context or keywords.
-
-### Skill Types
 
 | Type | Description | Example |
 |------|-------------|---------|
@@ -431,23 +435,11 @@ Skills are specialized behaviors that extend the AI assistant's capabilities. Th
 | **Category-triggered** | Active when user is in specific categories | Department-specific procedures |
 | **Keyword-triggered** | Active when user mentions specific words | "compliance" → regulatory guidelines |
 
-### Viewing Skills
-
-The Skills tab displays all available skills:
-- Skill name and description
-- Trigger type
-- Associated categories (if category-triggered)
-- Keywords (if keyword-triggered)
-
-### Skills Management
-
-> **Note:** Skills are managed by Admins only. Superusers have read-only access to view available skills.
-
-If you need a new skill or changes to existing skills, contact your Admin.
+> **Note:** Skills are managed by Admins only. Superusers have read-only access to view available skills. If you need a new skill or changes to existing skills, contact your Admin.
 
 ---
 
-## 8. Tools Tab
+## 7. Tools Tab
 
 The Tools tab lets you configure AI tools for your managed categories.
 
@@ -510,6 +502,41 @@ To remove category overrides and use global settings:
 ### Tool Routing
 
 > **Note:** Tool Routing (keyword-based tool forcing) is configured by Admins only. Superusers cannot view or modify routing rules. If tools are not being called as expected, contact your Admin to review the routing configuration.
+
+---
+
+## 8. Settings Tab
+
+The Settings tab provides access to configuration options for superusers. It has two subsections.
+
+### Settings Submenu
+
+| Section | Purpose |
+|---------|---------|
+| **RAG Tuning** | Interactive testing and tuning of RAG parameters |
+| **Backup** | View and download category-specific backups |
+
+### RAG Tuning
+
+The RAG Tuning section allows you to interactively test how different retrieval parameters affect search results for your categories.
+
+**What you can tune:**
+- **Top K Results** - Number of chunks to retrieve
+- **Similarity Threshold** - Minimum relevance score
+- **Reranking** - Enable/disable result reranking
+
+**How to use:**
+1. Navigate to Settings → RAG Tuning
+2. Select a category to test
+3. Enter a sample query
+4. Adjust parameters using the sliders
+5. Click **Test** to see results
+6. Compare different parameter combinations
+7. Save optimal settings
+
+### Backup (Read-Only)
+
+View backup information for your assigned categories. Full backup/restore operations are managed by Admins.
 
 ---
 
@@ -607,7 +634,7 @@ To modify an existing template:
 
 ## 10. Data Sources
 
-Data Sources allow the AI to query external APIs and CSV files to answer questions with real data.
+Data Sources allow the AI to query external APIs and CSV files to answer questions with real data. Data Sources are managed through the Tools tab.
 
 ### Accessing Data Sources
 

@@ -97,15 +97,47 @@ Widgets showing recent system activity:
 
 | Tab | Purpose |
 |-----|---------|
-| **Dashboard** | Overview and statistics |
+| **Dashboard** | Overview and system health |
+| **Stats** | Detailed usage statistics |
 | **Categories** | Manage document categories |
-| **Users** | User account management |
 | **Documents** | All documents across categories |
-| **Prompts** | Global and category prompts |
-| **Skills** | AI behavior configurations |
-| **Tools** | Tool configurations and settings |
-| **Data Sources** | API and CSV data connections |
-| **Settings** | System configuration |
+| **Users** | User account management |
+| **Prompts** | System prompt, category prompts, acronyms, skills |
+| **Tools** | Tool management, dependencies, and routing |
+| **Settings** | LLM, RAG, reranker, memory, and system configuration |
+
+### Prompts Submenu
+
+| Section | Purpose |
+|---------|---------|
+| **System Prompt** | Global AI instructions for all conversations |
+| **Category Prompts** | Category-specific addendums and starter prompts |
+| **Acronyms** | Acronym mappings for document processing |
+| **Skills** | AI behavior configurations (keyword/category triggered) |
+
+### Tools Submenu
+
+| Section | Purpose |
+|---------|---------|
+| **Tools Management** | Enable/disable tools, configure API keys |
+| **Dependencies** | Manage tool dependencies and execution order |
+| **Tool Routing** | Keyword/regex patterns to force specific tools |
+
+### Settings Submenu
+
+| Section | Purpose |
+|---------|---------|
+| **LLM** | Model selection, temperature, max tokens |
+| **RAG** | Retrieval settings, chunk size, similarity threshold |
+| **RAG Tuning** | Interactive RAG parameter testing |
+| **Reranker** | Enable/configure Cohere or local reranking |
+| **Memory** | User memory extraction settings |
+| **Summarization** | Thread summarization settings |
+| **Limits** | Conversation history, upload limits |
+| **Superuser** | Superuser quota and permissions |
+| **Backup** | Database backup and restore |
+| **Branding** | Bot name, icon, accent color |
+| **Cache** | Cache TTL and management |
 
 ---
 

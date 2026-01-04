@@ -339,8 +339,34 @@ Threads provide conversation isolation and category-based document access:
 - Each user has their own threads
 - Threads can be assigned to specific categories
 - Category assignment determines which documents are searchable
-- User-uploaded PDFs are attached to threads
+- User-uploaded content (files, web pages, YouTube) attached to threads
 - Deleting a thread removes all associated data
+
+#### Thread Upload Options
+
+Users can add content to threads via three methods:
+
+| Method | Description | Requirements |
+|--------|-------------|--------------|
+| **File Upload** | PDF, TXT, PNG, JPG, JPEG, WebP (max 10MB) | None |
+| **Web URL** | Extract text content from web pages | Tavily API key |
+| **YouTube** | Extract video transcripts | Supadata API key |
+
+```
+User clicks 📎 Attachment button
+    │
+    ├── File Tab ──────▶ Upload local files (drag & drop or browse)
+    │
+    ├── Web URL Tab ───▶ Enter URL ──▶ Tavily extracts content
+    │
+    └── YouTube Tab ───▶ Enter URL ──▶ Supadata extracts transcript
+    │
+    ▼
+Queue items ──▶ Upload All ──▶ Save to thread folder
+    │
+    ▼
+Artifacts Panel updates with new items
+```
 
 ### 5. Data Tools
 
@@ -413,7 +439,284 @@ User Message
     └── Preferred/Suggested ───▶ tool_choice = 'required' or 'auto'
 ```
 
-### 6. Authentication Flow
+### 6. Artifacts Panel
+
+The Artifacts Panel is a collapsible right sidebar that displays all content associated with a thread:
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│                           ARTIFACTS PANEL                             │
+│  ┌────────────────────────────────────────────────────────────────┐  │
+│  │  📎 Artifacts (count)                              [Collapse]  │  │
+│  ├────────────────────────────────────────────────────────────────┤  │
+│  │  ▼ AI Generated (purple)                                       │  │
+│  │    - Generated documents (PDF, DOCX)                           │  │
+│  │    - Generated images                                          │  │
+│  ├────────────────────────────────────────────────────────────────┤  │
+│  │  ▼ User Uploads (blue)                                         │  │
+│  │    - PDF, TXT, PNG, JPG, JPEG, WebP files                      │  │
+│  │    - Removable via ✕ button                                    │  │
+│  ├────────────────────────────────────────────────────────────────┤  │
+│  │  ▼ Web Sources (green)                                         │  │
+│  │    - Extracted web page content via Tavily                     │  │
+│  │    - Shows title and URL                                       │  │
+│  ├────────────────────────────────────────────────────────────────┤  │
+│  │  ▼ YouTube (red)                                               │  │
+│  │    - Extracted video transcripts via Supadata                  │  │
+│  │    - Shows video title and URL                                 │  │
+│  └────────────────────────────────────────────────────────────────┘  │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+**Features:**
+- **Collapsible Sections**: Each category can be expanded/collapsed
+- **Persist State**: Panel collapse state saved to localStorage
+- **Remove Items**: Users can remove uploads and URL sources
+- **Download Links**: AI-generated content is downloadable
+- **Count Badges**: Shows total items per section
+
+**Implementation**: `src/components/chat/ArtifactsPanel.tsx`
+
+### 7. Thread Sharing
+
+Thread sharing allows users to share conversations via secure, expiring links:
+
+```
+User clicks Share button
+    │
+    ▼
+┌─────────────────┐
+│ Open Share      │
+│ Modal           │
+└─────────────────┘
+    │
+    ▼
+┌─────────────────┐
+│ Configure       │──── • Expiry (1/7/30/90 days or never)
+│ Share Options   │     • Allow downloads (on/off)
+│                 │     • Email notification (optional)
+└─────────────────┘
+    │
+    ▼
+┌─────────────────┐
+│ Generate Token  │──── Cryptographically secure 256-bit token
+│ (base64url)     │
+└─────────────────┘
+    │
+    ▼
+┌─────────────────┐
+│ Store in DB     │──── thread_shares table
+└─────────────────┘
+    │
+    ▼
+┌─────────────────┐
+│ Return URL      │──── /shared/{token}
+└─────────────────┘
+```
+
+**Share Features:**
+| Feature | Description |
+|---------|-------------|
+| **Secure Tokens** | 256-bit cryptographic tokens (base64url) |
+| **Configurable Expiry** | 1, 7, 30, 90 days or never expires |
+| **Download Control** | Enable/disable file downloads per share |
+| **Email Notification** | Optional SendGrid integration |
+| **Access Logging** | Track views and downloads |
+| **Revocation** | Shares can be revoked at any time |
+| **Authentication Required** | Recipients must sign in to view |
+
+**Implementation**: `src/lib/db/sharing.ts`, `src/components/sharing/ShareModal.tsx`
+
+### 8. User Memory System
+
+The memory system extracts and persists key facts about users across conversations:
+
+```
+Conversation ends
+    │
+    ▼
+┌─────────────────┐
+│ Check if memory │──── Memory extraction enabled?
+│ enabled         │
+└─────────────────┘
+    │ Yes
+    ▼
+┌─────────────────┐
+│ Get existing    │──── Load from user_memories table
+│ facts           │
+└─────────────────┘
+    │
+    ▼
+┌─────────────────┐
+│ LLM extracts    │──── Analyze conversation for:
+│ new facts       │     • User's role/department
+│                 │     • Projects they work on
+│                 │     • Response preferences
+│                 │     • Frequent topics
+└─────────────────┘
+    │
+    ▼
+┌─────────────────┐
+│ Merge & dedupe  │──── Limit to max facts (default 10)
+└─────────────────┘
+    │
+    ▼
+┌─────────────────┐
+│ Store in DB     │──── Per user, optionally per category
+└─────────────────┘
+```
+
+**Memory Features:**
+- **Per-Category Context**: Facts can be stored globally or per category
+- **Automatic Extraction**: LLM-based extraction at configurable intervals
+- **Context Injection**: Facts injected into prompts for personalization
+- **User Access**: Users can view/edit their memory via "Your Memory" sidebar
+- **Admin Control**: Enable/disable via Admin > Settings > Memory
+
+**Implementation**: `src/lib/memory.ts`
+
+### 9. Thread Summarization
+
+Automatic conversation compression to reduce token usage:
+
+```
+Check before chat
+    │
+    ▼
+┌─────────────────┐
+│ Count thread    │──── Compare to threshold (default 20)
+│ messages        │
+└─────────────────┘
+    │ Above threshold
+    ▼
+┌─────────────────┐
+│ Estimate tokens │──── Character-based heuristics
+└─────────────────┘
+    │ Above token limit
+    ▼
+┌─────────────────┐
+│ LLM summarizes  │──── Preserves: questions, answers,
+│ old messages    │     decisions, action items, sources
+└─────────────────┘
+    │
+    ▼
+┌─────────────────┐
+│ Archive         │──── Move messages to archived_messages
+│ messages        │
+└─────────────────┘
+    │
+    ▼
+┌─────────────────┐
+│ Store summary   │──── thread_summaries table
+└─────────────────┘
+    │
+    ▼
+┌─────────────────┐
+│ Inject summary  │──── Summary replaces archived messages
+│ into context    │     in future prompts
+└─────────────────┘
+```
+
+**Summarization Settings:**
+| Setting | Default | Description |
+|---------|---------|-------------|
+| enabled | false | Master switch |
+| messageThreshold | 20 | Messages before summarization triggers |
+| maxTokens | 8000 | Token limit before summarization |
+| keepRecentMessages | 5 | Messages to keep unsummarized |
+| model | (inherit) | LLM for summarization |
+
+**Implementation**: `src/lib/summarization.ts`
+
+### 10. Skills System
+
+Modular prompt injection system for contextual behavior modification:
+
+```
+User sends message
+    │
+    ▼
+┌─────────────────┐
+│ Resolve active  │
+│ skills          │
+└─────────────────┘
+    │
+    ├── "Always" skills ───────────▶ Core behavior (citations, etc.)
+    │
+    ├── "Category" skills ─────────▶ Match thread categories
+    │
+    └── "Keyword" skills ──────────▶ Match message patterns
+    │
+    ▼
+┌─────────────────┐
+│ Sort by         │──── Lower priority = higher precedence
+│ priority        │
+└─────────────────┘
+    │
+    ▼
+┌─────────────────┐
+│ Combine prompts │──── Respect max token limit
+└─────────────────┘
+    │
+    ▼
+┌─────────────────┐
+│ Inject into     │──── After system prompt
+│ context         │
+└─────────────────┘
+```
+
+**Skill Types:**
+| Type | Trigger | Example Use Case |
+|------|---------|------------------|
+| **Always** | Every message | Core behavior, citation formatting |
+| **Category** | Thread category | HR-specific tone, Finance compliance |
+| **Keyword** | Regex/keyword match | Legal disclaimer on "contract" topics |
+
+**Skill Properties:**
+- **priority**: Lower values processed first (0-100)
+- **is_core**: Protected skills can't be deleted
+- **is_index**: Used for RAG index optimization
+- **category_restricted**: Only applies to linked categories
+- **token_estimate**: Budget tracking for prompt size
+
+**Implementation**: `src/lib/skills/`, `src/lib/db/skills.ts`
+
+### 11. Welcome Screen
+
+Role-based onboarding shown when no thread is selected:
+
+```
+User lands on chat (no thread selected)
+    │
+    ▼
+┌─────────────────┐
+│ Check user role │
+└─────────────────┘
+    │
+    ├── User ──────────▶ Base cards + "Your Memory"
+    │
+    ├── Superuser ─────▶ Base cards + "Manage Your Categories"
+    │
+    └── Admin ─────────▶ Base cards + "Admin Dashboard"
+    │
+    ▼
+Display welcome message + topic cards
+```
+
+**Welcome Screen Cards:**
+| Card | Description | All Roles |
+|------|-------------|-----------|
+| Start Conversation | Create new thread with category selection | ✓ |
+| Continue Threads | Resume previous conversations | ✓ |
+| Chat Features | Upload PDFs, voice input, web URLs | ✓ |
+| Artifacts Panel | View uploads and AI-generated content | ✓ |
+| Your Memory | Access stored user facts | ✓ |
+| Manage Categories | SuperUser dashboard access | SuperUser |
+| Admin Dashboard | Full system control | Admin |
+
+**Implementation**: `src/components/chat/WelcomeScreen.tsx`
+
+### 12. Authentication Flow
 
 ```
 User Access
@@ -631,6 +934,32 @@ Admin/Super User manages subscriptions:
 - **Preset icons**: 11 industry-specific icons (government, operations, finance, etc.)
 - **Rationale**: Allows deployment customization for different organizations while providing context-aware naming for users
 
+### 9. Secure Thread Sharing
+- **Cryptographic Tokens**: 256-bit secure tokens (base64url encoding)
+- **Configurable Expiry**: Shares can be time-limited or permanent
+- **Authentication Required**: Recipients must sign in to view shared threads
+- **Access Logging**: All views and downloads are tracked for auditing
+- **Revocation Support**: Shares can be instantly revoked by the owner
+- **Rationale**: Enables collaboration while maintaining security and audit trails
+
+### 10. User Memory Persistence
+- **Per-Category Context**: Facts stored per category or globally
+- **LLM-Based Extraction**: Automatic extraction using configured models
+- **User Control**: Users can view and edit their stored facts
+- **Rationale**: Improves personalization without requiring users to repeat context
+
+### 11. Conversation Summarization
+- **Token Cost Reduction**: Compresses long conversations to reduce API costs
+- **Context Preservation**: Maintains key decisions, questions, and sources
+- **Archived Message Storage**: Original messages preserved for audit
+- **Rationale**: Enables long-running conversations without token limits
+
+### 12. Modular Skills System
+- **Trigger-Based Activation**: Always, category, or keyword-based
+- **Priority Ordering**: Fine-grained control over skill precedence
+- **Token Budgeting**: Track and limit total prompt size
+- **Rationale**: Allows customization of bot behavior without code changes
+
 ---
 
 ## Security Considerations
@@ -654,9 +983,16 @@ Admin/Super User manages subscriptions:
 - All API routes validate session and role before processing
 - Category subscriptions control document visibility
 
+### Thread Sharing Security
+- 256-bit cryptographically secure share tokens
+- Configurable expiration (1-90 days or never)
+- Authentication required to access shared content
+- Access logging for audit trails
+- Instant revocation capability
+
 ### Input Validation
-- File type validation (PDF only)
-- File size limits enforced server-side
+- File type validation (PDF, DOCX, XLSX, PPTX, images)
+- File size limits enforced server-side (50MB admin, 10MB thread uploads)
 - Query sanitization before processing
 - SQL injection prevention via parameterized queries
 

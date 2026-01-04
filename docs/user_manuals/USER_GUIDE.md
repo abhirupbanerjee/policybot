@@ -179,22 +179,44 @@ Your threads are private to you. Other users cannot see your conversations or up
 
 ## 5. Working with Documents
 
-### Uploading Documents to Threads
+### Uploading Content to Threads
 
-You can upload documents to your conversation for analysis:
+You can upload various types of content to your conversation for analysis. Click the **Attachment** (📎) button to open the upload modal with three tabs:
 
-1. Click the **Attachment** (📎) button
-2. Select your file
-3. Wait for upload and processing
-4. Ask questions about the document
+#### File Upload Tab
+Upload files directly from your device:
+1. Click the **File** tab
+2. Drag & drop files or click **browse**
+3. Select one or more files
+4. Click **Upload All** to process
+
+**Supported file types:**
+| Type | Extensions | Use Case |
+|------|------------|----------|
+| Documents | PDF, TXT | Policy documents, reports, text files |
+| Images | PNG, JPG, JPEG, WebP | Screenshots, diagrams, receipts (requires vision model) |
+
+#### Web URL Tab
+Extract content from web pages (requires Tavily API configured by admin):
+1. Click the **Web URL** tab
+2. Enter the full URL (e.g., `https://example.com/article`)
+3. Click the **+** button to add to queue
+4. Click **Upload All** to extract content
+
+#### YouTube Tab
+Extract transcripts from YouTube videos (requires Supadata API configured by admin):
+1. Click the **YouTube** tab
+2. Paste a YouTube URL (e.g., `https://youtube.com/watch?v=...`)
+3. Click the **+** button to add to queue
+4. Click **Upload All** to extract transcript
 
 ### Upload Limits
 
 | Limit | Value |
 |-------|-------|
-| Files per thread | 3 |
-| Max file size | 5MB each |
-| Supported types | PDF only |
+| Files per thread | 3 (configurable by admin) |
+| Max file size | 10MB each |
+| Supported types | PDF, TXT, PNG, JPG, JPEG, WebP |
 
 ### Document Compliance Checking
 
@@ -210,12 +232,43 @@ A common use case is checking your documents against policies:
 ⚠️ Meal receipt from May 3rd is missing
 ❌ Transportation expense exceeds $50 limit without approval
 
+### Artifacts Panel
+
+The right side of the chat interface shows the **Artifacts Panel**, which organizes all content in your thread:
+
+```
+┌──────────────────────┐
+│ 📎 Artifacts    (4)  │
+├──────────────────────┤
+│ ▼ AI Generated  (1)  │  ← Purple: Generated docs/images
+│   📄 Summary.pdf     │
+├──────────────────────┤
+│ ▼ User Uploads  (1)  │  ← Blue: Your uploaded files
+│   📄 report.pdf  ✕   │
+├──────────────────────┤
+│ ▼ Web Sources   (1)  │  ← Green: Extracted web content
+│   🔗 example.com ✕   │
+├──────────────────────┤
+│ ▼ YouTube       (1)  │  ← Red: YouTube transcripts
+│   ▶ Video ID    ✕    │
+└──────────────────────┘
+```
+
+**Features:**
+- **Collapse/Expand**: Click section headers to show/hide items
+- **Remove Items**: Click ✕ to remove uploads or URL sources
+- **Download**: Click AI-generated documents to download
+- **Collapse Panel**: Click the panel toggle to minimize
+
 ### Tips for Document Uploads
 
-- Upload PDFs for best results
+- Upload PDFs for best text extraction
+- Use images when you need visual analysis (requires vision model)
 - Keep file names descriptive
 - Upload before asking questions about the content
 - Documents are only available in the current thread
+- Use Web URL tab to extract articles without manual copy/paste
+- Use YouTube tab to query video content as text
 
 ### Image Analysis
 
@@ -582,9 +635,10 @@ If you encounter issues:
 
 | Type | Limit |
 |------|-------|
-| Files per thread | 3 |
-| Max file size | 5MB |
-| Supported types | PDF |
+| Files per thread | 3 (configurable) |
+| Max file size | 10MB |
+| Supported types | PDF, TXT, PNG, JPG, WebP |
+| URL sources | Web pages, YouTube videos |
 
 ### Response Indicators
 
@@ -605,4 +659,4 @@ If you encounter issues:
 
 ---
 
-*Last updated: January 2025 (v1.3 - Added image analysis and thread sharing documentation)*
+*Last updated: January 2025 (v1.4 - Added Artifacts Panel, multi-format uploads, Web URL and YouTube extraction)*
