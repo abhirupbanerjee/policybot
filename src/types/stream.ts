@@ -84,7 +84,16 @@ export type StreamErrorCode =
   | 'TOOL_ERROR'
   | 'LLM_ERROR'
   | 'TIMEOUT_ERROR'
-  | 'UNKNOWN_ERROR';
+  | 'UNKNOWN_ERROR'
+  // Workspace-specific error codes
+  | 'FEATURE_DISABLED'
+  | 'NOT_FOUND'
+  | 'DISABLED'
+  | 'DOMAIN_NOT_ALLOWED'
+  | 'ACCESS_DENIED'
+  | 'SESSION_EXPIRED'
+  | 'SESSION_INVALID'
+  | 'RATE_LIMITED';
 
 // ============ Request/Response Types ============
 

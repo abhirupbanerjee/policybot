@@ -596,6 +596,166 @@ function runMigrations(database: Database.Database): void {
       CREATE INDEX IF NOT EXISTS idx_share_access_log_accessed ON share_access_log(accessed_at DESC);
     `);
   }
+
+  // Migration: Create workspaces tables for embed and standalone chat modes
+  const workspacesTableExists = database.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='workspaces'"
+  ).get();
+
+  if (!workspacesTableExists) {
+    database.exec(`
+      -- Workspaces table (both embed and standalone)
+      CREATE TABLE IF NOT EXISTS workspaces (
+        id TEXT PRIMARY KEY,
+        slug TEXT NOT NULL UNIQUE,
+        name TEXT NOT NULL,
+        type TEXT NOT NULL CHECK (type IN ('embed', 'standalone')),
+        is_enabled INTEGER DEFAULT 1,
+
+        -- Access Control (standalone only)
+        access_mode TEXT DEFAULT 'category' CHECK (access_mode IN ('category', 'explicit')),
+
+        -- Branding
+        primary_color TEXT DEFAULT '#2563eb',
+        logo_url TEXT,
+        chat_title TEXT,
+        greeting_message TEXT DEFAULT 'How can I help you today?',
+        suggested_prompts TEXT,
+        footer_text TEXT,
+
+        -- LLM Configuration (overrides global settings)
+        llm_provider TEXT,
+        llm_model TEXT,
+        temperature REAL,
+        system_prompt TEXT,
+
+        -- Embed-specific settings
+        allowed_domains TEXT DEFAULT '[]',
+        daily_limit INTEGER DEFAULT 1000,
+        session_limit INTEGER DEFAULT 50,
+
+        -- Feature toggles
+        voice_enabled INTEGER DEFAULT 0,
+        file_upload_enabled INTEGER DEFAULT 0,
+        max_file_size_mb INTEGER DEFAULT 5,
+
+        -- Ownership & Timestamps
+        created_by TEXT NOT NULL,
+        created_by_role TEXT NOT NULL CHECK (created_by_role IN ('admin', 'superuser')),
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      -- Many-to-many: Workspace to Categories
+      CREATE TABLE IF NOT EXISTS workspace_categories (
+        workspace_id TEXT NOT NULL,
+        category_id INTEGER NOT NULL,
+        PRIMARY KEY (workspace_id, category_id),
+        FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+        FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+      );
+
+      -- Many-to-many: Workspace to Users (for explicit access mode, standalone only)
+      CREATE TABLE IF NOT EXISTS workspace_users (
+        workspace_id TEXT NOT NULL,
+        user_id INTEGER NOT NULL,
+        added_by TEXT NOT NULL,
+        added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (workspace_id, user_id),
+        FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      );
+
+      -- Workspace sessions (for both types, embed = ephemeral, standalone = persistent)
+      CREATE TABLE IF NOT EXISTS workspace_sessions (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        visitor_id TEXT,
+        user_id INTEGER,
+        referrer_url TEXT,
+        ip_hash TEXT,
+        message_count INTEGER DEFAULT 0,
+        started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        last_activity DATETIME DEFAULT CURRENT_TIMESTAMP,
+        expires_at DATETIME,
+        FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+      );
+
+      -- Workspace threads (standalone only - for persistent conversations)
+      CREATE TABLE IF NOT EXISTS workspace_threads (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        title TEXT DEFAULT 'New Chat',
+        is_archived INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+        FOREIGN KEY (session_id) REFERENCES workspace_sessions(id) ON DELETE CASCADE
+      );
+
+      -- Workspace messages (stored for analytics + standalone history)
+      CREATE TABLE IF NOT EXISTS workspace_messages (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        thread_id TEXT,
+        role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+        content TEXT NOT NULL,
+        sources_json TEXT,
+        latency_ms INTEGER,
+        tokens_used INTEGER,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+        FOREIGN KEY (session_id) REFERENCES workspace_sessions(id) ON DELETE CASCADE,
+        FOREIGN KEY (thread_id) REFERENCES workspace_threads(id) ON DELETE CASCADE
+      );
+
+      -- Rate limiting state (embed only)
+      CREATE TABLE IF NOT EXISTS workspace_rate_limits (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        workspace_id TEXT NOT NULL,
+        ip_hash TEXT NOT NULL,
+        window_start DATETIME NOT NULL,
+        request_count INTEGER DEFAULT 0,
+        UNIQUE(workspace_id, ip_hash, window_start),
+        FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+      );
+
+      -- Daily analytics rollup
+      CREATE TABLE IF NOT EXISTS workspace_analytics (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        workspace_id TEXT NOT NULL,
+        date DATE NOT NULL,
+        sessions_count INTEGER DEFAULT 0,
+        messages_count INTEGER DEFAULT 0,
+        unique_visitors INTEGER DEFAULT 0,
+        avg_response_time_ms INTEGER,
+        total_tokens_used INTEGER DEFAULT 0,
+        UNIQUE(workspace_id, date),
+        FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+      );
+
+      -- Indexes for workspaces
+      CREATE INDEX IF NOT EXISTS idx_workspaces_slug ON workspaces(slug);
+      CREATE INDEX IF NOT EXISTS idx_workspaces_type ON workspaces(type);
+      CREATE INDEX IF NOT EXISTS idx_workspaces_enabled ON workspaces(is_enabled);
+      CREATE INDEX IF NOT EXISTS idx_workspace_categories_workspace ON workspace_categories(workspace_id);
+      CREATE INDEX IF NOT EXISTS idx_workspace_categories_category ON workspace_categories(category_id);
+      CREATE INDEX IF NOT EXISTS idx_workspace_users_workspace ON workspace_users(workspace_id);
+      CREATE INDEX IF NOT EXISTS idx_workspace_users_user ON workspace_users(user_id);
+      CREATE INDEX IF NOT EXISTS idx_workspace_sessions_workspace ON workspace_sessions(workspace_id);
+      CREATE INDEX IF NOT EXISTS idx_workspace_sessions_expires ON workspace_sessions(expires_at);
+      CREATE INDEX IF NOT EXISTS idx_workspace_sessions_user ON workspace_sessions(user_id);
+      CREATE INDEX IF NOT EXISTS idx_workspace_threads_session ON workspace_threads(session_id);
+      CREATE INDEX IF NOT EXISTS idx_workspace_threads_workspace ON workspace_threads(workspace_id);
+      CREATE INDEX IF NOT EXISTS idx_workspace_messages_thread ON workspace_messages(thread_id);
+      CREATE INDEX IF NOT EXISTS idx_workspace_messages_session ON workspace_messages(session_id);
+      CREATE INDEX IF NOT EXISTS idx_workspace_messages_workspace ON workspace_messages(workspace_id);
+      CREATE INDEX IF NOT EXISTS idx_workspace_analytics_date ON workspace_analytics(workspace_id, date);
+    `);
+  }
 }
 
 /**

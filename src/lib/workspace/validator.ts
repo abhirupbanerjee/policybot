@@ -1,0 +1,279 @@
+/**
+ * Workspace Request Validation
+ *
+ * Validates workspace requests for both embed and standalone modes.
+ * Handles domain validation, access control, and feature enablement checks.
+ */
+
+import { getWorkspaceBySlug, canUserAccessWorkspace, validateDomain as checkDomain } from '../db/workspaces';
+import { getSetting } from '../db/config';
+import type { Workspace, WorkspaceValidationResult } from '@/types/workspace';
+
+// ============================================================================
+// Feature Toggle
+// ============================================================================
+
+/**
+ * Check if the workspaces feature is enabled globally
+ */
+export function isWorkspacesFeatureEnabled(): boolean {
+  try {
+    const settings = getSetting<{ enabled: boolean }>('workspaces-settings');
+    return settings?.enabled !== false; // Default to enabled if not set
+  } catch {
+    return true; // Default to enabled
+  }
+}
+
+// ============================================================================
+// Validation Functions
+// ============================================================================
+
+/**
+ * Validate a workspace request
+ *
+ * @param slug - The workspace slug from URL
+ * @param options - Validation options
+ * @returns Validation result with workspace if valid
+ */
+export async function validateWorkspaceRequest(
+  slug: string,
+  options: {
+    origin?: string; // For embed domain validation
+    userId?: number; // For standalone access control
+    checkEnabled?: boolean; // Check if workspace is enabled
+  } = {}
+): Promise<WorkspaceValidationResult> {
+  const { origin, userId, checkEnabled = true } = options;
+
+  // Check if feature is enabled globally
+  if (!isWorkspacesFeatureEnabled()) {
+    return {
+      valid: false,
+      error: 'Workspaces feature is disabled',
+      errorCode: 'FEATURE_DISABLED',
+    };
+  }
+
+  // Validate slug format (16-char alphanumeric)
+  if (!isValidSlug(slug)) {
+    return {
+      valid: false,
+      error: 'Invalid workspace URL',
+      errorCode: 'NOT_FOUND',
+    };
+  }
+
+  // Get workspace
+  const workspace = getWorkspaceBySlug(slug);
+  if (!workspace) {
+    return {
+      valid: false,
+      error: 'Workspace not found',
+      errorCode: 'NOT_FOUND',
+    };
+  }
+
+  // Check if workspace is enabled
+  if (checkEnabled && !workspace.is_enabled) {
+    return {
+      valid: false,
+      error: 'Workspace is disabled',
+      errorCode: 'DISABLED',
+    };
+  }
+
+  // For embed mode: validate domain if provided
+  if (workspace.type === 'embed' && origin) {
+    if (!validateDomain(workspace, origin)) {
+      return {
+        valid: false,
+        workspace,
+        error: 'Domain not allowed',
+        errorCode: 'DOMAIN_NOT_ALLOWED',
+      };
+    }
+  }
+
+  // For standalone mode: check user access
+  if (workspace.type === 'standalone' && userId !== undefined) {
+    if (!canUserAccessWorkspace(userId, workspace.id)) {
+      return {
+        valid: false,
+        workspace,
+        error: 'Access denied',
+        errorCode: 'ACCESS_DENIED',
+      };
+    }
+  }
+
+  return {
+    valid: true,
+    workspace,
+  };
+}
+
+/**
+ * Validate workspace slug format
+ * Must be 16 characters, lowercase alphanumeric
+ */
+export function isValidSlug(slug: string): boolean {
+  return /^[a-z0-9]{16}$/.test(slug);
+}
+
+/**
+ * Validate domain for embed workspace
+ */
+export function validateDomain(workspace: Workspace, origin: string): boolean {
+  return checkDomain(workspace.id, origin);
+}
+
+// ============================================================================
+// Session Validation
+// ============================================================================
+
+/**
+ * Validate session for a workspace request
+ */
+export function validateSessionForWorkspace(
+  sessionWorkspaceId: string,
+  workspaceId: string
+): boolean {
+  return sessionWorkspaceId === workspaceId;
+}
+
+/**
+ * Extract and validate origin from request headers
+ */
+export function extractOrigin(headers: Headers): string | null {
+  const origin = headers.get('origin');
+  const referer = headers.get('referer');
+
+  if (origin) return origin;
+
+  if (referer) {
+    try {
+      const url = new URL(referer);
+      return url.origin;
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
+// ============================================================================
+// IP Hashing
+// ============================================================================
+
+/**
+ * Hash IP address for rate limiting and analytics
+ * Uses a simple hash for privacy while maintaining uniqueness
+ */
+export function hashIP(ip: string): string {
+  // Simple hash function for IP privacy
+  let hash = 0;
+  for (let i = 0; i < ip.length; i++) {
+    const char = ip.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return Math.abs(hash).toString(36);
+}
+
+/**
+ * Extract IP from request headers
+ */
+export function extractIP(headers: Headers): string {
+  // Check common proxy headers
+  const forwardedFor = headers.get('x-forwarded-for');
+  if (forwardedFor) {
+    // Take the first IP (original client)
+    return forwardedFor.split(',')[0].trim();
+  }
+
+  const realIP = headers.get('x-real-ip');
+  if (realIP) return realIP;
+
+  // Cloudflare
+  const cfConnectingIP = headers.get('cf-connecting-ip');
+  if (cfConnectingIP) return cfConnectingIP;
+
+  return '127.0.0.1'; // Fallback
+}
+
+// ============================================================================
+// Workspace Configuration Helpers
+// ============================================================================
+
+/**
+ * Get workspace configuration for client (safe to expose)
+ */
+export function getWorkspaceClientConfig(workspace: Workspace): {
+  id: string;
+  slug: string;
+  name: string;
+  type: string;
+  primary_color: string;
+  logo_url: string | null;
+  chat_title: string | null;
+  greeting_message: string;
+  suggested_prompts: string[] | null;
+  footer_text: string | null;
+  voice_enabled: boolean;
+  file_upload_enabled: boolean;
+  max_file_size_mb: number;
+} {
+  return {
+    id: workspace.id,
+    slug: workspace.slug,
+    name: workspace.name,
+    type: workspace.type,
+    primary_color: workspace.primary_color,
+    logo_url: workspace.logo_url,
+    chat_title: workspace.chat_title,
+    greeting_message: workspace.greeting_message,
+    suggested_prompts: workspace.suggested_prompts,
+    footer_text: workspace.footer_text,
+    voice_enabled: workspace.voice_enabled,
+    file_upload_enabled: workspace.file_upload_enabled,
+    max_file_size_mb: workspace.max_file_size_mb,
+  };
+}
+
+/**
+ * Get LLM configuration for a workspace
+ * Falls back to global settings if not overridden
+ */
+export function getWorkspaceLLMConfig(workspace: Workspace): {
+  provider: string;
+  model: string;
+  temperature: number;
+} {
+  const globalSettings = getSetting<{
+    model: string;
+    temperature: number;
+  }>('llm-settings') || { model: 'gpt-4o-mini', temperature: 0.3 };
+
+  return {
+    provider: workspace.llm_provider || 'openai',
+    model: workspace.llm_model || globalSettings.model,
+    temperature: workspace.temperature ?? globalSettings.temperature,
+  };
+}
+
+/**
+ * Get system prompt for a workspace
+ * Combines workspace-specific prompt with global default
+ */
+export function getWorkspaceSystemPrompt(workspace: Workspace): string {
+  const globalPrompt = getSetting<{ content: string }>('system-prompt')?.content || '';
+
+  if (workspace.system_prompt) {
+    // Prepend workspace-specific instructions
+    return `${workspace.system_prompt}\n\n${globalPrompt}`;
+  }
+
+  return globalPrompt;
+}

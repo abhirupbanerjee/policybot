@@ -16,9 +16,10 @@ import {
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  Layers,
 } from 'lucide-react';
 
-type TabType = 'dashboard' | 'documents' | 'categories' | 'users' | 'settings' | 'stats' | 'prompts' | 'tools';
+type TabType = 'dashboard' | 'documents' | 'categories' | 'users' | 'settings' | 'stats' | 'prompts' | 'tools' | 'workspaces';
 type SettingsSection = 'rag' | 'rag-tuning' | 'llm' | 'reranker' | 'memory' | 'summarization' | 'limits' | 'backup' | 'branding' | 'cache' | 'superuser';
 type PromptsSection = 'system-prompt' | 'category-prompts' | 'acronyms' | 'skills';
 type ToolsSection = 'management' | 'dependencies' | 'routing';
@@ -42,6 +43,7 @@ const MAIN_TABS: { id: TabType; label: string; icon: typeof LayoutDashboard }[] 
   { id: 'users', label: 'Users', icon: Users },
   { id: 'prompts', label: 'Prompts', icon: MessageSquare },
   { id: 'tools', label: 'Tools', icon: Globe },
+  { id: 'workspaces', label: 'Workspaces', icon: Layers },
   { id: 'settings', label: 'Settings', icon: Settings },
 ];
 

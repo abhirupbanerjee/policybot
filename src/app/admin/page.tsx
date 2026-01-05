@@ -14,6 +14,7 @@ import StarterPromptsEditor from '@/components/admin/StarterPromptsEditor';
 import AdminSidebarMenu from '@/components/admin/AdminSidebarMenu';
 import CacheSettingsTab from '@/components/admin/CacheSettingsTab';
 import { RagTuningDashboard } from '@/components/admin/RagTuningDashboard';
+import WorkspacesTab from '@/components/admin/WorkspacesTab';
 import type { GlobalDocument } from '@/types';
 
 interface AllowedUser {
@@ -129,7 +130,7 @@ interface ModelPreset {
   };
 }
 
-type TabType = 'dashboard' | 'documents' | 'categories' | 'users' | 'settings' | 'stats' | 'prompts' | 'tools';
+type TabType = 'dashboard' | 'documents' | 'categories' | 'users' | 'settings' | 'stats' | 'prompts' | 'tools' | 'workspaces';
 type SettingsSection = 'rag' | 'rag-tuning' | 'llm' | 'reranker' | 'memory' | 'summarization' | 'limits' | 'backup' | 'branding' | 'cache' | 'superuser';
 type PromptsSection = 'system-prompt' | 'category-prompts' | 'acronyms' | 'skills';
 type ToolsSection = 'management' | 'dependencies' | 'routing';
@@ -5448,6 +5449,11 @@ export default function AdminPage() {
         {/* Tools Tab */}
         {activeTab === 'tools' && (
           <ToolsTab activeSubTab={toolsSection} />
+        )}
+
+        {/* Workspaces Tab */}
+        {activeTab === 'workspaces' && (
+          <WorkspacesTab isAdmin={true} />
         )}
         </main>
       </div>

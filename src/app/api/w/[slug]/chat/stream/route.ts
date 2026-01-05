@@ -1,0 +1,376 @@
+/**
+ * Workspace Chat Stream API
+ *
+ * SSE-based streaming endpoint for workspace chat.
+ * Handles both embed and standalone modes with appropriate context.
+ *
+ * Key differences from main chat:
+ * - No user memory (workspace users don't have persistent memory)
+ * - Uses workspace-linked categories for RAG
+ * - Session-based rather than thread-based for embed mode
+ * - Simpler message storage (no artifacts for embed)
+ */
+
+import { NextRequest } from 'next/server';
+import { v4 as uuidv4 } from 'uuid';
+import { getCurrentUser } from '@/lib/auth';
+import { getUserByEmail } from '@/lib/db/users';
+import {
+  validateWorkspaceRequest,
+  extractOrigin,
+  extractIP,
+  hashIP,
+  getWorkspaceSystemPrompt,
+} from '@/lib/workspace/validator';
+import { getSession, isSessionValid, incrementMessageCount } from '@/lib/db/workspace-sessions';
+import { getThread, createThread, touchThread } from '@/lib/db/workspace-threads';
+import {
+  addMessage,
+  getRecentSessionMessages,
+  getRecentThreadMessages,
+} from '@/lib/db/workspace-messages';
+import {
+  checkAndIncrementRateLimit,
+  getRateLimitHeaders,
+} from '@/lib/workspace/rate-limiter';
+import { getWorkspaceCategorySlugs } from '@/lib/db/workspaces';
+import { getCategoryIdsBySlugs } from '@/lib/db/categories';
+import { runWithContextAsync } from '@/lib/request-context';
+import { generateResponseWithTools } from '@/lib/openai';
+import {
+  createSSEEncoder,
+  getSSEHeaders,
+  getPhaseMessage,
+  performRAGRetrieval,
+  STREAMING_CONFIG,
+} from '@/lib/streaming';
+import type { StreamEvent, Message, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo } from '@/types';
+import type { WorkspaceMessageSource } from '@/types/workspace';
+
+interface RouteContext {
+  params: Promise<{ slug: string }>;
+}
+
+interface WorkspaceChatRequest {
+  message: string;
+  sessionId: string;
+  threadId?: string; // Only for standalone mode
+}
+
+export async function POST(
+  request: NextRequest,
+  context: RouteContext
+): Promise<Response> {
+  const encoder = createSSEEncoder();
+  let keepAliveInterval: NodeJS.Timeout | null = null;
+
+  const stream = new ReadableStream({
+    async start(controller) {
+      // Helper to send SSE events
+      const send = (event: StreamEvent) => {
+        try {
+          controller.enqueue(encoder.encode(event));
+        } catch {
+          // Controller closed, ignore
+        }
+      };
+
+      // Setup keep-alive ping
+      keepAliveInterval = setInterval(() => {
+        try {
+          controller.enqueue(encoder.keepAlive());
+        } catch {
+          // Controller closed
+        }
+      }, STREAMING_CONFIG.KEEPALIVE_INTERVAL_MS);
+
+      // Handle client abort
+      const cleanup = () => {
+        if (keepAliveInterval) {
+          clearInterval(keepAliveInterval);
+          keepAliveInterval = null;
+        }
+      };
+
+      request.signal.addEventListener('abort', cleanup);
+
+      try {
+        const { slug } = await context.params;
+        const origin = extractOrigin(request.headers);
+        const ip = extractIP(request.headers);
+        const ipHash = hashIP(ip);
+
+        // ============ Phase 1: Validation ============
+        const body = await request.json() as WorkspaceChatRequest;
+        const { message, sessionId, threadId } = body;
+
+        if (!message || !sessionId) {
+          send({ type: 'error', code: 'VALIDATION_ERROR', message: 'Missing required fields', recoverable: false });
+          cleanup();
+          controller.close();
+          return;
+        }
+
+        // Validate workspace
+        const validation = await validateWorkspaceRequest(slug, {
+          origin: origin || undefined,
+          checkEnabled: true,
+        });
+
+        if (!validation.valid || !validation.workspace) {
+          send({ type: 'error', code: validation.errorCode || 'VALIDATION_ERROR', message: validation.error || 'Invalid workspace', recoverable: false });
+          cleanup();
+          controller.close();
+          return;
+        }
+
+        const workspace = validation.workspace;
+
+        // Validate session
+        if (!isSessionValid(sessionId)) {
+          send({ type: 'error', code: 'SESSION_EXPIRED', message: 'Session expired', recoverable: false });
+          cleanup();
+          controller.close();
+          return;
+        }
+
+        const session = getSession(sessionId);
+        if (!session || session.workspace_id !== workspace.id) {
+          send({ type: 'error', code: 'SESSION_INVALID', message: 'Invalid session', recoverable: false });
+          cleanup();
+          controller.close();
+          return;
+        }
+
+        // Rate limiting for embed mode
+        if (workspace.type === 'embed') {
+          const rateLimit = checkAndIncrementRateLimit(workspace.id, ipHash, sessionId);
+
+          if (!rateLimit.allowed) {
+            send({
+              type: 'error',
+              code: 'RATE_LIMITED',
+              message: `Rate limit exceeded. Resets at ${rateLimit.resetAt?.toISOString() || 'unknown'}`,
+              recoverable: false,
+            });
+            cleanup();
+            controller.close();
+            return;
+          }
+        }
+
+        send({ type: 'status', phase: 'init', content: getPhaseMessage('init') });
+
+        // ============ Setup ============
+        // Get workspace categories for RAG
+        const categorySlugs = getWorkspaceCategorySlugs(workspace.id);
+        const categoryIds = categorySlugs.length > 0
+          ? getCategoryIdsBySlugs(categorySlugs)
+          : [];
+
+        // Get system prompt
+        const systemPromptOverride = getWorkspaceSystemPrompt(workspace);
+
+        // Get conversation history based on mode
+        let conversationHistory: Message[] = [];
+        let currentThreadId: string | undefined;
+
+        if (workspace.type === 'standalone' && threadId) {
+          // Standalone mode: use thread-based history
+          const thread = getThread(threadId);
+          if (thread && thread.session_id === sessionId) {
+            currentThreadId = threadId;
+            const recentMessages = getRecentThreadMessages(threadId, 20);
+            conversationHistory = recentMessages.map(m => ({
+              id: m.id,
+              role: m.role,
+              content: m.content,
+              timestamp: new Date(m.created_at),
+            }));
+            touchThread(threadId);
+          }
+        } else if (workspace.type === 'embed') {
+          // Embed mode: use session-based history (last N messages)
+          const recentMessages = getRecentSessionMessages(sessionId, 10);
+          conversationHistory = recentMessages.map(m => ({
+            id: m.id,
+            role: m.role,
+            content: m.content,
+            timestamp: new Date(m.created_at),
+          }));
+        }
+
+        // Create user message
+        const userMessageId = uuidv4();
+        const userMessage = addMessage({
+          workspaceId: workspace.id,
+          sessionId,
+          threadId: currentThreadId,
+          role: 'user',
+          content: message,
+        });
+
+        // Increment session message count
+        incrementMessageCount(sessionId);
+
+        // Create assistant message ID
+        const assistantMessageId = uuidv4();
+
+        // ============ Run with request context ============
+        await runWithContextAsync(
+          {
+            threadId: currentThreadId || sessionId,
+            messageId: assistantMessageId,
+            categoryId: categoryIds[0],
+            userId: session.user_id ? String(session.user_id) : undefined,
+          },
+          async () => {
+            // ============ Phase 2: RAG Retrieval ============
+            send({ type: 'status', phase: 'rag', content: getPhaseMessage('rag') });
+
+            // No user documents for workspace chat
+            // No memory context for workspace chat
+            // No summary context for workspace chat
+            const ragResult = await performRAGRetrieval(
+              message,
+              categorySlugs,
+              [], // No user documents
+              '', // No memory context
+              '', // No summary context
+              send
+            );
+
+            // Apply workspace system prompt override
+            let finalSystemPrompt = ragResult.systemPrompt;
+            if (systemPromptOverride) {
+              finalSystemPrompt = `${systemPromptOverride}\n\n${ragResult.systemPrompt}`;
+            }
+
+            // Send sources from RAG
+            send({ type: 'sources', data: ragResult.sources });
+
+            // ============ Phase 3: Tool Execution ============
+            send({ type: 'status', phase: 'tools', content: getPhaseMessage('tools') });
+
+            // Track collected artifacts (standalone only)
+            const visualizations: MessageVisualization[] = [];
+            const documents: GeneratedDocumentInfo[] = [];
+            const images: GeneratedImageInfo[] = [];
+            const webSources: Source[] = [];
+
+            // Execute tools with streaming callbacks
+            const toolResult = await generateResponseWithTools(
+              finalSystemPrompt,
+              conversationHistory,
+              ragResult.context,
+              message,
+              true, // Enable tools
+              ragResult.categoryIds,
+              {
+                onToolStart: (name, displayName) => {
+                  send({ type: 'tool_start', name, displayName });
+                },
+                onToolEnd: (name, success, duration, error) => {
+                  send({ type: 'tool_end', name, success, duration, error });
+                },
+                onArtifact: (type, data) => {
+                  // Only process artifacts for standalone mode
+                  if (workspace.type === 'standalone') {
+                    if (type === 'visualization') {
+                      const viz = data as MessageVisualization;
+                      visualizations.push(viz);
+                      send({ type: 'artifact', subtype: 'visualization', data: viz });
+                    } else if (type === 'document') {
+                      const doc = data as GeneratedDocumentInfo;
+                      documents.push(doc);
+                      send({ type: 'artifact', subtype: 'document', data: doc });
+                    } else if (type === 'image') {
+                      const img = data as GeneratedImageInfo;
+                      images.push(img);
+                      send({ type: 'artifact', subtype: 'image', data: img });
+                    }
+                  }
+                },
+              }
+            );
+
+            // Extract web sources from tool history
+            for (const msg of toolResult.fullHistory) {
+              if (msg.role === 'tool') {
+                try {
+                  const content = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
+                  const parsed = JSON.parse(content);
+                  if (parsed.results && Array.isArray(parsed.results)) {
+                    for (const result of parsed.results) {
+                      webSources.push({
+                        documentName: `[WEB] ${result.title || result.url}`,
+                        pageNumber: 0,
+                        chunkText: result.content?.substring(0, 200) || '',
+                        score: result.score || 0,
+                      });
+                    }
+                  }
+                } catch {
+                  // Not a web search result
+                }
+              }
+            }
+
+            // Combine all sources
+            const allSources = [...ragResult.sources, ...webSources];
+
+            // ============ Phase 4: Stream Final Response ============
+            send({ type: 'status', phase: 'generating', content: getPhaseMessage('generating') });
+
+            const fullContent = toolResult.content;
+            const chunkSize = 20;
+
+            for (let i = 0; i < fullContent.length; i += chunkSize) {
+              const chunk = fullContent.slice(i, i + chunkSize);
+              send({ type: 'chunk', content: chunk });
+              await new Promise(resolve => setTimeout(resolve, 10));
+            }
+
+            // ============ Save Message ============
+            // Convert sources to workspace format
+            const workspaceSources: WorkspaceMessageSource[] = allSources.map(s => ({
+              document_name: s.documentName,
+              page_number: s.pageNumber,
+              chunk_text: s.chunkText,
+              score: s.score,
+            }));
+
+            addMessage({
+              workspaceId: workspace.id,
+              sessionId,
+              threadId: currentThreadId,
+              role: 'assistant',
+              content: fullContent,
+              sources: workspaceSources,
+              latencyMs: Date.now() - new Date(userMessage.created_at).getTime(),
+            });
+
+            // Increment session message count for assistant message
+            incrementMessageCount(sessionId);
+
+            // Send completion
+            send({
+              type: 'done',
+              messageId: assistantMessageId,
+              threadId: currentThreadId || sessionId,
+            });
+          }
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Unknown error';
+        console.error('Workspace chat error:', error);
+        send({ type: 'error', code: 'UNKNOWN_ERROR', message, recoverable: false });
+      } finally {
+        cleanup();
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, { headers: getSSEHeaders() });
+}

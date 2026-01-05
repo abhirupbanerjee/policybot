@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:embed": "npx tsx scripts/build-embed.ts",
     "start": "next start",
     "lint": "eslint .",
     "type-check": "tsc --noEmit",
@@ -60,6 +61,7 @@
     "@types/react-dom": "^19.2.3",
     "@types/recharts": "^1.8.29",
     "@types/uuid": "^10.0.0",
+    "esbuild": "^0.27.2",
     "eslint": "^9.17.0",
     "eslint-config-next": "^16.1.1",
     "postcss": "^8.4.49",

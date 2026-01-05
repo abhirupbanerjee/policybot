@@ -12,6 +12,7 @@ import ToolsTab from '@/components/admin/ToolsTab';
 import StarterPromptsEditor from '@/components/admin/StarterPromptsEditor';
 import SuperuserSidebarMenu from '@/components/superuser/SuperuserSidebarMenu';
 import { RagTuningDashboard } from '@/components/admin/RagTuningDashboard';
+import WorkspacesTab from '@/components/admin/WorkspacesTab';
 
 interface StarterPrompt {
   label: string;
@@ -162,7 +163,7 @@ export default function SuperUserPage() {
   const [docSortOption, setDocSortOption] = useState<'newest' | 'oldest' | 'largest' | 'smallest' | 'a-z' | 'z-a'>('newest');
 
   // Active tab state
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'categories' | 'users' | 'documents' | 'prompts' | 'tools' | 'settings'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'categories' | 'users' | 'documents' | 'prompts' | 'tools' | 'workspaces' | 'settings'>('dashboard');
 
   // Prompts sidebar section state
   type PromptsSection = 'global-prompt' | 'category-prompts' | 'skills';
@@ -1665,6 +1666,11 @@ export default function SuperUserPage() {
         {/* Tools Section */}
         {activeTab === 'tools' && (
           <ToolsTab isSuperuser />
+        )}
+
+        {/* Workspaces Section */}
+        {activeTab === 'workspaces' && (
+          <WorkspacesTab isAdmin={false} />
         )}
 
         {/* Settings Section */}

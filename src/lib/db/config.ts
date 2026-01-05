@@ -269,7 +269,8 @@ export type SettingKey =
   | 'model-token-limits'
   | 'token-limits-settings'
   | 'pwa-settings'
-  | 'superuser-settings';
+  | 'superuser-settings'
+  | 'workspaces-settings';
 
 // ============ Generic Operations ============
 
