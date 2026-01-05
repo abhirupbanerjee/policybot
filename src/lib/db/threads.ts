@@ -293,6 +293,7 @@ export function addMessage(
   role: 'user' | 'assistant' | 'tool',
   content: string,
   options?: {
+    messageId?: string;
     sources?: Source[];
     attachments?: string[];
     toolCalls?: ToolCall[];
@@ -303,7 +304,7 @@ export function addMessage(
     generatedImages?: GeneratedImageInfo[];
   }
 ): ParsedMessage {
-  const messageId = uuidv4();
+  const messageId = options?.messageId || uuidv4();
 
   execute(`
     INSERT INTO messages (id, thread_id, role, content, sources_json, attachments_json, tool_calls_json, tool_call_id, tool_name, generated_documents_json, visualizations_json, generated_images_json)

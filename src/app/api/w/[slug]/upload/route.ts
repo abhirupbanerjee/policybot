@@ -7,7 +7,6 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
 import { promises as fs } from 'fs';
 import {
@@ -21,7 +20,8 @@ import {
   checkRateLimit,
   getRateLimitHeaders,
 } from '@/lib/workspace/rate-limiter';
-import { getDataDir, ensureDir } from '@/lib/storage';
+import { ensureDir } from '@/lib/storage';
+import { getWorkspaceUploadsDir } from '@/lib/workspace/uploads';
 
 interface RouteContext {
   params: Promise<{ slug: string }>;
@@ -38,13 +38,6 @@ const ALLOWED_TYPES = new Set([
   'image/webp',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // docx
 ]);
-
-// Get workspace uploads directory
-function getWorkspaceUploadsDir(workspaceId: string, sessionId: string): string {
-  const safeWorkspaceId = workspaceId.replace(/[^a-zA-Z0-9-]/g, '_');
-  const safeSessionId = sessionId.replace(/[^a-zA-Z0-9-]/g, '_');
-  return path.join(getDataDir(), 'workspace-uploads', safeWorkspaceId, safeSessionId);
-}
 
 // Save upload file
 async function saveWorkspaceUpload(

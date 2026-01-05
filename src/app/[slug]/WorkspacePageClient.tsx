@@ -16,6 +16,7 @@ interface WorkspaceConfig {
   suggestedPrompts: string[] | null;
   voiceEnabled: boolean;
   fileUploadEnabled: boolean;
+  maxFileSizeMb: number;
 }
 
 interface WorkspacePageClientProps {

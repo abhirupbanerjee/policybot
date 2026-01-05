@@ -120,6 +120,133 @@
   border-bottom-left-radius: 4px;
 }
 
+/* Markdown content styles */
+.embed-markdown {
+  white-space: normal;
+}
+
+.embed-markdown p {
+  margin: 0 0 0.75em 0;
+}
+
+.embed-markdown p:last-child {
+  margin-bottom: 0;
+}
+
+.embed-markdown ul,
+.embed-markdown ol {
+  margin: 0.5em 0;
+  padding-left: 1.5em;
+}
+
+.embed-markdown li {
+  margin: 0.25em 0;
+}
+
+.embed-markdown code {
+  background-color: rgba(0, 0, 0, 0.08);
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  font-size: 0.9em;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+}
+
+.embed-markdown pre {
+  background-color: #1f2937;
+  color: #e5e7eb;
+  padding: 12px;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 0.75em 0;
+}
+
+.embed-markdown pre code {
+  background: none;
+  padding: 0;
+  color: inherit;
+}
+
+.embed-markdown strong {
+  font-weight: 600;
+}
+
+.embed-markdown a {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
+.embed-markdown blockquote {
+  border-left: 3px solid #d1d5db;
+  margin: 0.75em 0;
+  padding-left: 1em;
+  color: #6b7280;
+}
+
+/* Table styles */
+.embed-markdown table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 0.75em 0;
+  font-size: 0.9em;
+  overflow-x: auto;
+  display: block;
+}
+
+.embed-markdown thead {
+  background-color: #e5e7eb;
+}
+
+.embed-markdown th,
+.embed-markdown td {
+  border: 1px solid #d1d5db;
+  padding: 8px 12px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.embed-markdown th {
+  font-weight: 600;
+  background-color: #e5e7eb;
+}
+
+.embed-markdown tr:nth-child(even) {
+  background-color: rgba(0, 0, 0, 0.02);
+}
+
+.embed-markdown h1,
+.embed-markdown h2,
+.embed-markdown h3,
+.embed-markdown h4 {
+  margin: 1em 0 0.5em 0;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.embed-markdown h1:first-child,
+.embed-markdown h2:first-child,
+.embed-markdown h3:first-child,
+.embed-markdown h4:first-child {
+  margin-top: 0;
+}
+
+.embed-markdown h1 { font-size: 1.4em; }
+.embed-markdown h2 { font-size: 1.25em; }
+.embed-markdown h3 { font-size: 1.1em; }
+.embed-markdown h4 { font-size: 1em; }
+
+.embed-markdown hr {
+  border: none;
+  border-top: 1px solid #d1d5db;
+  margin: 1em 0;
+}
+
+.embed-markdown img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  margin: 0.5em 0;
+}
+
 .embed-cursor {
   display: inline-block;
   width: 2px;
@@ -150,6 +277,15 @@
   padding: 16px 20px;
   border-top: 1px solid #e5e7eb;
   background: white;
+}
+
+/* Attachments area */
+.embed-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 800px;
+  margin: 0 auto 12px;
 }
 
 .embed-input-container {

@@ -23,6 +23,7 @@ interface WorkspaceConfig {
   suggestedPrompts: string[] | null;
   voiceEnabled: boolean;
   fileUploadEnabled: boolean;
+  maxFileSizeMb: number;
 }
 
 interface WorkspaceChatProps {
@@ -185,7 +186,7 @@ export function WorkspaceChat({
   const streamingSources = chatState.sources;
 
   // Handle sending a message
-  const handleSendMessage = useCallback(async (content: string) => {
+  const handleSendMessage = useCallback(async (content: string, attachments?: string[]) => {
     if (!sessionId) return;
 
     setError(null);
@@ -194,6 +195,7 @@ export function WorkspaceChat({
     let threadId = activeThreadId;
     if (!threadId) {
       try {
+        const titleContent = content || (attachments?.length ? 'File attachment' : 'New chat');
         const response = await fetch(`/api/w/${workspaceSlug}/threads`, {
           method: 'POST',
           headers: {
@@ -201,7 +203,7 @@ export function WorkspaceChat({
             'X-Session-Id': sessionId,
           },
           body: JSON.stringify({
-            title: content.slice(0, 50) + (content.length > 50 ? '...' : ''),
+            title: titleContent.slice(0, 50) + (titleContent.length > 50 ? '...' : ''),
           }),
         });
 
@@ -220,16 +222,19 @@ export function WorkspaceChat({
     }
 
     // Add user message to UI
+    const displayContent = attachments?.length
+      ? content + (content ? '\n' : '') + `[${attachments.length} file(s) attached]`
+      : content;
     const userMessage: WorkspaceChatMessage = {
       id: `msg-${Date.now()}`,
       role: 'user',
-      content,
+      content: displayContent,
       timestamp: new Date(),
     };
     setMessages(prev => [...prev, userMessage]);
 
-    // Send to streaming endpoint
-    sendStreamingMessage(content, threadId || undefined);
+    // Send to streaming endpoint with attachments
+    sendStreamingMessage(content, threadId || undefined, attachments);
   }, [sessionId, activeThreadId, workspaceSlug, sendStreamingMessage]);
 
   // Handle creating a new thread
@@ -424,6 +429,11 @@ export function WorkspaceChat({
               suggestedPrompts={config.suggestedPrompts}
               primaryColor={config.primaryColor}
               disabled={!sessionId}
+              voiceEnabled={config.voiceEnabled}
+              fileUploadEnabled={config.fileUploadEnabled}
+              maxFileSizeMb={config.maxFileSizeMb}
+              workspaceSlug={workspaceSlug}
+              sessionId={sessionId}
               onSendMessage={handleSendMessage}
               onRetry={handleRetry}
             />

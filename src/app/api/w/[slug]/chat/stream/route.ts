@@ -44,8 +44,10 @@ import {
   performRAGRetrieval,
   STREAMING_CONFIG,
 } from '@/lib/streaming';
-import type { StreamEvent, Message, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo } from '@/types';
+import type { StreamEvent, Message, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo, ImageContent } from '@/types';
 import type { WorkspaceMessageSource } from '@/types/workspace';
+import { getWorkspaceUploadDetails } from '@/lib/workspace/uploads';
+import { readFileBuffer } from '@/lib/storage';
 
 interface RouteContext {
   params: Promise<{ slug: string }>;
@@ -55,6 +57,7 @@ interface WorkspaceChatRequest {
   message: string;
   sessionId: string;
   threadId?: string; // Only for standalone mode
+  attachments?: string[]; // Filenames of uploaded files to include
 }
 
 export async function POST(
@@ -102,7 +105,7 @@ export async function POST(
 
         // ============ Phase 1: Validation ============
         const body = await request.json() as WorkspaceChatRequest;
-        const { message, sessionId, threadId } = body;
+        const { message, sessionId, threadId, attachments } = body;
 
         if (!message || !sessionId) {
           send({ type: 'error', code: 'VALIDATION_ERROR', message: 'Missing required fields', recoverable: false });
@@ -228,13 +231,45 @@ export async function POST(
             // ============ Phase 2: RAG Retrieval ============
             send({ type: 'status', phase: 'rag', content: getPhaseMessage('rag') });
 
-            // No user documents for workspace chat
+            // Load uploaded files if any attachments specified
+            let userDocPaths: string[] = [];
+            let imageContents: ImageContent[] = [];
+
+            if (attachments && attachments.length > 0 && workspace.file_upload_enabled) {
+              const uploadDetails = await getWorkspaceUploadDetails(
+                workspace.id,
+                sessionId,
+                attachments
+              );
+
+              // Document paths for RAG text extraction (PDFs, DOCX, etc.)
+              // Also include images for OCR text extraction as additional context
+              userDocPaths = [
+                ...uploadDetails.documents.map(d => d.filepath),
+                ...uploadDetails.images.map(i => i.filepath),
+              ];
+
+              // Load images as base64 for multimodal visual content
+              for (const img of uploadDetails.images) {
+                try {
+                  const buffer = await readFileBuffer(img.filepath);
+                  imageContents.push({
+                    base64: buffer.toString('base64'),
+                    mimeType: img.mimeType,
+                    filename: img.filename,
+                  });
+                } catch (err) {
+                  console.warn(`Failed to load image ${img.filename}:`, err);
+                }
+              }
+            }
+
             // No memory context for workspace chat
             // No summary context for workspace chat
             const ragResult = await performRAGRetrieval(
               message,
               categorySlugs,
-              [], // No user documents
+              userDocPaths, // User uploaded documents
               '', // No memory context
               '', // No summary context
               send
@@ -258,6 +293,9 @@ export async function POST(
             const images: GeneratedImageInfo[] = [];
             const webSources: Source[] = [];
 
+            // Determine if this is embed mode (text-only, no visual artifacts)
+            const isEmbedMode = workspace.type === 'embed';
+
             // Execute tools with streaming callbacks
             const toolResult = await generateResponseWithTools(
               finalSystemPrompt,
@@ -274,24 +312,31 @@ export async function POST(
                   send({ type: 'tool_end', name, success, duration, error });
                 },
                 onArtifact: (type, data) => {
-                  // Only process artifacts for standalone mode
-                  if (workspace.type === 'standalone') {
-                    if (type === 'visualization') {
-                      const viz = data as MessageVisualization;
-                      visualizations.push(viz);
-                      send({ type: 'artifact', subtype: 'visualization', data: viz });
-                    } else if (type === 'document') {
-                      const doc = data as GeneratedDocumentInfo;
-                      documents.push(doc);
-                      send({ type: 'artifact', subtype: 'document', data: doc });
-                    } else if (type === 'image') {
-                      const img = data as GeneratedImageInfo;
-                      images.push(img);
-                      send({ type: 'artifact', subtype: 'image', data: img });
-                    }
+                  // Embed mode: TEXT ONLY - do not send visual artifacts (charts, documents, images)
+                  // Standalone mode: Full artifact support
+                  if (isEmbedMode) {
+                    // Skip all visual artifacts for embed mode
+                    // The system prompt already tells the LLM not to use these tools
+                    return;
+                  }
+
+                  // Standalone mode: process all artifact types
+                  if (type === 'visualization') {
+                    const viz = data as MessageVisualization;
+                    visualizations.push(viz);
+                    send({ type: 'artifact', subtype: 'visualization', data: viz });
+                  } else if (type === 'document') {
+                    const doc = data as GeneratedDocumentInfo;
+                    documents.push(doc);
+                    send({ type: 'artifact', subtype: 'document', data: doc });
+                  } else if (type === 'image') {
+                    const img = data as GeneratedImageInfo;
+                    images.push(img);
+                    send({ type: 'artifact', subtype: 'image', data: img });
                   }
                 },
-              }
+              },
+              imageContents.length > 0 ? imageContents : undefined
             );
 
             // Extract web sources from tool history

@@ -265,16 +265,37 @@ export function getWorkspaceLLMConfig(workspace: Workspace): {
 }
 
 /**
+ * Embed mode system prompt addition
+ * Tells LLM to not use image/chart/document generation tools
+ */
+const EMBED_MODE_SYSTEM_PROMPT = `
+IMPORTANT: This is an embedded chat widget with limited features.
+- Do NOT use image generation, chart generation, or document generation tools.
+- If the user requests images, charts, infographics, Word documents, PDFs, or similar generated content, politely inform them:
+  "This feature is not available in embed mode. Please contact the administrator for access to the full-featured chat."
+- You CAN and SHOULD use: web search, text formatting (tables, lists, code blocks), ASCII diagrams, and markdown formatting.
+- For data visualization requests, provide ASCII/text-based tables or formatted lists instead of charts.
+`;
+
+/**
  * Get system prompt for a workspace
  * Combines workspace-specific prompt with global default
+ * For embed mode, adds restrictions about unavailable features
  */
 export function getWorkspaceSystemPrompt(workspace: Workspace): string {
   const globalPrompt = getSetting<{ content: string }>('system-prompt')?.content || '';
 
-  if (workspace.system_prompt) {
-    // Prepend workspace-specific instructions
-    return `${workspace.system_prompt}\n\n${globalPrompt}`;
+  let prompt = globalPrompt;
+
+  // For embed mode, add restrictions about unavailable features
+  if (workspace.type === 'embed') {
+    prompt = `${EMBED_MODE_SYSTEM_PROMPT}\n\n${prompt}`;
   }
 
-  return globalPrompt;
+  if (workspace.system_prompt) {
+    // Prepend workspace-specific instructions
+    prompt = `${workspace.system_prompt}\n\n${prompt}`;
+  }
+
+  return prompt;
 }

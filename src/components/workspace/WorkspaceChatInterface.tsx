@@ -4,6 +4,7 @@
  * Workspace Chat Interface
  *
  * Message list and input for standalone workspace mode.
+ * Supports voice input and file upload when enabled.
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -12,6 +13,8 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Source } from '@/types';
 import { MarkdownComponents } from '@/components/markdown/MarkdownRenderers';
+import VoiceInput from '@/components/chat/VoiceInput';
+import { WorkspaceFileUpload, AttachmentChip } from './WorkspaceFileUpload';
 
 export interface WorkspaceChatMessage {
   id: string;
@@ -20,6 +23,12 @@ export interface WorkspaceChatMessage {
   timestamp: Date;
   sources?: Source[];
   isStreaming?: boolean;
+}
+
+interface UploadedFile {
+  filename: string;
+  originalName: string;
+  isImage: boolean;
 }
 
 interface WorkspaceChatInterfaceProps {
@@ -32,7 +41,12 @@ interface WorkspaceChatInterfaceProps {
   suggestedPrompts?: string[] | null;
   primaryColor: string;
   disabled?: boolean;
-  onSendMessage: (message: string) => void;
+  voiceEnabled?: boolean;
+  fileUploadEnabled?: boolean;
+  maxFileSizeMb?: number;
+  workspaceSlug: string;
+  sessionId: string | null;
+  onSendMessage: (message: string, attachments?: string[]) => void;
   onRetry?: () => void;
 }
 
@@ -46,10 +60,16 @@ export function WorkspaceChatInterface({
   suggestedPrompts,
   primaryColor,
   disabled = false,
+  voiceEnabled = false,
+  fileUploadEnabled = false,
+  maxFileSizeMb = 5,
+  workspaceSlug,
+  sessionId,
   onSendMessage,
   onRetry,
 }: WorkspaceChatInterfaceProps) {
   const [inputValue, setInputValue] = useState('');
+  const [attachments, setAttachments] = useState<UploadedFile[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -67,11 +87,26 @@ export function WorkspaceChatInterface({
   }, [inputValue]);
 
   const handleSubmit = useCallback(() => {
-    if (inputValue.trim() && !isStreaming && !disabled) {
-      onSendMessage(inputValue.trim());
+    if ((inputValue.trim() || attachments.length > 0) && !isStreaming && !disabled) {
+      const attachmentFilenames = attachments.map(a => a.filename);
+      onSendMessage(inputValue.trim(), attachmentFilenames.length > 0 ? attachmentFilenames : undefined);
       setInputValue('');
+      setAttachments([]);
     }
-  }, [inputValue, isStreaming, disabled, onSendMessage]);
+  }, [inputValue, attachments, isStreaming, disabled, onSendMessage]);
+
+  const handleVoiceTranscript = useCallback((text: string) => {
+    setInputValue(prev => prev ? `${prev} ${text}` : text);
+    textareaRef.current?.focus();
+  }, []);
+
+  const handleFileUploaded = useCallback((file: UploadedFile) => {
+    setAttachments(prev => [...prev, file]);
+  }, []);
+
+  const handleRemoveAttachment = useCallback((index: number) => {
+    setAttachments(prev => prev.filter((_, i) => i !== index));
+  }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -156,7 +191,41 @@ export function WorkspaceChatInterface({
       {/* Input area */}
       <div className="border-t border-gray-200 bg-white p-4">
         <div className="max-w-3xl mx-auto">
+          {/* Attachments display */}
+          {attachments.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-2">
+              {attachments.map((file, index) => (
+                <AttachmentChip
+                  key={`${file.filename}-${index}`}
+                  file={file}
+                  onRemove={() => handleRemoveAttachment(index)}
+                  disabled={isStreaming}
+                />
+              ))}
+            </div>
+          )}
+
           <div className="flex items-end gap-2 bg-gray-50 rounded-2xl border border-gray-200 p-3">
+            {/* File upload button */}
+            {fileUploadEnabled && (
+              <WorkspaceFileUpload
+                workspaceSlug={workspaceSlug}
+                sessionId={sessionId}
+                maxFileSizeMb={maxFileSizeMb}
+                disabled={isStreaming || disabled}
+                onFileUploaded={handleFileUploaded}
+                primaryColor={primaryColor}
+              />
+            )}
+
+            {/* Voice input button */}
+            {voiceEnabled && (
+              <VoiceInput
+                onTranscript={handleVoiceTranscript}
+                disabled={isStreaming || disabled}
+              />
+            )}
+
             <textarea
               ref={textareaRef}
               value={inputValue}
@@ -169,7 +238,7 @@ export function WorkspaceChatInterface({
             />
             <button
               onClick={handleSubmit}
-              disabled={!inputValue.trim() || isStreaming || disabled}
+              disabled={(!inputValue.trim() && attachments.length === 0) || isStreaming || disabled}
               className="w-8 h-8 rounded-full flex items-center justify-center text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               style={{ backgroundColor: primaryColor }}
             >

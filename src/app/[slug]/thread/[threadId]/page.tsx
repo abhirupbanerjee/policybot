@@ -46,6 +46,7 @@ export default async function ThreadViewPage({ params }: PageProps) {
         suggestedPrompts: workspace.suggested_prompts,
         voiceEnabled: workspace.voice_enabled,
         fileUploadEnabled: workspace.file_upload_enabled,
+        maxFileSizeMb: workspace.max_file_size_mb,
       }}
       initialThreadId={threadId}
     />

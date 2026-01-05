@@ -272,6 +272,7 @@ export async function addMessage(
 
   // Add the message
   dbAddMessage(threadId, message.role, message.content, {
+    messageId: message.id,
     sources: message.sources,
     attachments: message.attachments,
     toolCalls: message.tool_calls,

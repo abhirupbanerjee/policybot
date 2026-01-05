@@ -8,7 +8,7 @@
 'use client';
 
 import { useState, useCallback, useRef } from 'react';
-import type { StreamEvent, StreamPhase, Source } from '@/types';
+import type { StreamEvent, StreamPhase, Source, MessageVisualization, GeneratedDocumentInfo, GeneratedImageInfo } from '@/types';
 
 export interface WorkspaceMessage {
   id: string;
@@ -24,6 +24,9 @@ export interface WorkspaceStreamingState {
   phase: StreamPhase | null;
   currentContent: string;
   sources: Source[];
+  visualizations: MessageVisualization[];
+  documents: GeneratedDocumentInfo[];
+  images: GeneratedImageInfo[];
   error: string | null;
 }
 
@@ -37,7 +40,7 @@ export interface UseWorkspaceChatOptions {
 
 export interface UseWorkspaceChatReturn {
   state: WorkspaceStreamingState;
-  sendMessage: (message: string, overrideThreadId?: string) => Promise<void>;
+  sendMessage: (message: string, overrideThreadId?: string, attachments?: string[]) => Promise<void>;
   abort: () => void;
   reset: () => void;
 }
@@ -47,6 +50,9 @@ const initialState: WorkspaceStreamingState = {
   phase: null,
   currentContent: '',
   sources: [],
+  visualizations: [],
+  documents: [],
+  images: [],
   error: null,
 };
 
@@ -73,7 +79,7 @@ export function useWorkspaceChat({
     rafRef.current = null;
   }, []);
 
-  const sendMessage = useCallback(async (message: string, overrideThreadId?: string) => {
+  const sendMessage = useCallback(async (message: string, overrideThreadId?: string, attachments?: string[]) => {
     // Abort any existing request
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -87,6 +93,9 @@ export function useWorkspaceChat({
       phase: 'init',
       currentContent: '',
       sources: [],
+      visualizations: [],
+      documents: [],
+      images: [],
       error: null,
     });
 
@@ -101,6 +110,7 @@ export function useWorkspaceChat({
           message,
           sessionId,
           threadId: overrideThreadId || threadId,
+          attachments,
         }),
         signal: abortControllerRef.current.signal,
       });
@@ -147,6 +157,39 @@ export function useWorkspaceChat({
               case 'sources':
                 accumulatedSources = event.data;
                 setState(prev => ({ ...prev, sources: event.data }));
+                break;
+
+              case 'artifact':
+                // Handle artifacts for standalone mode (full feature support)
+                if (event.subtype === 'visualization') {
+                  setState(prev => ({
+                    ...prev,
+                    visualizations: [...prev.visualizations, event.data as MessageVisualization],
+                  }));
+                } else if (event.subtype === 'document') {
+                  const doc = event.data as GeneratedDocumentInfo;
+                  setState(prev => ({
+                    ...prev,
+                    documents: [...prev.documents, doc],
+                  }));
+                  // Also append document link to content for inline display
+                  const fileIcon = doc.fileType === 'docx' ? '📄' : doc.fileType === 'pdf' ? '📕' : '📝';
+                  contentBufferRef.current += `\n\n${fileIcon} **Generated Document:** [${doc.filename}](${doc.downloadUrl}) (${doc.fileSizeFormatted})`;
+                  if (!rafRef.current) {
+                    rafRef.current = requestAnimationFrame(flushBuffer);
+                  }
+                } else if (event.subtype === 'image') {
+                  const img = event.data as GeneratedImageInfo;
+                  setState(prev => ({
+                    ...prev,
+                    images: [...prev.images, img],
+                  }));
+                  // Also append image to content for inline display
+                  contentBufferRef.current += `\n\n![${img.alt || 'Generated image'}](${img.url})`;
+                  if (!rafRef.current) {
+                    rafRef.current = requestAnimationFrame(flushBuffer);
+                  }
+                }
                 break;
 
               case 'done':

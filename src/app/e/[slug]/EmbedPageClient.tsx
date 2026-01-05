@@ -3,10 +3,19 @@
 /**
  * Embed Page Client Component
  *
- * Full-page embed chat experience.
+ * Full-page embed chat experience with TEXT-ONLY responses.
+ * Supports voice input and file upload when enabled.
+ *
+ * Note: This is a lightweight embed mode. Visual artifacts (images, charts,
+ * documents) are NOT supported. The LLM is instructed to provide text-based
+ * alternatives (ASCII tables, formatted lists, etc.) instead.
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import VoiceInput from '@/components/chat/VoiceInput';
+import { WorkspaceFileUpload, AttachmentChip } from '@/components/workspace/WorkspaceFileUpload';
 import './embed.css';
 
 interface EmbedConfig {
@@ -28,6 +37,12 @@ interface Message {
   isStreaming?: boolean;
 }
 
+interface UploadedFile {
+  filename: string;
+  originalName: string;
+  isImage: boolean;
+}
+
 interface EmbedPageClientProps {
   workspaceSlug: string;
   config: EmbedConfig;
@@ -36,6 +51,7 @@ interface EmbedPageClientProps {
 export function EmbedPageClient({ workspaceSlug, config }: EmbedPageClientProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
+  const [attachments, setAttachments] = useState<UploadedFile[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -88,14 +104,19 @@ export function EmbedPageClient({ workspaceSlug, config }: EmbedPageClientProps)
     }
   }, [inputValue]);
 
-  const sendMessage = useCallback(async (content: string) => {
+  const sendMessage = useCallback(async (content: string, messageAttachments?: string[]) => {
     if (!sessionId || isStreaming) return;
+
+    // Build display content with attachments
+    const displayContent = messageAttachments?.length
+      ? content + (content ? '\n' : '') + `[${messageAttachments.length} file(s) attached]`
+      : content;
 
     // Add user message
     const userMessage: Message = {
       id: generateId(),
       role: 'user',
-      content,
+      content: displayContent,
     };
     setMessages(prev => [...prev, userMessage]);
 
@@ -121,7 +142,11 @@ export function EmbedPageClient({ workspaceSlug, config }: EmbedPageClientProps)
       const response = await fetch(`/api/w/${workspaceSlug}/chat/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: content, sessionId }),
+        body: JSON.stringify({
+          message: content,
+          sessionId,
+          attachments: messageAttachments,
+        }),
         signal: abortControllerRef.current.signal,
       });
 
@@ -190,11 +215,26 @@ export function EmbedPageClient({ workspaceSlug, config }: EmbedPageClientProps)
   }, [sessionId, isStreaming, workspaceSlug]);
 
   const handleSubmit = () => {
-    if (inputValue.trim() && !isStreaming) {
-      sendMessage(inputValue.trim());
+    if ((inputValue.trim() || attachments.length > 0) && !isStreaming) {
+      const attachmentFilenames = attachments.map(a => a.filename);
+      sendMessage(inputValue.trim(), attachmentFilenames.length > 0 ? attachmentFilenames : undefined);
       setInputValue('');
+      setAttachments([]);
     }
   };
+
+  const handleVoiceTranscript = useCallback((text: string) => {
+    setInputValue(prev => prev ? `${prev} ${text}` : text);
+    textareaRef.current?.focus();
+  }, []);
+
+  const handleFileUploaded = useCallback((file: UploadedFile) => {
+    setAttachments(prev => [...prev, file]);
+  }, []);
+
+  const handleRemoveAttachment = useCallback((index: number) => {
+    setAttachments(prev => prev.filter((_, i) => i !== index));
+  }, []);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -209,6 +249,7 @@ export function EmbedPageClient({ workspaceSlug, config }: EmbedPageClientProps)
       abortControllerRef.current = null;
     }
     setMessages([]);
+    setAttachments([]);
     setIsStreaming(false);
     setError(null);
   };
@@ -265,7 +306,15 @@ export function EmbedPageClient({ workspaceSlug, config }: EmbedPageClientProps)
                 }`}
                 style={message.role === 'user' ? { backgroundColor: config.primaryColor } : undefined}
               >
-                {message.content}
+                {message.role === 'assistant' ? (
+                  <div className="embed-markdown">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {message.content}
+                    </ReactMarkdown>
+                  </div>
+                ) : (
+                  message.content
+                )}
                 {message.isStreaming && (
                   <span className="embed-cursor" />
                 )}
@@ -282,7 +331,41 @@ export function EmbedPageClient({ workspaceSlug, config }: EmbedPageClientProps)
 
       {/* Input */}
       <footer className="embed-footer">
+        {/* Attachments display */}
+        {attachments.length > 0 && (
+          <div className="embed-attachments">
+            {attachments.map((file, index) => (
+              <AttachmentChip
+                key={`${file.filename}-${index}`}
+                file={file}
+                onRemove={() => handleRemoveAttachment(index)}
+                disabled={isStreaming}
+              />
+            ))}
+          </div>
+        )}
+
         <div className="embed-input-container">
+          {/* File upload button */}
+          {config.fileUploadEnabled && (
+            <WorkspaceFileUpload
+              workspaceSlug={workspaceSlug}
+              sessionId={sessionId}
+              maxFileSizeMb={config.maxFileSizeMb}
+              disabled={isStreaming || !sessionId}
+              onFileUploaded={handleFileUploaded}
+              primaryColor={config.primaryColor}
+            />
+          )}
+
+          {/* Voice input button */}
+          {config.voiceEnabled && (
+            <VoiceInput
+              onTranscript={handleVoiceTranscript}
+              disabled={isStreaming || !sessionId}
+            />
+          )}
+
           <textarea
             ref={textareaRef}
             className="embed-textarea"
@@ -296,7 +379,7 @@ export function EmbedPageClient({ workspaceSlug, config }: EmbedPageClientProps)
           <button
             className="embed-send-btn"
             onClick={handleSubmit}
-            disabled={!inputValue.trim() || isStreaming || !sessionId}
+            disabled={(!inputValue.trim() && attachments.length === 0) || isStreaming || !sessionId}
             style={{ backgroundColor: config.primaryColor }}
           >
             <svg viewBox="0 0 24 24" width="20" height="20" fill="white">
