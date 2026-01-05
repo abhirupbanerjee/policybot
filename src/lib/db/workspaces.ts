@@ -28,12 +28,20 @@ import type {
  * Uses lowercase alphanumeric characters for URL-friendliness
  */
 export function generateSlug(): string {
-  const bytes = randomBytes(12);
-  return bytes
+  // Use more bytes to ensure we have enough characters after filtering out +/= chars
+  const bytes = randomBytes(24);
+  const slug = bytes
     .toString('base64')
     .replace(/[+/=]/g, '')
     .toLowerCase()
     .slice(0, 16);
+
+  // Ensure we got exactly 16 characters (very rare edge case if not)
+  if (slug.length < 16) {
+    return generateSlug();
+  }
+
+  return slug;
 }
 
 /**

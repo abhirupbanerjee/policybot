@@ -95,8 +95,9 @@ export async function validateWorkspaceRequest(
     }
   }
 
-  // For standalone mode: check user access
-  if (workspace.type === 'standalone' && userId !== undefined) {
+  // For standalone mode with explicit access mode: check user access
+  // For category-based mode, we allow access but RAG queries will be scoped to user's categories
+  if (workspace.type === 'standalone' && workspace.access_mode === 'explicit' && userId !== undefined) {
     if (!canUserAccessWorkspace(userId, workspace.id)) {
       return {
         valid: false,
