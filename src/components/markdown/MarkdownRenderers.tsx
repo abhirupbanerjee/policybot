@@ -185,6 +185,25 @@ const BaseMarkdownComponents: Partial<Components> = {
   em: ({ children }) => (
     <em className="italic">{children}</em>
   ),
+
+  // Image renderer for generated images
+  img: ({ src, alt }) => {
+    // eslint-disable-next-line @next/next/no-img-element
+    return (
+      <img
+        src={src}
+        alt={alt || 'Generated image'}
+        className="max-w-full h-auto rounded-lg my-3 border border-gray-200"
+        loading="lazy"
+        onError={(e) => {
+          const target = e.currentTarget;
+          // Hide broken images or show placeholder
+          target.style.display = 'none';
+          console.warn('Failed to load image:', src);
+        }}
+      />
+    );
+  },
 };
 
 /**

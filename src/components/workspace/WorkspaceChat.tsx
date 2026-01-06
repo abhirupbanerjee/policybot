@@ -47,6 +47,7 @@ export function WorkspaceChat({
   const [isLoadingMessages, setIsLoadingMessages] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [user, setUser] = useState<{ id: string; email: string; name: string } | null>(null);
 
   // Initialize session
   useEffect(() => {
@@ -65,6 +66,11 @@ export function WorkspaceChat({
 
         const data = await response.json();
         setSessionId(data.sessionId);
+
+        // Capture user info if authenticated
+        if (data.user) {
+          setUser(data.user);
+        }
 
         // Use activeThreadId from init response if available and not already set
         if (data.activeThreadId && !initialThreadId) {
@@ -138,7 +144,9 @@ export function WorkspaceChat({
         }
 
         const data = await response.json();
-        const loadedMessages: WorkspaceChatMessage[] = (data.messages || []).map((m: {
+        // API returns { thread: { ...thread, messages: [...] } }
+        const threadMessages = data.thread?.messages || [];
+        const loadedMessages: WorkspaceChatMessage[] = threadMessages.map((m: {
           id: string;
           role: 'user' | 'assistant';
           content: string;
@@ -392,6 +400,15 @@ export function WorkspaceChat({
         primaryColor={config.primaryColor}
         showMenuButton={true}
         onMenuClick={toggleSidebar}
+        user={user}
+        onLogout={() => {
+          // Redirect to logout then back to this workspace
+          window.location.href = `/api/auth/signout?callbackUrl=/${workspaceSlug}`;
+        }}
+        onLogin={() => {
+          // Redirect to login then back to this workspace
+          window.location.href = `/api/auth/signin?callbackUrl=/${workspaceSlug}`;
+        }}
       />
 
       <div className="flex flex-1 overflow-hidden">
