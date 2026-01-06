@@ -51,7 +51,8 @@ export async function GET(
     const origin = extractOrigin(request.headers);
     const searchParams = request.nextUrl.searchParams;
 
-    const sessionId = searchParams.get('sessionId');
+    // Accept sessionId from header OR query parameter
+    const sessionId = request.headers.get('X-Session-Id') || searchParams.get('sessionId');
     const includeArchived = searchParams.get('includeArchived') === 'true';
     const limit = parseInt(searchParams.get('limit') || '50', 10);
     const offset = parseInt(searchParams.get('offset') || '0', 10);
@@ -144,7 +145,9 @@ export async function POST(
     const origin = extractOrigin(request.headers);
 
     const body = await request.json() as CreateThreadRequest;
-    const { sessionId, title } = body;
+    // Accept sessionId from header OR body
+    const sessionId = request.headers.get('X-Session-Id') || body.sessionId;
+    const { title } = body;
 
     if (!sessionId) {
       return NextResponse.json(

@@ -45,7 +45,8 @@ export async function GET(
     const origin = extractOrigin(request.headers);
     const searchParams = request.nextUrl.searchParams;
 
-    const sessionId = searchParams.get('sessionId');
+    // Accept sessionId from header OR query parameter
+    const sessionId = request.headers.get('X-Session-Id') || searchParams.get('sessionId');
     const includeMessages = searchParams.get('includeMessages') !== 'false';
 
     if (!sessionId) {
@@ -132,7 +133,9 @@ export async function PATCH(
     const origin = extractOrigin(request.headers);
 
     const body = await request.json() as UpdateThreadRequest;
-    const { sessionId, title, is_archived } = body;
+    // Accept sessionId from header OR body
+    const sessionId = request.headers.get('X-Session-Id') || body.sessionId;
+    const { title, is_archived } = body;
 
     if (!sessionId) {
       return NextResponse.json(
@@ -224,7 +227,8 @@ export async function DELETE(
     const origin = extractOrigin(request.headers);
     const searchParams = request.nextUrl.searchParams;
 
-    const sessionId = searchParams.get('sessionId');
+    // Accept sessionId from header OR query parameter
+    const sessionId = request.headers.get('X-Session-Id') || searchParams.get('sessionId');
 
     if (!sessionId) {
       return NextResponse.json(
@@ -316,7 +320,9 @@ export async function POST(
     const origin = extractOrigin(request.headers);
 
     const body = await request.json();
-    const { sessionId, action } = body;
+    // Accept sessionId from header OR body
+    const sessionId = request.headers.get('X-Session-Id') || body.sessionId;
+    const { action } = body;
 
     if (!sessionId) {
       return NextResponse.json(
