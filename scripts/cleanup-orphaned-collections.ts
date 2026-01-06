@@ -108,15 +108,9 @@ async function main() {
 
   console.log(`Found ${orphanedCollections.length} orphaned collection(s):\n`);
 
-  // Get counts and display orphaned collections
+  // Display orphaned collections
   for (const collectionName of orphanedCollections) {
-    try {
-      const collection = await chromaClient.getCollection({ name: collectionName });
-      const count = await collection.count();
-      console.log(`  - ${collectionName} (${count} vectors)`);
-    } catch {
-      console.log(`  - ${collectionName} (unable to get count)`);
-    }
+    console.log(`  - ${collectionName}`);
   }
 
   console.log('');
