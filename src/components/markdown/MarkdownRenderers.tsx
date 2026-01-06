@@ -1,10 +1,33 @@
 'use client';
 
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { ExternalLink } from 'lucide-react';
 import type { Components } from 'react-markdown';
+import { isMermaidCode } from './MermaidDiagram';
 
-export const MarkdownComponents: Components = {
+// Lazy load MermaidDiagram to avoid loading Mermaid.js until needed
+const MermaidDiagram = lazy(() => import('./MermaidDiagram'));
+
+/**
+ * Extract text content from React children (handles nested elements)
+ */
+function getTextContent(children: React.ReactNode): string {
+  if (typeof children === 'string') return children;
+  if (typeof children === 'number') return String(children);
+  if (Array.isArray(children)) return children.map(getTextContent).join('');
+  if (React.isValidElement(children)) {
+    const props = children.props as { children?: React.ReactNode };
+    if (props.children) {
+      return getTextContent(props.children);
+    }
+  }
+  return '';
+}
+
+/**
+ * Base markdown components (shared between all modes)
+ */
+const BaseMarkdownComponents: Partial<Components> = {
   // Table wrapper for responsive scrolling
   table: ({ children }) => (
     <div className="overflow-x-auto touch-pan-x my-4 rounded-md border border-gray-200">
@@ -164,3 +187,86 @@ export const MarkdownComponents: Components = {
     <em className="italic">{children}</em>
   ),
 };
+
+/**
+ * Code block component with Mermaid support
+ * Detects mermaid code blocks and renders them as diagrams
+ */
+const CodeWithMermaid: Components['code'] = ({ children, className }) => {
+  const isInline = !className;
+  const language = className?.replace('language-', '') || '';
+  const codeContent = getTextContent(children);
+
+  // Check if this is a mermaid code block (either by language tag or content detection)
+  const isMermaid = language === 'mermaid' || (language === '' && isMermaidCode(codeContent));
+
+  if (isMermaid) {
+    return (
+      <Suspense
+        fallback={
+          <div className="bg-gray-50 rounded-lg border border-gray-200 p-4 my-3">
+            <div className="flex items-center gap-2 text-gray-500">
+              <div className="w-4 h-4 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin" />
+              <span className="text-sm">Loading diagram...</span>
+            </div>
+          </div>
+        }
+      >
+        <MermaidDiagram code={codeContent} />
+      </Suspense>
+    );
+  }
+
+  if (isInline) {
+    return (
+      <code className="px-1.5 py-0.5 rounded font-mono text-xs sm:text-sm">
+        {children}
+      </code>
+    );
+  }
+
+  return (
+    <code className="text-gray-800 font-mono text-xs sm:text-sm">
+      {children}
+    </code>
+  );
+};
+
+/**
+ * Standard code block component (no Mermaid support - for embed mode)
+ */
+const CodeWithoutMermaid: Components['code'] = ({ children, className }) => {
+  const isInline = !className;
+
+  if (isInline) {
+    return (
+      <code className="px-1.5 py-0.5 rounded font-mono text-xs sm:text-sm">
+        {children}
+      </code>
+    );
+  }
+
+  return (
+    <code className="text-gray-800 font-mono text-xs sm:text-sm">
+      {children}
+    </code>
+  );
+};
+
+/**
+ * Markdown components WITH Mermaid diagram support
+ * Use this for: Main Chat, Standalone Workspace
+ */
+export const MarkdownComponents: Components = {
+  ...BaseMarkdownComponents,
+  code: CodeWithMermaid,
+} as Components;
+
+/**
+ * Markdown components WITHOUT Mermaid diagram support
+ * Use this for: Embed mode (keeps bundle small)
+ */
+export const MarkdownComponentsLite: Components = {
+  ...BaseMarkdownComponents,
+  code: CodeWithoutMermaid,
+} as Components;

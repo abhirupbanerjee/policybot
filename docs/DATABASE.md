@@ -645,6 +645,166 @@ CREATE TABLE IF NOT EXISTS share_access_log (
 CREATE INDEX IF NOT EXISTS idx_share_access_log_share ON share_access_log(share_id);
 CREATE INDEX IF NOT EXISTS idx_share_access_log_user ON share_access_log(accessed_by);
 
+-- ============ Workspaces ============
+
+-- Workspaces table (both embed and standalone types)
+CREATE TABLE IF NOT EXISTS workspaces (
+  id TEXT PRIMARY KEY,                          -- UUID
+  slug TEXT NOT NULL UNIQUE,                    -- Random 16-char URL path (e.g., '2yibbnmbmctyu')
+  name TEXT NOT NULL,                           -- Display name for admin
+  type TEXT NOT NULL CHECK (type IN ('embed', 'standalone')),
+  is_enabled INTEGER DEFAULT 1,
+
+  -- Access Control (standalone only)
+  access_mode TEXT DEFAULT 'category' CHECK (access_mode IN ('category', 'explicit')),
+  -- 'category' = users with ALL workspace categories can access
+  -- 'explicit' = only users in workspace_users table can access
+
+  -- Branding
+  primary_color TEXT DEFAULT '#2563eb',
+  logo_url TEXT,
+  chat_title TEXT,
+  greeting_message TEXT DEFAULT 'How can I help you today?',
+  suggested_prompts TEXT,                       -- JSON array
+  footer_text TEXT,
+
+  -- LLM Configuration (overrides global settings)
+  llm_provider TEXT,                            -- NULL = use global
+  llm_model TEXT,                               -- NULL = use global
+  temperature REAL,                             -- NULL = use global
+  system_prompt TEXT,                           -- Additional prompt prepended
+
+  -- Embed-specific settings
+  allowed_domains TEXT DEFAULT '[]',            -- JSON array (embed only)
+  daily_limit INTEGER DEFAULT 1000,             -- embed only
+  session_limit INTEGER DEFAULT 50,             -- embed only
+
+  -- Feature toggles
+  voice_enabled INTEGER DEFAULT 0,
+  file_upload_enabled INTEGER DEFAULT 0,
+  max_file_size_mb INTEGER DEFAULT 5,
+
+  -- Ownership & Timestamps
+  created_by TEXT NOT NULL,                     -- User ID (admin or superuser)
+  created_by_role TEXT NOT NULL CHECK (created_by_role IN ('admin', 'superuser')),
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_workspaces_slug ON workspaces(slug);
+CREATE INDEX IF NOT EXISTS idx_workspaces_type ON workspaces(type);
+
+-- Many-to-many: Workspace to Categories
+CREATE TABLE IF NOT EXISTS workspace_categories (
+  workspace_id TEXT NOT NULL,
+  category_id INTEGER NOT NULL,
+  PRIMARY KEY (workspace_id, category_id),
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_workspace_categories_workspace ON workspace_categories(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_workspace_categories_category ON workspace_categories(category_id);
+
+-- Many-to-many: Workspace to Users (for explicit access mode, standalone only)
+CREATE TABLE IF NOT EXISTS workspace_users (
+  workspace_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  added_by TEXT NOT NULL,                       -- Admin/SuperUser who added this user
+  added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (workspace_id, user_id),
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_workspace_users_workspace ON workspace_users(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_workspace_users_user ON workspace_users(user_id);
+
+-- Workspace sessions (for both types)
+CREATE TABLE IF NOT EXISTS workspace_sessions (
+  id TEXT PRIMARY KEY,                          -- UUID (session token)
+  workspace_id TEXT NOT NULL,
+  visitor_id TEXT,                              -- Optional fingerprint/cookie
+  user_id TEXT,                                 -- NULL for embed, set for standalone auth users
+  referrer_url TEXT,
+  ip_hash TEXT,
+  message_count INTEGER DEFAULT 0,
+  started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  last_activity DATETIME DEFAULT CURRENT_TIMESTAMP,
+  expires_at DATETIME,                          -- NULL = no expiry (standalone)
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_workspace_sessions_workspace ON workspace_sessions(workspace_id);
+CREATE INDEX IF NOT EXISTS idx_workspace_sessions_expires ON workspace_sessions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_workspace_sessions_user ON workspace_sessions(user_id);
+
+-- Workspace threads (standalone only - for persistent conversations)
+CREATE TABLE IF NOT EXISTS workspace_threads (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  title TEXT DEFAULT 'New Chat',
+  is_archived INTEGER DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (session_id) REFERENCES workspace_sessions(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_workspace_threads_session ON workspace_threads(session_id);
+CREATE INDEX IF NOT EXISTS idx_workspace_threads_workspace ON workspace_threads(workspace_id);
+
+-- Workspace messages (stored for analytics + standalone history)
+CREATE TABLE IF NOT EXISTS workspace_messages (
+  id TEXT PRIMARY KEY,
+  workspace_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  thread_id TEXT,                               -- NULL for embed mode
+  role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+  content TEXT NOT NULL,
+  sources_json TEXT,                            -- RAG sources used
+  latency_ms INTEGER,
+  tokens_used INTEGER,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (session_id) REFERENCES workspace_sessions(id) ON DELETE CASCADE,
+  FOREIGN KEY (thread_id) REFERENCES workspace_threads(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_workspace_messages_thread ON workspace_messages(thread_id);
+CREATE INDEX IF NOT EXISTS idx_workspace_messages_session ON workspace_messages(session_id);
+CREATE INDEX IF NOT EXISTS idx_workspace_messages_workspace ON workspace_messages(workspace_id);
+
+-- Rate limiting state (embed only)
+CREATE TABLE IF NOT EXISTS workspace_rate_limits (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  workspace_id TEXT NOT NULL,
+  ip_hash TEXT NOT NULL,
+  window_start DATETIME NOT NULL,
+  request_count INTEGER DEFAULT 0,
+  UNIQUE(workspace_id, ip_hash, window_start),
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_workspace_rate_limits_workspace ON workspace_rate_limits(workspace_id);
+
+-- Daily analytics rollup
+CREATE TABLE IF NOT EXISTS workspace_analytics (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  workspace_id TEXT NOT NULL,
+  date DATE NOT NULL,
+  sessions_count INTEGER DEFAULT 0,
+  messages_count INTEGER DEFAULT 0,
+  unique_visitors INTEGER DEFAULT 0,
+  avg_response_time_ms INTEGER,
+  total_tokens_used INTEGER DEFAULT 0,
+  UNIQUE(workspace_id, date),
+  FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_workspace_analytics_date ON workspace_analytics(workspace_id, date);
+
 -- ============ Triggers ============
 
 CREATE TRIGGER IF NOT EXISTS update_user_timestamp
@@ -1301,6 +1461,134 @@ Audit trail for share access events.
 | resource_id | TEXT | ID of downloaded resource |
 | accessed_at | DATETIME | Access timestamp |
 
+### workspaces
+
+Workspace configurations for embed and standalone chatbot instances.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | TEXT | UUID primary key |
+| slug | TEXT | Unique 16-char URL path (e.g., '2yibbnmbmctyu') |
+| name | TEXT | Display name for admin |
+| type | TEXT | `embed` or `standalone` |
+| is_enabled | INTEGER | 1=active, 0=disabled |
+| access_mode | TEXT | `category` (users with ALL workspace categories) or `explicit` (user list) |
+| primary_color | TEXT | Hex color for branding |
+| logo_url | TEXT | Optional logo URL |
+| chat_title | TEXT | Optional custom chat title |
+| greeting_message | TEXT | Welcome message |
+| suggested_prompts | TEXT | JSON array of starter prompts |
+| footer_text | TEXT | Optional footer text |
+| llm_provider | TEXT | LLM provider override (NULL=use global) |
+| llm_model | TEXT | LLM model override (NULL=use global) |
+| temperature | REAL | Temperature override (NULL=use global) |
+| system_prompt | TEXT | Additional system prompt |
+| allowed_domains | TEXT | JSON array of allowed embed domains |
+| daily_limit | INTEGER | Daily request limit (embed) |
+| session_limit | INTEGER | Per-session request limit (embed) |
+| voice_enabled | INTEGER | 1=voice input enabled |
+| file_upload_enabled | INTEGER | 1=file upload enabled |
+| max_file_size_mb | INTEGER | Maximum upload file size |
+| created_by | TEXT | User ID of creator |
+| created_by_role | TEXT | `admin` or `superuser` |
+| created_at | DATETIME | Creation timestamp |
+| updated_at | DATETIME | Last update timestamp |
+
+### workspace_categories
+
+Many-to-many relationship between workspaces and categories.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| workspace_id | TEXT | FK to workspaces.id |
+| category_id | INTEGER | FK to categories.id |
+
+### workspace_users
+
+Explicit user list for workspace access control (standalone mode with `access_mode='explicit'`).
+
+| Column | Type | Description |
+|--------|------|-------------|
+| workspace_id | TEXT | FK to workspaces.id |
+| user_id | TEXT | FK to users.id |
+| added_by | TEXT | Admin/SuperUser who added this user |
+| added_at | DATETIME | When added |
+
+### workspace_sessions
+
+Session tracking for both embed and standalone workspaces.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | TEXT | UUID session token |
+| workspace_id | TEXT | FK to workspaces.id |
+| visitor_id | TEXT | Optional fingerprint/cookie ID |
+| user_id | TEXT | FK to users.id (NULL for embed) |
+| referrer_url | TEXT | Original referrer URL |
+| ip_hash | TEXT | Hashed IP address |
+| message_count | INTEGER | Number of messages in session |
+| started_at | DATETIME | Session start time |
+| last_activity | DATETIME | Last activity timestamp |
+| expires_at | DATETIME | Expiration time (NULL=no expiry) |
+
+### workspace_threads
+
+Conversation threads for standalone workspaces.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | TEXT | UUID primary key |
+| workspace_id | TEXT | FK to workspaces.id |
+| session_id | TEXT | FK to workspace_sessions.id |
+| title | TEXT | Thread title |
+| is_archived | INTEGER | 1=archived, 0=active |
+| created_at | DATETIME | Creation timestamp |
+| updated_at | DATETIME | Last update timestamp |
+
+### workspace_messages
+
+Message storage for workspace conversations (analytics + standalone history).
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | TEXT | UUID primary key |
+| workspace_id | TEXT | FK to workspaces.id |
+| session_id | TEXT | FK to workspace_sessions.id |
+| thread_id | TEXT | FK to workspace_threads.id (NULL for embed) |
+| role | TEXT | `user` or `assistant` |
+| content | TEXT | Message content |
+| sources_json | TEXT | JSON: RAG sources used |
+| latency_ms | INTEGER | Response latency in milliseconds |
+| tokens_used | INTEGER | Token count for response |
+| created_at | DATETIME | Message timestamp |
+
+### workspace_rate_limits
+
+Rate limiting state for embed mode.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INTEGER | Auto-increment primary key |
+| workspace_id | TEXT | FK to workspaces.id |
+| ip_hash | TEXT | Hashed IP address |
+| window_start | DATETIME | Rate limit window start |
+| request_count | INTEGER | Requests in current window |
+
+### workspace_analytics
+
+Daily analytics rollup for workspace usage.
+
+| Column | Type | Description |
+|--------|------|-------------|
+| id | INTEGER | Auto-increment primary key |
+| workspace_id | TEXT | FK to workspaces.id |
+| date | DATE | Analytics date |
+| sessions_count | INTEGER | Number of sessions |
+| messages_count | INTEGER | Number of messages |
+| unique_visitors | INTEGER | Unique visitor count |
+| avg_response_time_ms | INTEGER | Average response latency |
+| total_tokens_used | INTEGER | Total tokens consumed |
+
 ---
 
 ## 3. TypeScript Interfaces
@@ -1472,6 +1760,102 @@ export interface AllowedUser {
   subscriptions: { categoryId: number; categoryName: string; isActive: boolean }[];
   assignedCategories: { categoryId: number; categoryName: string }[];
 }
+
+// src/types/workspace.ts
+
+export type WorkspaceType = 'embed' | 'standalone';
+export type AccessMode = 'category' | 'explicit';
+
+export interface Workspace {
+  id: string;
+  slug: string;                    // Random 16-char URL path
+  name: string;
+  type: WorkspaceType;
+  is_enabled: boolean;
+  access_mode: AccessMode;
+  // Branding
+  primary_color: string;
+  logo_url?: string;
+  chat_title?: string;
+  greeting_message: string;
+  suggested_prompts?: string[];
+  footer_text?: string;
+  // LLM overrides
+  llm_provider?: string;
+  llm_model?: string;
+  temperature?: number;
+  system_prompt?: string;
+  // Embed-specific
+  allowed_domains: string[];
+  daily_limit: number;
+  session_limit: number;
+  // Features
+  voice_enabled: boolean;
+  file_upload_enabled: boolean;
+  max_file_size_mb: number;
+  // Meta
+  category_ids: number[];
+  user_ids?: string[];             // Explicit user list
+  created_by: string;
+  created_by_role: 'admin' | 'superuser';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkspaceSession {
+  id: string;
+  workspace_id: string;
+  visitor_id?: string;
+  user_id?: string;
+  referrer_url?: string;
+  ip_hash?: string;
+  message_count: number;
+  started_at: string;
+  last_activity: string;
+  expires_at?: string;
+}
+
+export interface WorkspaceThread {
+  id: string;
+  workspace_id: string;
+  session_id: string;
+  title: string;
+  is_archived: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkspaceMessage {
+  id: string;
+  workspace_id: string;
+  session_id: string;
+  thread_id?: string;
+  role: 'user' | 'assistant';
+  content: string;
+  sources_json?: string;
+  latency_ms?: number;
+  tokens_used?: number;
+  created_at: string;
+}
+
+export interface WorkspaceUser {
+  workspace_id: string;
+  user_id: string;
+  user_email: string;              // Denormalized for display
+  user_name: string;               // Denormalized for display
+  added_by: string;
+  added_at: string;
+}
+
+export interface WorkspaceAnalytics {
+  workspace_id: string;
+  date: string;
+  sessions_count: number;
+  messages_count: number;
+  unique_visitors: number;
+  avg_response_time_ms?: number;
+  total_tokens_used: number;
+}
 ```
 
 ---
@@ -1632,13 +2016,18 @@ data/
 │   ├── Leave_Policy.pdf
 │   ├── Travel_Guidelines.pdf
 │   └── HR_Handbook.pdf
-└── threads/                ← User thread data
-    └── {userId}/
-        └── {threadId}/
-            ├── uploads/    ← User-uploaded PDFs
-            │   └── document.pdf
-            └── outputs/    ← AI-generated files
-                └── chart.png
+├── threads/                ← User thread data
+│   └── {userId}/
+│       └── {threadId}/
+│           ├── uploads/    ← User-uploaded PDFs
+│           │   └── document.pdf
+│           └── outputs/    ← AI-generated files
+│               └── chart.png
+└── workspace-uploads/      ← Workspace session uploads
+    └── {workspaceId}/
+        └── {sessionId}/
+            ├── document.pdf
+            └── image.png
 ```
 
 ### File Storage Notes
@@ -1646,7 +2035,9 @@ data/
 - **global-docs/**: Admin uploads stored here, metadata in SQLite `documents` table
 - **threads/{userId}/{threadId}/uploads/**: User uploads, metadata in `thread_uploads` table
 - **threads/{userId}/{threadId}/outputs/**: AI outputs, metadata in `thread_outputs` table
+- **workspace-uploads/{workspaceId}/{sessionId}/**: Workspace session uploads (both embed and standalone modes)
 - PDF files are stored with sanitized filenames to prevent path traversal
+- Workspace uploads are cleaned up when sessions expire (embed) or are explicitly deleted
 
 ---
 

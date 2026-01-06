@@ -16,9 +16,10 @@ This guide explains how to use the Superuser Dashboard to manage your assigned c
 8. [Settings Tab](#8-settings-tab)
 9. [Task Planner Templates](#9-task-planner-templates)
 10. [Data Sources](#10-data-sources)
-11. [Permissions Summary](#11-permissions-summary)
-12. [Troubleshooting](#12-troubleshooting)
-13. [Quick Reference](#13-quick-reference)
+11. [Workspaces](#11-workspaces)
+12. [Permissions Summary](#12-permissions-summary)
+13. [Troubleshooting](#13-troubleshooting)
+14. [Quick Reference](#14-quick-reference)
 
 ---
 
@@ -51,6 +52,7 @@ This allows a superuser to manage their department's categories while also havin
 | Configure data sources | ❌ | ✅ (managed only) | ✅ (all) |
 | Configure tools per category | ❌ | ✅ (managed only) | ✅ (global + all) |
 | Edit category prompts | ❌ | ✅ (managed only) | ✅ (global + all) |
+| Create/manage workspaces | ❌ | ✅ (managed only) | ✅ (all) |
 | Access subscribed categories | ✅ | ✅ | ✅ |
 | Create/delete users | ❌ | ❌ | ✅ |
 | Manage all categories | ❌ | ❌ | ✅ |
@@ -711,7 +713,106 @@ To auto-configure from an OpenAPI/Swagger spec:
 
 ---
 
-## 11. Permissions Summary
+## 11. Workspaces
+
+Workspaces allow you to create embeddable and standalone chatbot instances for your managed categories.
+
+### What are Workspaces?
+
+A **Workspace** is a separate chatbot interface that:
+- Can access **one or more categories** you manage
+- Has its own branding (colors, logo, greeting)
+- Has its own URL (random 16-character path)
+- Can be **Embed** (widget for external sites) or **Standalone** (full chat)
+
+### Workspace Types
+
+| Type | Description | Use Case |
+|------|-------------|----------|
+| **Embed** | Lightweight widget via script tag | FAQ bot on department website |
+| **Standalone** | Full chat with threads | Team portal with conversation history |
+
+### Creating a Workspace
+
+1. Navigate to **Workspaces** tab
+2. Click **New Workspace**
+3. Select type: **Embed** or **Standalone**
+4. Select categories from **your managed categories only**
+5. Configure branding and settings
+6. Click **Create**
+
+> **Note:** You can only create workspaces using categories you manage. Contact Admin if you need to include other categories.
+
+### Workspace Settings
+
+| Setting | Description |
+|---------|-------------|
+| **Name** | Internal display name |
+| **Categories** | Select from your managed categories |
+| **Greeting Message** | Welcome message |
+| **Suggested Prompts** | Starter questions |
+| **Primary Color** | UI accent color |
+| **Logo URL** | Optional logo |
+
+### Feature Toggles
+
+| Setting | Description |
+|---------|-------------|
+| **Voice Input** | Enable microphone input |
+| **File Upload** | Allow file attachments |
+| **Max File Size** | Maximum upload size in MB |
+
+### Embed-Specific Settings
+
+For **Embed** workspaces only:
+
+| Setting | Description |
+|---------|-------------|
+| **Allowed Domains** | Whitelist of domains where embed can run |
+| **Daily Limit** | Maximum messages per day |
+| **Session Limit** | Maximum messages per session |
+
+### Getting the Embed Script
+
+For embed workspaces:
+1. Select the workspace
+2. Click **Get Embed Code**
+3. Copy the script snippet
+4. Paste into your website HTML
+
+### Managing Workspace Users
+
+For standalone workspaces with explicit access mode:
+
+1. Select the workspace
+2. Click **Manage Users**
+3. Add users from your managed categories
+4. Click **Save**
+
+> **Note:** You can only add users who are subscribed to your managed categories.
+
+### Viewing Workspace Analytics
+
+Access usage statistics:
+1. Select workspace
+2. Click **Analytics**
+3. View sessions, messages, and token usage
+
+### Workspace Permissions
+
+| Action | Superuser Can Do |
+|--------|-----------------|
+| Create workspace (managed categories) | ✅ |
+| Create workspace (unassigned categories) | ❌ |
+| Add users from managed categories | ✅ |
+| Add users from other categories | ❌ |
+| Edit own workspaces | ✅ |
+| Delete own workspaces | ✅ |
+| View workspace analytics | ✅ |
+
+---
+
+## 12. Permissions Summary
 
 ### What Superusers CAN Do
 
@@ -757,6 +858,13 @@ To auto-configure from an OpenAPI/Swagger spec:
 - Edit existing templates for managed categories
 - View all templates for managed categories
 
+✅ **Workspaces**
+- Create embed and standalone workspaces for managed categories
+- Configure branding, LLM settings, and feature toggles
+- Manage workspace users (from managed categories)
+- View workspace analytics
+- Edit and delete own workspaces
+
 ✅ **Chat Access**
 - Query documents from both managed and subscribed categories
 - Select any accessible category when starting a conversation
@@ -792,9 +900,15 @@ To auto-configure from an OpenAPI/Swagger spec:
 - Deactivate or delete templates
 - Create templates for unassigned categories
 
+❌ **Workspaces**
+- Create workspaces for unassigned categories
+- Add users from unassigned categories to workspaces
+- Manage workspaces created by other users
+- Configure global workspace settings
+
 ---
 
-## 12. Troubleshooting
+## 13. Troubleshooting
 
 ### Common Errors
 
@@ -900,7 +1014,7 @@ If you encounter issues not covered here:
 
 ---
 
-## 13. Quick Reference
+## 14. Quick Reference
 
 ### Keyboard Shortcuts
 

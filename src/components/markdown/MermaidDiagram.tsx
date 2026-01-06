@@ -1,0 +1,305 @@
+'use client';
+
+/**
+ * MermaidDiagram Component
+ *
+ * Renders Mermaid diagrams (mindmaps, flowcharts, sequence diagrams, etc.)
+ * Uses dynamic import to avoid loading Mermaid.js until needed.
+ *
+ * Supports:
+ * - mindmap
+ * - flowchart / graph
+ * - sequenceDiagram
+ * - classDiagram
+ * - stateDiagram
+ * - erDiagram
+ * - gantt
+ * - pie
+ * - and more...
+ */
+
+import { useEffect, useRef, useState, useId } from 'react';
+import { AlertCircle, Download, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+
+interface MermaidDiagramProps {
+  /** The Mermaid diagram code */
+  code: string;
+  /** Optional className for the container */
+  className?: string;
+}
+
+// Mermaid is loaded dynamically to reduce initial bundle size
+let mermaidPromise: Promise<typeof import('mermaid')> | null = null;
+
+async function loadMermaid() {
+  if (!mermaidPromise) {
+    mermaidPromise = import('mermaid').then((m) => {
+      // Initialize mermaid with custom config
+      m.default.initialize({
+        startOnLoad: false,
+        theme: 'default',
+        securityLevel: 'loose',
+        fontFamily: 'system-ui, -apple-system, sans-serif',
+        mindmap: {
+          useMaxWidth: true,
+          padding: 16,
+        },
+        flowchart: {
+          useMaxWidth: true,
+          htmlLabels: true,
+          curve: 'basis',
+        },
+      });
+      return m;
+    });
+  }
+  return mermaidPromise;
+}
+
+export default function MermaidDiagram({ code, className = '' }: MermaidDiagramProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const uniqueId = useId().replace(/:/g, '-');
+  const [svgContent, setSvgContent] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [scale, setScale] = useState(1);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function renderDiagram() {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const mermaid = await loadMermaid();
+
+        if (!mounted) return;
+
+        // Clean the code (remove any leading/trailing whitespace issues)
+        const cleanCode = code.trim();
+
+        // Generate unique ID for this render
+        const diagramId = `mermaid-${uniqueId}-${Date.now()}`;
+
+        // Render the diagram
+        const { svg } = await mermaid.default.render(diagramId, cleanCode);
+
+        if (!mounted) return;
+
+        setSvgContent(svg);
+      } catch (err) {
+        if (!mounted) return;
+
+        console.error('Mermaid rendering error:', err);
+        setError(err instanceof Error ? err.message : 'Failed to render diagram');
+      } finally {
+        if (mounted) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    renderDiagram();
+
+    return () => {
+      mounted = false;
+    };
+  }, [code, uniqueId]);
+
+  const handleZoomIn = () => setScale((s) => Math.min(s + 0.25, 3));
+  const handleZoomOut = () => setScale((s) => Math.max(s - 0.25, 0.5));
+  const handleResetZoom = () => setScale(1);
+
+  const handleDownloadSvg = () => {
+    if (!svgContent) return;
+
+    const blob = new Blob([svgContent], { type: 'image/svg+xml' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'diagram.svg';
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleDownloadPng = async () => {
+    if (!svgContent || !containerRef.current) return;
+
+    try {
+      // Create a canvas to convert SVG to PNG
+      const svgElement = containerRef.current.querySelector('svg');
+      if (!svgElement) return;
+
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
+
+      // Get SVG dimensions
+      const svgRect = svgElement.getBoundingClientRect();
+      const scaleFactor = 2; // Higher resolution
+      canvas.width = svgRect.width * scaleFactor;
+      canvas.height = svgRect.height * scaleFactor;
+
+      // Create image from SVG
+      const img = new Image();
+      const svgBlob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(svgBlob);
+
+      img.onload = () => {
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        URL.revokeObjectURL(url);
+
+        // Download PNG
+        const pngUrl = canvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        link.href = pngUrl;
+        link.download = 'diagram.png';
+        link.click();
+      };
+
+      img.src = url;
+    } catch (err) {
+      console.error('Failed to export PNG:', err);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className={`bg-gray-50 rounded-lg border border-gray-200 p-8 my-4 ${className}`}>
+        <div className="flex items-center justify-center gap-2 text-gray-500">
+          <div className="w-5 h-5 border-2 border-gray-300 border-t-blue-500 rounded-full animate-spin" />
+          <span>Rendering diagram...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className={`bg-red-50 rounded-lg border border-red-200 p-4 my-4 ${className}`}>
+        <div className="flex items-start gap-2 text-red-700">
+          <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="font-medium">Failed to render diagram</p>
+            <p className="text-sm mt-1 text-red-600">{error}</p>
+            <details className="mt-2">
+              <summary className="text-sm cursor-pointer hover:text-red-800">
+                Show diagram code
+              </summary>
+              <pre className="mt-2 p-2 bg-red-100 rounded text-xs overflow-x-auto">
+                {code}
+              </pre>
+            </details>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`bg-white rounded-lg border border-gray-200 my-4 overflow-hidden ${className}`}>
+      {/* Toolbar */}
+      <div className="flex items-center justify-between px-3 py-2 bg-gray-50 border-b border-gray-200">
+        <div className="flex items-center gap-1">
+          <button
+            onClick={handleZoomOut}
+            className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded transition-colors"
+            title="Zoom out"
+          >
+            <ZoomOut size={16} />
+          </button>
+          <span className="text-xs text-gray-500 min-w-[3rem] text-center">
+            {Math.round(scale * 100)}%
+          </span>
+          <button
+            onClick={handleZoomIn}
+            className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded transition-colors"
+            title="Zoom in"
+          >
+            <ZoomIn size={16} />
+          </button>
+          <button
+            onClick={handleResetZoom}
+            className="p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-200 rounded transition-colors ml-1"
+            title="Reset zoom"
+          >
+            <RotateCcw size={16} />
+          </button>
+        </div>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={handleDownloadSvg}
+            className="flex items-center gap-1 px-2 py-1 text-xs text-gray-600 hover:text-gray-800 hover:bg-gray-200 rounded transition-colors"
+            title="Download SVG"
+          >
+            <Download size={14} />
+            SVG
+          </button>
+          <button
+            onClick={handleDownloadPng}
+            className="flex items-center gap-1 px-2 py-1 text-xs text-gray-600 hover:text-gray-800 hover:bg-gray-200 rounded transition-colors"
+            title="Download PNG"
+          >
+            <Download size={14} />
+            PNG
+          </button>
+        </div>
+      </div>
+
+      {/* Diagram container */}
+      <div
+        ref={containerRef}
+        className="p-4 overflow-auto"
+        style={{ maxHeight: '500px' }}
+      >
+        <div
+          style={{
+            transform: `scale(${scale})`,
+            transformOrigin: 'top left',
+            transition: 'transform 0.2s ease-out',
+          }}
+          dangerouslySetInnerHTML={{ __html: svgContent || '' }}
+        />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Check if a code block contains Mermaid diagram syntax
+ */
+export function isMermaidCode(code: string): boolean {
+  const trimmed = code.trim();
+  const mermaidKeywords = [
+    'mindmap',
+    'flowchart',
+    'graph ',
+    'graph\n',
+    'sequenceDiagram',
+    'classDiagram',
+    'stateDiagram',
+    'erDiagram',
+    'gantt',
+    'pie',
+    'journey',
+    'gitGraph',
+    'C4Context',
+    'C4Container',
+    'C4Component',
+    'C4Dynamic',
+    'C4Deployment',
+    'sankey',
+    'timeline',
+    'zenuml',
+    'block-beta',
+    'packet-beta',
+    'architecture-beta',
+  ];
+
+  return mermaidKeywords.some(keyword =>
+    trimmed.startsWith(keyword) || trimmed.startsWith(`%%{`) // Mermaid directives
+  );
+}

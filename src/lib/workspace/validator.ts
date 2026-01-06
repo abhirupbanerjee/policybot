@@ -267,14 +267,23 @@ export function getWorkspaceLLMConfig(workspace: Workspace): {
 /**
  * Embed mode system prompt addition
  * Tells LLM to not use image/chart/document generation tools
+ * and to avoid Mermaid diagrams (use structured lists instead)
  */
 const EMBED_MODE_SYSTEM_PROMPT = `
-IMPORTANT: This is an embedded chat widget with limited features.
+IMPORTANT: This is an embedded chat widget with TEXT-ONLY output.
 - Do NOT use image generation, chart generation, or document generation tools.
+- Do NOT generate Mermaid diagrams (flowcharts, mindmaps, sequence diagrams, etc.) - they cannot be rendered.
 - If the user requests images, charts, infographics, Word documents, PDFs, or similar generated content, politely inform them:
   "This feature is not available in embed mode. Please contact the administrator for access to the full-featured chat."
-- You CAN and SHOULD use: web search, text formatting (tables, lists, code blocks), ASCII diagrams, and markdown formatting.
-- For data visualization requests, provide ASCII/text-based tables or formatted lists instead of charts.
+- You CAN and SHOULD use: web search, text formatting (tables, lists, code blocks), markdown formatting.
+- For data visualization requests, provide formatted markdown tables or structured lists instead of charts.
+- For mindmaps or hierarchical concepts, use nested bullet lists instead of diagram syntax:
+  - Main Topic
+    - Subtopic 1
+      - Detail 1.1
+      - Detail 1.2
+    - Subtopic 2
+      - Detail 2.1
 `;
 
 /**

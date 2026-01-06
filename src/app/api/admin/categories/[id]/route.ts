@@ -16,6 +16,7 @@ import {
   getSubscribersForCategory,
   getCategoryDocumentCount,
 } from '@/lib/db/categories';
+import { deleteCategoryCollection } from '@/lib/chroma';
 
 interface RouteParams {
   params: Promise<{ id: string }>;
@@ -149,6 +150,9 @@ export async function DELETE(request: Request, { params }: RouteParams) {
         { status: 500 }
       );
     }
+
+    // Clean up ChromaDB collection for this category
+    await deleteCategoryCollection(existing.slug);
 
     return NextResponse.json({
       success: true,

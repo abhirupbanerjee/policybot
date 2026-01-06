@@ -19,6 +19,7 @@ import { assignCategoryToSuperUser } from '@/lib/db/users';
 import { getSuperuserSettings } from '@/lib/db/config';
 import { deleteDocument } from '@/lib/ingest';
 import { getDocumentById } from '@/lib/db/documents';
+import { deleteCategoryCollection } from '@/lib/chroma';
 
 // POST - Create a new category
 export async function POST(request: NextRequest) {
@@ -155,6 +156,9 @@ export async function DELETE(request: NextRequest) {
         deleteErrors.push(`Document ${docId}`);
       }
     }
+
+    // Clean up ChromaDB collection for this category
+    await deleteCategoryCollection(category.slug);
 
     return NextResponse.json({
       success: true,

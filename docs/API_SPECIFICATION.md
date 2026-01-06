@@ -210,6 +210,34 @@ When `AUTH_DISABLED=true` in environment:
 | POST | `/api/admin/branding/icon` | Yes | Admin | Upload custom bot icon |
 | GET | `/api/threads/{id}/summary` | Yes | Owner | Get thread summary |
 | GET | `/api/threads/{id}/archived` | Yes | Owner | Get archived messages |
+| POST | `/api/w/{slug}/init` | No | - | Initialize workspace session |
+| POST | `/api/w/{slug}/chat/stream` | No | - | Streaming chat for workspace |
+| GET | `/api/w/{slug}/threads` | No | - | List workspace threads (standalone) |
+| POST | `/api/w/{slug}/threads` | No | - | Create workspace thread (standalone) |
+| GET | `/api/w/{slug}/threads/{threadId}` | No | - | Get workspace thread with messages |
+| PATCH | `/api/w/{slug}/threads/{threadId}` | No | - | Update workspace thread |
+| DELETE | `/api/w/{slug}/threads/{threadId}` | No | - | Delete workspace thread |
+| POST | `/api/w/{slug}/upload` | No | - | Upload file to workspace session |
+| GET | `/api/admin/workspaces` | Yes | Admin | List all workspaces |
+| POST | `/api/admin/workspaces` | Yes | Admin | Create workspace |
+| GET | `/api/admin/workspaces/{id}` | Yes | Admin | Get workspace details |
+| PATCH | `/api/admin/workspaces/{id}` | Yes | Admin | Update workspace |
+| DELETE | `/api/admin/workspaces/{id}` | Yes | Admin | Delete workspace |
+| GET | `/api/admin/workspaces/{id}/users` | Yes | Admin | List workspace users |
+| POST | `/api/admin/workspaces/{id}/users` | Yes | Admin | Add user to workspace |
+| DELETE | `/api/admin/workspaces/{id}/users/{userId}` | Yes | Admin | Remove workspace user |
+| GET | `/api/admin/workspaces/{id}/analytics` | Yes | Admin | Get workspace analytics |
+| GET | `/api/admin/workspaces/{id}/script` | Yes | Admin | Get embed script |
+| GET | `/api/admin/settings/workspaces` | Yes | Admin | Get workspace global settings |
+| PATCH | `/api/admin/settings/workspaces` | Yes | Admin | Update workspace global settings |
+| GET | `/api/superuser/workspaces` | Yes | Superuser | List superuser's workspaces |
+| POST | `/api/superuser/workspaces` | Yes | Superuser | Create workspace (scoped) |
+| GET | `/api/superuser/workspaces/{id}` | Yes | Superuser | Get workspace details |
+| PATCH | `/api/superuser/workspaces/{id}` | Yes | Superuser | Update workspace |
+| DELETE | `/api/superuser/workspaces/{id}` | Yes | Superuser | Delete workspace |
+| GET | `/api/superuser/workspaces/{id}/users` | Yes | Superuser | List workspace users |
+| POST | `/api/superuser/workspaces/{id}/users` | Yes | Superuser | Add user to workspace |
+| DELETE | `/api/superuser/workspaces/{id}/users/{userId}` | Yes | Superuser | Remove workspace user |
 
 ---
 
@@ -318,6 +346,74 @@ interface Subscription {
 interface CategoryRef {
   categoryId: number;
   categoryName: string;
+}
+```
+
+### Workspace
+
+```typescript
+interface Workspace {
+  id: string;
+  slug: string;                    // 16-char URL path
+  name: string;
+  type: "embed" | "standalone";
+  is_enabled: boolean;
+  access_mode: "category" | "explicit";
+  // Branding
+  primary_color: string;
+  logo_url?: string;
+  chat_title?: string;
+  greeting_message: string;
+  suggested_prompts?: string[];
+  footer_text?: string;
+  // LLM overrides
+  llm_provider?: string;
+  llm_model?: string;
+  temperature?: number;
+  system_prompt?: string;
+  // Embed-specific
+  allowed_domains: string[];
+  daily_limit: number;
+  session_limit: number;
+  // Features
+  voice_enabled: boolean;
+  file_upload_enabled: boolean;
+  max_file_size_mb: number;
+  // Meta
+  category_ids: number[];
+  created_by: string;
+  created_by_role: "admin" | "superuser";
+  created_at: string;              // ISO 8601
+  updated_at: string;              // ISO 8601
+}
+
+interface WorkspaceSession {
+  id: string;
+  workspace_id: string;
+  visitor_id?: string;
+  user_id?: string;
+  message_count: number;
+  started_at: string;
+  last_activity: string;
+  expires_at?: string;
+}
+
+interface WorkspaceThread {
+  id: string;
+  workspace_id: string;
+  session_id: string;
+  title: string;
+  is_archived: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+interface WorkspaceMessage {
+  id: string;
+  role: "user" | "assistant";
+  content: string;
+  sources?: Source[];
+  created_at: string;
 }
 ```
 

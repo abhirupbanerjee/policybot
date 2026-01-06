@@ -66,13 +66,16 @@ export function useWorkspaceChat({
   const [state, setState] = useState<WorkspaceStreamingState>(initialState);
   const abortControllerRef = useRef<AbortController | null>(null);
   const contentBufferRef = useRef<string>('');
+  const accumulatedContentRef = useRef<string>(''); // Track total accumulated content
   const rafRef = useRef<number | null>(null);
 
   const flushBuffer = useCallback(() => {
     if (contentBufferRef.current) {
+      const newContent = contentBufferRef.current;
+      accumulatedContentRef.current += newContent; // Track total content
       setState(prev => ({
         ...prev,
-        currentContent: prev.currentContent + contentBufferRef.current,
+        currentContent: prev.currentContent + newContent,
       }));
       contentBufferRef.current = '';
     }
@@ -87,6 +90,7 @@ export function useWorkspaceChat({
 
     abortControllerRef.current = new AbortController();
     contentBufferRef.current = '';
+    accumulatedContentRef.current = ''; // Reset accumulated content
 
     setState({
       isStreaming: true,
@@ -194,13 +198,24 @@ export function useWorkspaceChat({
 
               case 'done':
                 messageId = event.messageId;
-                // Flush any remaining content
-                flushBuffer();
-                setState(prev => ({
-                  ...prev,
-                  isStreaming: false,
-                  phase: 'complete',
-                }));
+                // Flush any remaining content immediately (not via RAF)
+                if (contentBufferRef.current) {
+                  const finalContent = contentBufferRef.current;
+                  accumulatedContentRef.current += finalContent;
+                  contentBufferRef.current = '';
+                  setState(prev => ({
+                    ...prev,
+                    currentContent: prev.currentContent + finalContent,
+                    isStreaming: false,
+                    phase: 'complete',
+                  }));
+                } else {
+                  setState(prev => ({
+                    ...prev,
+                    isStreaming: false,
+                    phase: 'complete',
+                  }));
+                }
                 break;
 
               case 'error':
@@ -214,9 +229,9 @@ export function useWorkspaceChat({
         }
       }
 
-      // Call onComplete callback
+      // Call onComplete callback with accumulated content from ref (avoids stale closure)
       if (onComplete && messageId) {
-        onComplete(messageId, state.currentContent + contentBufferRef.current, accumulatedSources);
+        onComplete(messageId, accumulatedContentRef.current, accumulatedSources);
       }
     } catch (error) {
       if ((error as Error).name === 'AbortError') {
@@ -238,7 +253,7 @@ export function useWorkspaceChat({
         rafRef.current = null;
       }
     }
-  }, [workspaceSlug, sessionId, threadId, onComplete, onError, flushBuffer, state.currentContent]);
+  }, [workspaceSlug, sessionId, threadId, onComplete, onError, flushBuffer]);
 
   const abort = useCallback(() => {
     if (abortControllerRef.current) {
@@ -255,6 +270,7 @@ export function useWorkspaceChat({
   const reset = useCallback(() => {
     abort();
     contentBufferRef.current = '';
+    accumulatedContentRef.current = '';
     setState(initialState);
   }, [abort]);
 

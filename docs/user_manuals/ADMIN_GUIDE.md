@@ -17,10 +17,11 @@ This guide explains how to use the Admin Dashboard to manage all aspects of Poli
 9. [Tool Routing](#9-tool-routing)
 10. [Task Planner Templates](#10-task-planner-templates)
 11. [Data Sources](#11-data-sources)
-12. [Settings](#12-settings)
-13. [System Management](#13-system-management)
-14. [Troubleshooting](#14-troubleshooting)
-15. [Quick Reference](#15-quick-reference)
+12. [Workspaces](#12-workspaces)
+13. [Settings](#13-settings)
+14. [System Management](#14-system-management)
+15. [Troubleshooting](#15-troubleshooting)
+16. [Quick Reference](#16-quick-reference)
 
 ---
 
@@ -46,6 +47,7 @@ An **Admin** has full control over all aspects of Policy Bot. Admins can:
 | Configure data sources | ❌ | ✅ (assigned) | ✅ (all) |
 | Configure tools per category | ❌ | ✅ (assigned) | ✅ (global + all) |
 | Edit category prompts | ❌ | ✅ (assigned) | ✅ (global + all) |
+| Create/manage workspaces | ❌ | ✅ (assigned) | ✅ (all) |
 | Create/delete users | ❌ | ❌ | ✅ |
 | Manage all categories | ❌ | ❌ | ✅ |
 | Create and manage skills | ❌ | ❌ | ✅ |
@@ -104,6 +106,7 @@ Widgets showing recent system activity:
 | **Users** | User account management |
 | **Prompts** | System prompt, category prompts, acronyms, skills |
 | **Tools** | Tool management, dependencies, and routing |
+| **Workspaces** | Embed and standalone chatbot instances |
 | **Settings** | LLM, RAG, reranker, memory, and system configuration |
 
 ### Prompts Submenu
@@ -923,7 +926,224 @@ Import from OpenAPI/Swagger specifications:
 
 ---
 
-## 12. Settings
+## 12. Workspaces
+
+Workspaces allow you to create embeddable and standalone chatbot instances that can be deployed on external websites or accessed via direct URLs.
+
+### What is a Workspace?
+
+A **Workspace** is a configurable chatbot instance that:
+- Can access **one or more categories** (document collections)
+- Has its own branding (colors, logo, greeting)
+- Has its own URL path (random 16-character string)
+- Can be either **Embed** or **Standalone** type
+
+### Workspace Types
+
+| Type | Description | Use Case |
+|------|-------------|----------|
+| **Embed** | Lightweight widget for external websites | Customer support widget, FAQ bot |
+| **Standalone** | Full-featured chat with threads and history | Internal team portal, department-specific assistant |
+
+### Feature Comparison
+
+| Feature | Main Policy Bot | Standalone Workspace | Embed Workspace |
+|---------|-----------------|---------------------|-----------------|
+| Memory (facts) | ✅ | ❌ | ❌ |
+| Settings menu | ✅ | ❌ | ❌ |
+| Thread sidebar | ✅ | ✅ | ❌ |
+| Artifacts panel | ✅ | ✅ | ❌ |
+| Clear chat button | ❌ | ❌ | ✅ |
+| Message persistence | ✅ | ✅ | Analytics only |
+| Authentication | Required | Optional | None |
+| Voice input | ✅ | ✅ (if enabled) | ✅ (if enabled) |
+| File upload | ✅ | ✅ (if enabled) | ✅ (if enabled) |
+
+### Enabling Workspaces
+
+The Workspaces feature can be enabled/disabled globally:
+
+1. Navigate to **Settings** → **General**
+2. Find **Enable Workspaces**
+3. Toggle the switch
+
+When disabled, all workspace URLs return 404.
+
+### Creating a Workspace
+
+1. Navigate to **Workspaces** tab
+2. Click **New Workspace**
+3. Select type: **Embed** or **Standalone**
+4. Configure the workspace:
+
+#### Basic Settings
+
+| Setting | Description |
+|---------|-------------|
+| **Name** | Internal display name for admin reference |
+| **Categories** | Select one or more categories the workspace can access |
+| **Greeting Message** | Welcome message shown to users |
+| **Suggested Prompts** | Starter questions (one per line) |
+
+#### Branding
+
+| Setting | Description |
+|---------|-------------|
+| **Primary Color** | Hex color for UI elements |
+| **Logo URL** | Optional logo image URL |
+| **Chat Title** | Custom title (default: workspace name) |
+| **Footer Text** | Optional footer message |
+
+#### LLM Overrides (Optional)
+
+Override global LLM settings for this workspace:
+
+| Setting | Description |
+|---------|-------------|
+| **Provider** | OpenAI, Gemini, Mistral, etc. (default: global) |
+| **Model** | Specific model to use |
+| **Temperature** | Response creativity (0-1) |
+| **System Prompt** | Additional instructions prepended to global prompt |
+
+#### Feature Toggles
+
+| Setting | Description |
+|---------|-------------|
+| **Voice Input** | Enable microphone input |
+| **File Upload** | Allow file attachments |
+| **Max File Size** | Maximum upload size in MB |
+
+#### Embed-Specific Settings
+
+For **Embed** workspaces only:
+
+| Setting | Description |
+|---------|-------------|
+| **Allowed Domains** | Whitelist of domains where embed can run |
+| **Daily Limit** | Maximum messages per day (all users) |
+| **Session Limit** | Maximum messages per session |
+
+5. Click **Create**
+6. Copy the generated URL or embed script
+
+### Workspace URLs
+
+Workspaces use random 16-character slugs for security:
+
+| Type | URL Pattern | Example |
+|------|-------------|---------|
+| Standalone | `/{slug}` | `policybot.app/2yibbnmbmctyu` |
+| Embed (hosted) | `/e/{slug}` | `policybot.app/e/2yibbnmbmctyu` |
+| Embed (script) | External site with script tag | See embed script section |
+
+### Embed Script
+
+For **Embed** workspaces, copy the generated script:
+
+```html
+<!-- Policy Bot Workspace -->
+<script
+  src="https://policybot.abhirup.app/embed/workspace.js"
+  data-workspace-id="2yibbnmbmctyu"
+></script>
+```
+
+Paste this script into the target website's HTML to display the chat widget.
+
+### Access Control (Standalone)
+
+Standalone workspaces support two access modes:
+
+#### Category-Based Access (Default)
+
+Users must have access to **ALL** categories linked to the workspace:
+
+```
+Workspace linked to: [HR, Legal, Finance]
+User has: [HR, Legal, Finance, IT] → ✅ Can access
+User has: [HR, Legal]              → ❌ Cannot access (missing Finance)
+```
+
+#### Explicit User List
+
+Only users explicitly added to the workspace can access:
+
+1. Select workspace
+2. Click **Manage Users**
+3. Add users from the search
+4. Click **Save**
+
+To switch access mode:
+1. Edit workspace
+2. Change **Access Mode** to "Explicit User List"
+3. Add authorized users
+
+### Managing Workspace Users
+
+For standalone workspaces with explicit access mode:
+
+| Action | Steps |
+|--------|-------|
+| **Add User** | Click "Add User" → Search → Select → Add |
+| **Remove User** | Find user in list → Click "Remove" |
+| **Bulk Import** | Upload CSV with email addresses |
+
+### Workspace Analytics
+
+View usage statistics for each workspace:
+
+| Metric | Description |
+|--------|-------------|
+| **Sessions** | Total unique sessions |
+| **Messages** | Total messages sent |
+| **Unique Visitors** | Distinct visitor count |
+| **Avg Response Time** | Average AI response latency |
+| **Token Usage** | Total tokens consumed |
+
+Access analytics:
+1. Select workspace
+2. Click **Analytics**
+3. Select date range
+
+### Editing Workspaces
+
+1. Navigate to **Workspaces** tab
+2. Click on the workspace name or **Edit** button
+3. Modify settings
+4. Click **Save**
+
+### Disabling/Enabling Workspaces
+
+Toggle individual workspaces on/off:
+1. Find the workspace in the list
+2. Click the **Enabled** toggle
+
+Disabled workspaces return 404 at their URLs.
+
+### Deleting Workspaces
+
+1. Select the workspace
+2. Click **Delete**
+3. Confirm the action
+
+**Warning:** Deleting a workspace removes all session data and analytics.
+
+### Superuser Workspace Management
+
+Superusers can create and manage workspaces within their assigned categories:
+
+| Action | Admin | Superuser |
+|--------|-------|-----------|
+| Create workspace (any category) | ✅ | ❌ |
+| Create workspace (assigned categories) | ✅ | ✅ |
+| Add any user to workspace | ✅ | ❌ |
+| Add users from assigned categories | ✅ | ✅ |
+| View all workspaces | ✅ | ❌ |
+| View own workspaces | ✅ | ✅ |
+
+---
+
+## 13. Settings
 
 Configure system-wide settings.
 
@@ -1007,7 +1227,7 @@ When a vision-capable model is configured, users can upload images in their chat
 
 ---
 
-## 13. System Management
+## 14. System Management
 
 Administrative functions for system maintenance.
 
@@ -1076,7 +1296,7 @@ View system activity:
 
 ---
 
-## 14. Troubleshooting
+## 15. Troubleshooting
 
 ### Common Issues
 
@@ -1206,7 +1426,7 @@ For issues not covered here:
 
 ---
 
-## 15. Quick Reference
+## 16. Quick Reference
 
 ### Keyboard Shortcuts
 

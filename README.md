@@ -48,6 +48,15 @@ An enterprise RAG platform for policy document management and intelligent queryi
 - **Access Control** - Authentication required to view shared content
 - **Download Control** - Configurable file download permissions per share
 
+### Workspaces
+- **Embed Mode** - Lightweight chat widget for external websites via script tag
+- **Standalone Mode** - Full-featured chat with threads accessible via direct URL
+- **Custom Branding** - Per-workspace colors, logos, and greetings
+- **Category Scoping** - Each workspace accesses specific document categories
+- **LLM Overrides** - Custom model/temperature per workspace
+- **Access Control** - Category-based or explicit user list access
+- **Analytics** - Usage tracking per workspace (sessions, messages, tokens)
+
 ### Tools
 - **Web Search** - Tavily integration for current information
 - **Data Sources** - Query external APIs and CSV files
@@ -67,13 +76,17 @@ policy-bot/
 │   │   │   ├── threads/        # Thread CRUD + file uploads
 │   │   │   ├── admin/          # Admin endpoints (documents, users, categories, settings)
 │   │   │   ├── superuser/      # SuperUser endpoints
-│   │   │   └── user/           # User endpoints
+│   │   │   ├── user/           # User endpoints
+│   │   │   └── w/[slug]/       # Workspace API endpoints
 │   │   ├── admin/              # Admin dashboard UI
 │   │   ├── superuser/          # SuperUser dashboard UI
+│   │   ├── [slug]/             # Standalone workspace pages
+│   │   ├── e/[slug]/           # Hosted embed workspace pages
 │   │   └── page.tsx            # Chat interface
 │   ├── components/             # React components
 │   │   ├── chat/               # Chat UI (messages, input, sources)
 │   │   ├── admin/              # Admin dashboard components
+│   │   ├── workspace/          # Workspace components (embed + standalone)
 │   │   └── ui/                 # Shared UI components
 │   ├── lib/                    # Core libraries
 │   │   ├── db/                 # SQLite layer (users, categories, documents, config)
