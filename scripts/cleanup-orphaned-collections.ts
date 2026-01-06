@@ -84,10 +84,9 @@ async function main() {
   }
 
   const categorySlugs = new Set(
-    db
-      .prepare('SELECT slug FROM categories')
-      .all()
-      .map((row: { slug: string }) => row.slug)
+    (db.prepare('SELECT slug FROM categories').all() as { slug: string }[]).map(
+      (row) => row.slug
+    )
   );
   console.log(`Found ${categorySlugs.size} categories in database\n`);
 
