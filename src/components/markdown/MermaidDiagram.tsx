@@ -191,30 +191,58 @@ export default function MermaidDiagram({ code, className = '' }: MermaidDiagramP
     if (!svgContent || !containerRef.current) return;
 
     try {
-      // Create a canvas to convert SVG to PNG
       const svgElement = containerRef.current.querySelector('svg');
       if (!svgElement) return;
+
+      // Clone the SVG to avoid modifying the original
+      const clonedSvg = svgElement.cloneNode(true) as SVGSVGElement;
+
+      // Get dimensions from the SVG element
+      const bbox = svgElement.getBBox();
+      const svgWidth = Math.max(bbox.width + bbox.x + 20, svgElement.clientWidth || 800);
+      const svgHeight = Math.max(bbox.height + bbox.y + 20, svgElement.clientHeight || 600);
+
+      // Set explicit dimensions on the cloned SVG
+      clonedSvg.setAttribute('width', String(svgWidth));
+      clonedSvg.setAttribute('height', String(svgHeight));
+
+      // Add white background rect as first child
+      const bgRect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+      bgRect.setAttribute('width', '100%');
+      bgRect.setAttribute('height', '100%');
+      bgRect.setAttribute('fill', 'white');
+      clonedSvg.insertBefore(bgRect, clonedSvg.firstChild);
+
+      // Inline all styles to ensure they're included in the export
+      const styleElement = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+      styleElement.textContent = `
+        * { font-family: system-ui, -apple-system, sans-serif; }
+        text { font-family: system-ui, -apple-system, sans-serif; }
+      `;
+      clonedSvg.insertBefore(styleElement, clonedSvg.firstChild);
+
+      // Serialize the SVG
+      const serializer = new XMLSerializer();
+      const svgString = serializer.serializeToString(clonedSvg);
+
+      // Create a data URL instead of blob URL for better compatibility
+      const svgBase64 = btoa(unescape(encodeURIComponent(svgString)));
+      const dataUrl = `data:image/svg+xml;base64,${svgBase64}`;
 
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      // Get SVG dimensions
-      const svgRect = svgElement.getBoundingClientRect();
       const scaleFactor = 2; // Higher resolution
-      canvas.width = svgRect.width * scaleFactor;
-      canvas.height = svgRect.height * scaleFactor;
+      canvas.width = svgWidth * scaleFactor;
+      canvas.height = svgHeight * scaleFactor;
 
-      // Create image from SVG
       const img = new Image();
-      const svgBlob = new Blob([svgContent], { type: 'image/svg+xml;charset=utf-8' });
-      const url = URL.createObjectURL(svgBlob);
 
       img.onload = () => {
         ctx.fillStyle = 'white';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        URL.revokeObjectURL(url);
 
         // Download PNG
         const pngUrl = canvas.toDataURL('image/png');
@@ -224,7 +252,11 @@ export default function MermaidDiagram({ code, className = '' }: MermaidDiagramP
         link.click();
       };
 
-      img.src = url;
+      img.onerror = (err) => {
+        console.error('Failed to load SVG for PNG export:', err);
+      };
+
+      img.src = dataUrl;
     } catch (err) {
       console.error('Failed to export PNG:', err);
     }
