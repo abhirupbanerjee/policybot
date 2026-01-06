@@ -737,6 +737,25 @@ function runMigrations(database: Database.Database): void {
         FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE
       );
 
+      -- Workspace AI-generated outputs (images, documents for workspace chats)
+      CREATE TABLE IF NOT EXISTS workspace_outputs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        workspace_id TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        thread_id TEXT,
+        filename TEXT NOT NULL,
+        filepath TEXT NOT NULL,
+        file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'docx', 'image', 'chart', 'md')),
+        file_size INTEGER NOT NULL,
+        generation_config TEXT,
+        expires_at DATETIME,
+        download_count INTEGER DEFAULT 0,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+        FOREIGN KEY (session_id) REFERENCES workspace_sessions(id) ON DELETE CASCADE,
+        FOREIGN KEY (thread_id) REFERENCES workspace_threads(id) ON DELETE SET NULL
+      );
+
       -- Indexes for workspaces
       CREATE INDEX IF NOT EXISTS idx_workspaces_slug ON workspaces(slug);
       CREATE INDEX IF NOT EXISTS idx_workspaces_type ON workspaces(type);
@@ -754,6 +773,9 @@ function runMigrations(database: Database.Database): void {
       CREATE INDEX IF NOT EXISTS idx_workspace_messages_session ON workspace_messages(session_id);
       CREATE INDEX IF NOT EXISTS idx_workspace_messages_workspace ON workspace_messages(workspace_id);
       CREATE INDEX IF NOT EXISTS idx_workspace_analytics_date ON workspace_analytics(workspace_id, date);
+      CREATE INDEX IF NOT EXISTS idx_workspace_outputs_workspace ON workspace_outputs(workspace_id);
+      CREATE INDEX IF NOT EXISTS idx_workspace_outputs_session ON workspace_outputs(session_id);
+      CREATE INDEX IF NOT EXISTS idx_workspace_outputs_thread ON workspace_outputs(thread_id);
     `);
   }
 }

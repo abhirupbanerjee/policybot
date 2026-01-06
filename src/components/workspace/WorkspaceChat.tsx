@@ -65,13 +65,18 @@ export function WorkspaceChat({
 
         const data = await response.json();
         setSessionId(data.sessionId);
+
+        // Use activeThreadId from init response if available and not already set
+        if (data.activeThreadId && !initialThreadId) {
+          setActiveThreadId(data.activeThreadId);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to initialize');
       }
     }
 
     initSession();
-  }, [workspaceSlug]);
+  }, [workspaceSlug, initialThreadId]);
 
   // Load threads when session is ready
   useEffect(() => {

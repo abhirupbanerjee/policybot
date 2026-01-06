@@ -274,51 +274,96 @@ async function saveImage(
     throw new Error('No thread context available for image generation');
   }
 
-  // Verify thread exists before inserting (to provide better error message)
-  const threadExists = queryOne<{ id: string }>('SELECT id FROM threads WHERE id = ?', [threadId]);
-  if (!threadExists) {
+  // Check if this is a main chat thread or workspace thread/session
+  // Main chat uses 'threads' table, workspace uses 'workspace_threads' or session ID
+  const mainThreadExists = queryOne<{ id: string }>('SELECT id FROM threads WHERE id = ?', [threadId]);
+  const workspaceThread = queryOne<{ id: string; workspace_id: string; session_id: string }>(
+    'SELECT id, workspace_id, session_id FROM workspace_threads WHERE id = ?',
+    [threadId]
+  );
+  const workspaceSession = queryOne<{ id: string; workspace_id: string }>(
+    'SELECT id, workspace_id FROM workspace_sessions WHERE id = ?',
+    [threadId]
+  );
+
+  const isWorkspaceContext = workspaceThread || workspaceSession;
+
+  if (!mainThreadExists && !isWorkspaceContext) {
     console.error('[ImageGen] Thread not found in database:', { threadId, context });
     throw new Error(`Thread ${threadId} not found - cannot save generated image`);
   }
 
-  // Store in database (using thread_outputs table like document generator)
+  const generationConfig = JSON.stringify({
+    provider,
+    model,
+    prompt: args.prompt,
+    enhancedPrompt: metadata.enhancedPrompt,
+    revisedPrompt: metadata.revisedPrompt,
+    style: args.style,
+    aspectRatio: args.aspectRatio,
+    width: metadata.width,
+    height: metadata.height,
+    format: metadata.format,
+    generationTimeMs: metadata.generationTimeMs,
+    thumbnailFilename,
+  });
+
+  // Store in appropriate database table based on context
   let result;
+  let downloadUrlPrefix: string;
+
   try {
-    result = execute(
-      `INSERT INTO thread_outputs (
-        thread_id, message_id, filename, filepath, file_type, file_size,
-        generation_config, expires_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        threadId,
-        null, // message_id
-        filename,
-        filepath,
-        'image', // file_type
-        metadata.sizeBytes,
-        JSON.stringify({
-          provider,
-          model,
-          prompt: args.prompt,
-          enhancedPrompt: metadata.enhancedPrompt,
-          revisedPrompt: metadata.revisedPrompt,
-          style: args.style,
-          aspectRatio: args.aspectRatio,
-          width: metadata.width,
-          height: metadata.height,
-          format: metadata.format,
-          generationTimeMs: metadata.generationTimeMs,
-          thumbnailFilename,
-        }),
-        null, // expires_at (images don't expire by default)
-      ]
-    );
+    if (isWorkspaceContext) {
+      // Workspace context - use workspace_outputs table
+      const workspaceId = workspaceThread?.workspace_id || workspaceSession?.workspace_id;
+      const sessionId = workspaceThread?.session_id || workspaceSession?.id;
+      const actualThreadId = workspaceThread?.id || null;
+
+      result = execute(
+        `INSERT INTO workspace_outputs (
+          workspace_id, session_id, thread_id, filename, filepath, file_type, file_size,
+          generation_config, expires_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          workspaceId,
+          sessionId,
+          actualThreadId,
+          filename,
+          filepath,
+          'image', // file_type
+          metadata.sizeBytes,
+          generationConfig,
+          null, // expires_at (images don't expire by default)
+        ]
+      );
+      downloadUrlPrefix = '/api/workspace-documents';
+    } else {
+      // Main chat context - use thread_outputs table
+      result = execute(
+        `INSERT INTO thread_outputs (
+          thread_id, message_id, filename, filepath, file_type, file_size,
+          generation_config, expires_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          threadId,
+          null, // message_id
+          filename,
+          filepath,
+          'image', // file_type
+          metadata.sizeBytes,
+          generationConfig,
+          null, // expires_at (images don't expire by default)
+        ]
+      );
+      downloadUrlPrefix = '/api/documents';
+    }
   } catch (dbError) {
     console.error('[ImageGen] Database error saving image:', {
       error: dbError instanceof Error ? dbError.message : dbError,
       threadId,
       filename,
       filepath,
+      isWorkspaceContext: !!isWorkspaceContext,
     });
     throw dbError;
   }
@@ -329,9 +374,9 @@ async function saveImage(
     id: imageId,
     filename,
     filepath,
-    url: `/api/documents/${docId}/download`,
+    url: `${downloadUrlPrefix}/${docId}/download`,
     thumbnailUrl: thumbnailFilename
-      ? `/api/documents/${docId}/download?thumbnail=true`
+      ? `${downloadUrlPrefix}/${docId}/download?thumbnail=true`
       : undefined,
     width: metadata.width,
     height: metadata.height,

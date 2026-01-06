@@ -160,13 +160,7 @@ export class DocumentGenerator {
 
     // Validate threadId exists if provided (foreign key constraint)
     const effectiveThreadId = options.threadId;
-    if (effectiveThreadId) {
-      const threadExists = queryOne<{ id: string }>('SELECT id FROM threads WHERE id = ?', [effectiveThreadId]);
-      if (!threadExists) {
-        console.error('[DocGen] Thread not found in database:', effectiveThreadId);
-        throw new Error(`Thread ${effectiveThreadId} not found - cannot save generated document`);
-      }
-    } else {
+    if (!effectiveThreadId) {
       console.warn('[DocGen] No threadId provided - document will not be saved to database');
       // Return early with in-memory result (no database persistence)
       return {
@@ -183,30 +177,81 @@ export class DocumentGenerator {
       } as unknown as GeneratedDocument;
     }
 
-    // Store in database
-    const result = execute(
-      `INSERT INTO thread_outputs (
-        thread_id, message_id, filename, filepath, file_type, file_size,
-        generation_config, expires_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        effectiveThreadId,
-        options.messageId || null,
-        filename,
-        filepath,
-        options.format,
-        buffer.length,
-        JSON.stringify({
-          title: options.title,
-          branding: branding.enabled ? {
-            organizationName: branding.organizationName,
-            primaryColor: branding.primaryColor,
-          } : null,
-          pageCount,
-        }),
-        expiresAt,
-      ]
+    // Check if this is a main chat thread or workspace thread/session
+    const mainThreadExists = queryOne<{ id: string }>('SELECT id FROM threads WHERE id = ?', [effectiveThreadId]);
+    const workspaceThread = queryOne<{ id: string; workspace_id: string; session_id: string }>(
+      'SELECT id, workspace_id, session_id FROM workspace_threads WHERE id = ?',
+      [effectiveThreadId]
     );
+    const workspaceSession = queryOne<{ id: string; workspace_id: string }>(
+      'SELECT id, workspace_id FROM workspace_sessions WHERE id = ?',
+      [effectiveThreadId]
+    );
+
+    const isWorkspaceContext = workspaceThread || workspaceSession;
+
+    if (!mainThreadExists && !isWorkspaceContext) {
+      console.error('[DocGen] Thread not found in database:', effectiveThreadId);
+      throw new Error(`Thread ${effectiveThreadId} not found - cannot save generated document`);
+    }
+
+    const generationConfig = JSON.stringify({
+      title: options.title,
+      branding: branding.enabled ? {
+        organizationName: branding.organizationName,
+        primaryColor: branding.primaryColor,
+      } : null,
+      pageCount,
+    });
+
+    // Store in appropriate database table based on context
+    let result;
+    let downloadUrlPrefix: string;
+
+    if (isWorkspaceContext) {
+      // Workspace context - use workspace_outputs table
+      const workspaceId = workspaceThread?.workspace_id || workspaceSession?.workspace_id;
+      const sessionId = workspaceThread?.session_id || workspaceSession?.id;
+      const actualThreadId = workspaceThread?.id || null;
+
+      result = execute(
+        `INSERT INTO workspace_outputs (
+          workspace_id, session_id, thread_id, filename, filepath, file_type, file_size,
+          generation_config, expires_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          workspaceId,
+          sessionId,
+          actualThreadId,
+          filename,
+          filepath,
+          options.format,
+          buffer.length,
+          generationConfig,
+          expiresAt,
+        ]
+      );
+      downloadUrlPrefix = '/api/workspace-documents';
+    } else {
+      // Main chat context - use thread_outputs table
+      result = execute(
+        `INSERT INTO thread_outputs (
+          thread_id, message_id, filename, filepath, file_type, file_size,
+          generation_config, expires_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          effectiveThreadId,
+          options.messageId || null,
+          filename,
+          filepath,
+          options.format,
+          buffer.length,
+          generationConfig,
+          expiresAt,
+        ]
+      );
+      downloadUrlPrefix = '/api/documents';
+    }
 
     const docId = result.lastInsertRowid as number;
 
@@ -218,7 +263,7 @@ export class DocumentGenerator {
       filepath,
       fileType: options.format,
       fileSize: buffer.length,
-      downloadUrl: `/api/documents/${docId}/download`,
+      downloadUrl: `${downloadUrlPrefix}/${docId}/download`,
       expiresAt,
       createdAt: new Date().toISOString(),
     };
