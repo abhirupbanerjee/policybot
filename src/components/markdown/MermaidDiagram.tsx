@@ -56,6 +56,70 @@ async function loadMermaid() {
   return mermaidPromise;
 }
 
+/**
+ * Sanitize mindmap code to fix common LLM-generated syntax issues
+ * - Removes nested parentheses inside root((...))
+ * - Escapes special characters like & in node text
+ * - Fixes indentation issues
+ */
+function sanitizeMindmapCode(code: string): string {
+  const lines = code.split('\n');
+  const result: string[] = [];
+
+  for (const line of lines) {
+    let sanitized = line;
+
+    // Fix root((...)) with nested parentheses - extract inner text and remove nested parens
+    // e.g., root((Grenada Enterprise Architecture (GEA))) -> root((Grenada Enterprise Architecture - GEA))
+    const rootMatch = sanitized.match(/^(\s*)root\(\((.+)\)\)\s*$/);
+    if (rootMatch) {
+      const indent = rootMatch[1];
+      let innerText = rootMatch[2];
+      // Replace nested parentheses with dashes or remove them
+      innerText = innerText.replace(/\(([^)]+)\)/g, '- $1');
+      sanitized = `${indent}root((${innerText}))`;
+    }
+
+    // For non-root lines, escape problematic characters in node text
+    // Replace & with 'and' to avoid parsing issues
+    if (!sanitized.includes('root((')) {
+      sanitized = sanitized.replace(/\s&\s/g, ' and ');
+      sanitized = sanitized.replace(/&/g, ' and ');
+    }
+
+    // Remove any trailing content after )) on root line
+    if (sanitized.includes('root((') && sanitized.includes('))')) {
+      const closeIndex = sanitized.indexOf('))') + 2;
+      sanitized = sanitized.substring(0, closeIndex);
+    }
+
+    result.push(sanitized);
+  }
+
+  return result.join('\n');
+}
+
+/**
+ * Sanitize Mermaid code based on diagram type
+ */
+function sanitizeMermaidCode(code: string): string {
+  const trimmed = code.trim();
+
+  // Apply mindmap-specific sanitization
+  if (trimmed.startsWith('mindmap')) {
+    return sanitizeMindmapCode(trimmed);
+  }
+
+  // For flowcharts, escape special characters in labels
+  if (trimmed.startsWith('flowchart') || trimmed.startsWith('graph')) {
+    return trimmed
+      .replace(/\[([^\]]*?)&([^\]]*?)\]/g, '[$1 and $2]')  // [text & more] -> [text and more]
+      .replace(/\{([^}]*?)&([^}]*?)\}/g, '{$1 and $2}');   // {text & more} -> {text and more}
+  }
+
+  return trimmed;
+}
+
 export default function MermaidDiagram({ code, className = '' }: MermaidDiagramProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const uniqueId = useId().replace(/:/g, '-');
@@ -76,8 +140,8 @@ export default function MermaidDiagram({ code, className = '' }: MermaidDiagramP
 
         if (!mounted) return;
 
-        // Clean the code (remove any leading/trailing whitespace issues)
-        const cleanCode = code.trim();
+        // Clean and sanitize the code to fix common LLM-generated syntax issues
+        const cleanCode = sanitizeMermaidCode(code);
 
         // Generate unique ID for this render
         const diagramId = `mermaid-${uniqueId}-${Date.now()}`;

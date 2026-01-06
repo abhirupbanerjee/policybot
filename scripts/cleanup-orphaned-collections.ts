@@ -6,7 +6,12 @@
  * This script identifies and deletes ChromaDB collections that no longer
  * have a corresponding category in the database.
  *
- * Usage: npx tsx scripts/cleanup-orphaned-collections.ts [--dry-run]
+ * Usage (inside Docker):
+ *   docker exec -it policy-bot-app npx tsx scripts/cleanup-orphaned-collections.ts --dry-run
+ *   docker exec -it policy-bot-app npx tsx scripts/cleanup-orphaned-collections.ts
+ *
+ * Usage (local dev with ChromaDB running):
+ *   npx tsx scripts/cleanup-orphaned-collections.ts [--dry-run]
  */
 
 import { readFileSync } from 'fs';
@@ -73,7 +78,9 @@ async function main() {
   console.log(`Found ${categoryCollections.length} category collections`);
 
   // Connect to SQLite and get all category slugs
-  const dbPath = process.env.SQLITE_DB_PATH || './data/policy-bot.db';
+  // In Docker: DATA_DIR=/app/data, database is at /app/data/policy-bot.db
+  const dataDir = process.env.DATA_DIR || './data';
+  const dbPath = process.env.SQLITE_DB_PATH || `${dataDir}/policy-bot.db`;
   let db: Database.Database;
   try {
     db = new Database(dbPath, { readonly: true });

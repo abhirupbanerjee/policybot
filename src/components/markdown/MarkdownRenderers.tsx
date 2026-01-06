@@ -3,7 +3,6 @@
 import React, { Suspense, lazy } from 'react';
 import { ExternalLink } from 'lucide-react';
 import type { Components } from 'react-markdown';
-import { isMermaidCode } from './MermaidDiagram';
 
 // Lazy load MermaidDiagram to avoid loading Mermaid.js until needed
 const MermaidDiagram = lazy(() => import('./MermaidDiagram'));
@@ -197,8 +196,9 @@ const CodeWithMermaid: Components['code'] = ({ children, className }) => {
   const language = className?.replace('language-', '') || '';
   const codeContent = getTextContent(children);
 
-  // Check if this is a mermaid code block (either by language tag or content detection)
-  const isMermaid = language === 'mermaid' || (language === '' && isMermaidCode(codeContent));
+  // Only render as Mermaid if explicitly tagged with ```mermaid
+  // Auto-detection removed to prevent false positives on admin/other pages
+  const isMermaid = language === 'mermaid';
 
   if (isMermaid) {
     return (
