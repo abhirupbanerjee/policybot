@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Upload, RefreshCw, Trash2, FileText, AlertCircle, Users, UserPlus, Shield, User, Settings, Save, FolderOpen, Plus, Edit2, BarChart3, Database, HardDrive, Globe, Tag, Landmark, DollarSign, Activity, Layers, Server, ScrollText, ChevronUp, ChevronDown, ChevronsUpDown, Search, X, Cpu, Mic, Sparkles, Wand2, CheckCircle, Youtube, Filter, SortAsc, ImageIcon } from 'lucide-react';
+import { ArrowLeft, Upload, RefreshCw, Trash2, FileText, AlertCircle, Users, UserPlus, Shield, User, Settings, Save, FolderOpen, Plus, Edit2, BarChart3, Database, HardDrive, Globe, Tag, Landmark, DollarSign, Activity, Layers, Server, ScrollText, ChevronUp, ChevronDown, ChevronsUpDown, Search, X, Cpu, Mic, Sparkles, Wand2, CheckCircle, Youtube, Filter, SortAsc, ImageIcon, Download } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import Spinner from '@/components/ui/Spinner';
@@ -2977,6 +2977,14 @@ export default function AdminPage() {
                         </td>
                         <td className="px-6 py-4">
                           <div className="flex items-center justify-end gap-2">
+                            <a
+                              href={`/api/admin/documents/${doc.id}/download`}
+                              className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg"
+                              title="Download"
+                              download
+                            >
+                              <Download size={16} />
+                            </a>
                             <button
                               onClick={() => handleEditDoc(doc)}
                               className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"

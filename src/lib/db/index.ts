@@ -778,6 +778,46 @@ function runMigrations(database: Database.Database): void {
       CREATE INDEX IF NOT EXISTS idx_workspace_outputs_thread ON workspace_outputs(thread_id);
     `);
   }
+
+  // Migration: Create workspace_outputs table if workspaces exists but workspace_outputs doesn't
+  // This handles the case where workspaces was created before workspace_outputs was added
+  const workspaceOutputsTableExists = database.prepare(
+    "SELECT name FROM sqlite_master WHERE type='table' AND name='workspace_outputs'"
+  ).get();
+
+  if (!workspaceOutputsTableExists) {
+    // Check if workspaces table exists (workspace_outputs depends on it)
+    const wsTableExists = database.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='workspaces'"
+    ).get();
+
+    if (wsTableExists) {
+      database.exec(`
+        -- Workspace AI-generated outputs (images, documents for workspace chats)
+        CREATE TABLE IF NOT EXISTS workspace_outputs (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          workspace_id TEXT NOT NULL,
+          session_id TEXT NOT NULL,
+          thread_id TEXT,
+          filename TEXT NOT NULL,
+          filepath TEXT NOT NULL,
+          file_type TEXT NOT NULL CHECK (file_type IN ('pdf', 'docx', 'image', 'chart', 'md')),
+          file_size INTEGER NOT NULL,
+          generation_config TEXT,
+          expires_at DATETIME,
+          download_count INTEGER DEFAULT 0,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
+          FOREIGN KEY (session_id) REFERENCES workspace_sessions(id) ON DELETE CASCADE,
+          FOREIGN KEY (thread_id) REFERENCES workspace_threads(id) ON DELETE SET NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_workspace_outputs_workspace ON workspace_outputs(workspace_id);
+        CREATE INDEX IF NOT EXISTS idx_workspace_outputs_session ON workspace_outputs(session_id);
+        CREATE INDEX IF NOT EXISTS idx_workspace_outputs_thread ON workspace_outputs(thread_id);
+      `);
+    }
+  }
 }
 
 /**

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Users, User, FolderOpen, Tag, Plus, FileText, Upload, Trash2, X, ChevronUp, ChevronDown, ChevronsUpDown, Search, Edit2, Save, RefreshCw, Database, CheckCircle, AlertCircle, Clock, Wand2, Youtube, Filter, SortAsc, MessageSquare, Globe } from 'lucide-react';
+import { ArrowLeft, Users, User, FolderOpen, Tag, Plus, FileText, Upload, Trash2, X, ChevronUp, ChevronDown, ChevronsUpDown, Search, Edit2, Save, RefreshCw, Database, CheckCircle, AlertCircle, Clock, Wand2, Youtube, Filter, SortAsc, MessageSquare, Globe, Download } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import Spinner from '@/components/ui/Spinner';
@@ -1440,7 +1440,15 @@ export default function SuperUserPage() {
                           {formatDate(doc.uploadedAt)}
                         </td>
                         <td className="px-6 py-4">
-                          <div className="flex items-center justify-end">
+                          <div className="flex items-center justify-end gap-2">
+                            <a
+                              href={`/api/superuser/documents/${doc.id}/download`}
+                              className="p-2 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded-lg"
+                              title="Download"
+                              download
+                            >
+                              <Download size={16} />
+                            </a>
                             <button
                               onClick={() => handleDeleteDocument(doc.id)}
                               disabled={deletingDocId === doc.id}

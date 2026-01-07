@@ -39,6 +39,7 @@ async function loadMermaid() {
         startOnLoad: false,
         theme: 'default',
         securityLevel: 'loose',
+        suppressErrorRendering: true, // Prevent error divs from being injected into DOM
         fontFamily: 'system-ui, -apple-system, sans-serif',
         mindmap: {
           useMaxWidth: true,
