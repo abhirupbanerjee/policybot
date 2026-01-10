@@ -125,45 +125,54 @@ ${context.categoryContext}
   }
 
   prompt += `
-**Instructions:**
-1. Create 3-10 tasks that break down the request into logical steps
-2. Each task should be specific and measurable
-3. Use dependencies to define execution order (task IDs)
-4. Assign appropriate task types based on the work needed
-5. Ensure no circular dependencies
-6. IMPORTANT: When creating documents, use "generate" type with target mentioning "Word document", "PDF", or "report"
-7. IMPORTANT: When creating images/visuals, use "generate" type with target mentioning "infographic", "image", or "visual"
-8. IMPORTANT: When searching the web, use "search" type with target mentioning "web search"
+**CRITICAL INSTRUCTIONS:**
+
+1. **FIRST: Check if the user has provided data in their message.** If the user's message contains:
+   - A list of items (e.g., "SOE1, SOE2, SOE3")
+   - Structured data (e.g., names, descriptions, values)
+   - Specific information to process
+
+   Then **DO NOT search the web for this data** - use "extract" type first to extract the provided data, then process it.
+
+2. **ONLY use web search** when the user is asking for information that is NOT in their message.
+
+3. Create 3-10 tasks that break down the request into logical steps
+4. Each task should be specific and measurable
+5. Use dependencies to define execution order (task IDs)
+6. Ensure no circular dependencies
 
 **Task Types:**
+- **extract**: Pull out specific information from the user's provided data - USE THIS FIRST if user provided data
 - **analyze**: Examine and interpret information (LLM-based analysis)
-- **search**: Find information - use target "web search" for internet searches, otherwise searches internal documents
+- **search**: Find information - ONLY use target "web search" if user needs external information not in their message
 - **compare**: Compare multiple items or options
 - **generate**: Create new content - TRIGGERS TOOLS based on target:
   - Target contains "document", "report", "Word", "PDF", "docx" → Creates downloadable Word/PDF document
   - Target contains "infographic", "image", "visual", "diagram", "chart" → Creates AI-generated image
   - Otherwise → LLM text generation
 - **summarize**: Condense information into a summary
-- **extract**: Pull out specific information
 - **validate**: Check correctness or compliance
 
-**Example Response with Tool Usage:**
+**Example 1: User provides data in message**
+User: "Analyze these SOEs and create a report: SOE-001 ABC Corp, SOE-002 XYZ Inc, SOE-003 DEF Ltd"
+
+Correct response:
 {
-  "title": "SOE Assessment Report Generation",
+  "title": "SOE Analysis Report",
   "tasks": [
     {
       "id": 1,
-      "type": "search",
-      "target": "web search SOE information",
-      "description": "Search the web for information about the SOE",
+      "type": "extract",
+      "target": "SOE list from user message",
+      "description": "Extract the SOE list provided by the user: SOE-001 ABC Corp, SOE-002 XYZ Inc, SOE-003 DEF Ltd",
       "priority": 1,
       "dependencies": []
     },
     {
       "id": 2,
       "type": "analyze",
-      "target": "SOE assessment criteria",
-      "description": "Analyze the SOE based on standard assessment criteria",
+      "target": "SOE assessment",
+      "description": "Analyze each SOE based on the extracted information",
       "priority": 1,
       "dependencies": [1]
     },
@@ -171,18 +180,29 @@ ${context.categoryContext}
       "id": 3,
       "type": "generate",
       "target": "Word document report",
-      "description": "Generate a Word document with the SOE assessment report",
-      "priority": 1,
-      "dependencies": [2]
-    },
-    {
-      "id": 4,
-      "type": "generate",
-      "target": "infographic visualization",
-      "description": "Create an infographic visualizing the SOE assessment results",
+      "description": "Generate a Word document with the SOE analysis report",
       "priority": 1,
       "dependencies": [2]
     }
+  ]
+}
+
+**Example 2: User asks for external information**
+User: "Research the latest compliance regulations for financial services"
+
+Correct response (uses web search):
+{
+  "title": "Compliance Regulations Research",
+  "tasks": [
+    {
+      "id": 1,
+      "type": "search",
+      "target": "web search financial services compliance regulations 2024",
+      "description": "Search the web for latest compliance regulations",
+      "priority": 1,
+      "dependencies": []
+    },
+    ...
   ]
 }
 

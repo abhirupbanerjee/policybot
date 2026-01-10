@@ -37,10 +37,23 @@ export class GlobalBudgetTracker {
   private startTime: number;
   private onEvent?: (event: BudgetWarningEvent) => void;
 
+  // TTL cache for usage aggregation (prevents repeated DB queries)
+  private usageCache: BudgetUsage | null = null;
+  private usageCacheTime: number = 0;
+  private static readonly CACHE_TTL_MS = 2000; // 2 second cache
+
   constructor(onEvent?: (event: BudgetWarningEvent) => void) {
     this.globalBudget = getGlobalBudgetSettings();
     this.startTime = Date.now();
     this.onEvent = onEvent;
+  }
+
+  /**
+   * Invalidate usage cache (call after budget updates)
+   */
+  invalidateCache(): void {
+    this.usageCache = null;
+    this.usageCacheTime = 0;
   }
 
   /**
@@ -92,9 +105,17 @@ export class GlobalBudgetTracker {
   }
 
   /**
-   * Get total usage across all active plans
+   * Get total usage across all active plans (with TTL caching)
    */
   private getTotalUsage(): BudgetUsage {
+    const now = Date.now();
+
+    // Return cached value if still valid
+    if (this.usageCache && (now - this.usageCacheTime) < GlobalBudgetTracker.CACHE_TTL_MS) {
+      return this.usageCache;
+    }
+
+    // Query database for fresh usage data
     const activePlans = queryAll<{ budget_used_json: string }>(
       "SELECT budget_used_json FROM task_plans WHERE status = 'active' AND mode = 'autonomous'"
     );
@@ -115,6 +136,10 @@ export class GlobalBudgetTracker {
         console.error('[BudgetTracker] Failed to parse budget_used_json:', e);
       }
     }
+
+    // Update cache
+    this.usageCache = total;
+    this.usageCacheTime = now;
 
     return total;
   }

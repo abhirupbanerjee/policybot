@@ -64,6 +64,11 @@ export async function executeAutonomousWithStreaming(
             plan_id: plan.id,
             title: plan.title,
             task_count: plan.tasks.length,
+            tasks: plan.tasks.map(t => ({
+              id: t.id,
+              description: t.description,
+              type: t.type,
+            })),
           });
           sendEvent({
             type: 'status',
@@ -77,7 +82,7 @@ export async function executeAutonomousWithStreaming(
             type: 'agent_task_started',
             task_id: task.id,
             description: task.description,
-            type: task.type,
+            task_type: task.type,
           });
         },
 
@@ -150,17 +155,16 @@ export async function executeAutonomousWithStreaming(
           sendEvent({ type: 'status', phase: 'agent_summarizing', content: 'Generating summary...' });
 
           // Calculate stats
+          const tasksWithConfidence = plan.tasks.filter((t) => t.confidence_score !== undefined);
           const stats = {
             total_tasks: plan.tasks.length,
             completed_tasks: plan.tasks.filter((t) => t.status === 'done').length,
             failed_tasks: plan.tasks.filter((t) => t.status === 'failed').length,
             skipped_tasks: plan.tasks.filter((t) => t.status === 'skipped').length,
             needs_review_tasks: plan.tasks.filter((t) => t.status === 'needs_review').length,
-            average_confidence:
-              plan.tasks
-                .filter((t) => t.confidence_score !== undefined)
-                .reduce((sum, t) => sum + (t.confidence_score || 0), 0) /
-                plan.tasks.filter((t) => t.confidence_score !== undefined).length || 0,
+            average_confidence: tasksWithConfidence.length > 0
+              ? tasksWithConfidence.reduce((sum, t) => sum + (t.confidence_score || 0), 0) / tasksWithConfidence.length
+              : 0,
           };
 
           sendEvent({

@@ -390,7 +390,12 @@ export async function POST(request: NextRequest) {
             // Link any generated outputs (documents, images) to this message
             // This must happen after addMessage since message_id is a foreign key
             if (documents.length > 0 || images.length > 0) {
-              linkOutputsToMessage(threadId, assistantMessageId);
+              try {
+                linkOutputsToMessage(threadId, assistantMessageId);
+              } catch (linkError) {
+                // Log but don't fail - message is saved, just outputs not linked
+                console.error('[Stream] Failed to link outputs to message:', linkError);
+              }
             }
 
             // Background tasks (non-blocking)

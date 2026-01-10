@@ -14,7 +14,7 @@ import type { StreamEvent } from '@/types/stream';
 import type { GeneratedDocumentInfo, GeneratedImageInfo } from '@/types';
 import { generateWithModel, getModelForRole } from './llm-router';
 import { checkTaskQuality } from './checker';
-import { transitionTaskState, incrementBudgetUsage } from '../db/task-plans';
+import { transitionTaskState, incrementBudgetUsage, getTaskPlan } from '../db/task-plans';
 import { documentGenerationTool } from '../tools/docgen';
 import { imageGenTool } from '../tools/image-gen';
 import { tavilyWebSearch } from '../tools/tavily';
@@ -24,32 +24,45 @@ import { runWithContextAsync } from '../request-context';
 
 /**
  * Detect which tool (if any) should be used for this task
+ * Priority order: explicit type match > keyword match with scoring
  */
 function detectToolForTask(task: AgentTask): 'doc_gen' | 'image_gen' | 'web_search' | null {
   const typeLC = task.type.toLowerCase();
   const targetLC = task.target.toLowerCase();
   const descLC = task.description.toLowerCase();
+  const combinedText = `${targetLC} ${descLC}`;
 
-  // Document generation detection
-  const docKeywords = ['document', 'report', 'word', 'docx', 'pdf', 'file', 'export', 'download'];
-  const isDocTask = typeLC === 'generate' &&
-    (docKeywords.some(kw => targetLC.includes(kw)) ||
-     docKeywords.some(kw => descLC.includes(kw)));
-  if (isDocTask) return 'doc_gen';
+  // Explicit type mappings (highest priority)
+  if (typeLC === 'document' || typeLC === 'doc_gen' || typeLC === 'generate_document') {
+    return 'doc_gen';
+  }
+  if (typeLC === 'image' || typeLC === 'image_gen' || typeLC === 'generate_image') {
+    return 'image_gen';
+  }
+  if (typeLC === 'search' || typeLC === 'web_search') {
+    return 'web_search';
+  }
 
-  // Image generation detection
-  const imageKeywords = ['image', 'infographic', 'visual', 'diagram', 'chart', 'picture', 'graphic', 'illustration'];
-  const isImageTask = typeLC === 'generate' &&
-    (imageKeywords.some(kw => targetLC.includes(kw)) ||
-     imageKeywords.some(kw => descLC.includes(kw)));
-  if (isImageTask) return 'image_gen';
+  // Keyword-based detection for generic "generate" type
+  if (typeLC === 'generate') {
+    // Score-based detection to handle ambiguous cases
+    const docKeywords = ['document', 'report', 'word', 'docx', 'pdf', 'file', 'export', 'download', 'memo', 'letter'];
+    const imageKeywords = ['image', 'infographic', 'visual', 'diagram', 'chart', 'picture', 'graphic', 'illustration', 'draw'];
 
-  // Web search detection
+    const docScore = docKeywords.filter(kw => combinedText.includes(kw)).length;
+    const imageScore = imageKeywords.filter(kw => combinedText.includes(kw)).length;
+
+    // Require at least one keyword match, prefer higher score
+    if (docScore > 0 || imageScore > 0) {
+      return docScore >= imageScore ? 'doc_gen' : 'image_gen';
+    }
+  }
+
+  // Fallback search detection
   const searchKeywords = ['search', 'web', 'internet', 'online', 'lookup', 'find'];
-  const isSearchTask = typeLC === 'search' &&
-    (searchKeywords.some(kw => targetLC.includes(kw)) ||
-     searchKeywords.some(kw => descLC.includes(kw)));
-  if (isSearchTask) return 'web_search';
+  if (searchKeywords.some(kw => combinedText.includes(kw))) {
+    return 'web_search';
+  }
 
   return null;
 }
@@ -77,17 +90,23 @@ export async function executeTask(
   modelConfig: AgentModelConfig,
   callbacks?: ExecutorCallbacks
 ): Promise<ExecutionResult> {
+  // Bug fix: Query fresh task status from database for accurate idempotency check
+  const planId = (plan as any).id || (plan as any).planId;
+  const freshPlan = getTaskPlan(planId);
+  const freshTask = freshPlan?.tasks?.find((t) => t.id === task.id);
+  const currentStatus = freshTask?.status || task.status;
+
   // Check if already executed (idempotency)
-  if (task.status !== 'pending') {
+  if (currentStatus !== 'pending') {
     return {
       success: true,
-      skipReason: `Task already ${task.status}`,
+      skipReason: `Task already ${currentStatus}`,
     };
   }
 
   // Mark as running and save state history
   try {
-    transitionTaskState(plan.id, task.id, 'running');
+    transitionTaskState(planId, task.id, 'running');
   } catch (error) {
     return {
       success: false,
@@ -97,8 +116,17 @@ export async function executeTask(
   }
 
   try {
-    // Perform task execution (with tool detection)
-    const result = await performTaskExecution(task, plan, modelConfig, callbacks);
+    // Get task timeout from plan budget (default 5 minutes)
+    const timeoutMinutes = plan.budget?.task_timeout_minutes || 5;
+    const timeoutMs = timeoutMinutes * 60 * 1000;
+
+    // Perform task execution with timeout enforcement
+    const result = await Promise.race([
+      performTaskExecution(task, plan, modelConfig, callbacks),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`Task execution timed out after ${timeoutMinutes} minutes`)), timeoutMs)
+      ),
+    ]);
 
     // Track LLM usage
     if (result.tokens_used) {
@@ -291,16 +319,28 @@ async function executeDocGenTool(
   const title = task.target || `${plan.title} - Task ${task.id}`;
 
   // Execute the doc_gen tool with request context
-  const result = await runWithContextAsync(
-    { threadId: plan.thread_id, userId: plan.user_id },
-    async () => {
-      return await documentGenerationTool.execute({
-        title,
-        content: generatedContent,
-        format,
-      });
-    }
-  );
+  // Note: plan may have either snake_case (AgentPlan) or camelCase (TaskPlan) properties
+  // depending on how it was loaded. Handle both cases.
+  const threadId = (plan as any).thread_id || (plan as any).threadId;
+  const userId = (plan as any).user_id || (plan as any).userId;
+
+  // Bug fix: Wrap in try-catch for graceful error handling
+  let result: string;
+  try {
+    result = await runWithContextAsync(
+      { threadId, userId },
+      async () => {
+        return await documentGenerationTool.execute({
+          title,
+          content: generatedContent,
+          format,
+        });
+      }
+    );
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    return `Document generation failed: ${errorMsg}`;
+  }
 
   // Parse result and emit artifact event
   try {
@@ -392,10 +432,15 @@ async function executeImageGenTool(
  */
 async function executeWebSearchTool(
   task: AgentTask,
-  _callbacks?: ExecutorCallbacks
+  callbacks?: ExecutorCallbacks
 ): Promise<string> {
   // Build search query from task
   const query = task.target || task.description;
+
+  // Bug fix: Validate query is not empty
+  if (!query || query.trim().length === 0) {
+    return 'Web search failed: No search query provided. Task target and description are both empty.';
+  }
 
   // Execute web search
   const result = await tavilyWebSearch.execute({
@@ -427,6 +472,22 @@ async function executeWebSearchTool(
       formatted = `**Summary:** ${parsed.answer}\n\n${formatted}`;
     }
 
+    // Bug fix: Emit web search results as visualization artifact for UI display
+    callbacks?.onArtifact?.({
+      type: 'artifact',
+      subtype: 'visualization',
+      data: {
+        chartType: 'table' as const,
+        data: results.slice(0, 5).map((r: { title: string; url: string; content?: string }) => ({
+          title: r.title,
+          url: r.url,
+          snippet: r.content?.substring(0, 200) || '',
+        })),
+        fields: ['title', 'url', 'snippet'],
+        sourceName: `Web Search: ${query.substring(0, 50)}${query.length > 50 ? '...' : ''}`,
+      },
+    });
+
     return formatted;
   } catch {
     return result;
@@ -437,11 +498,13 @@ async function executeWebSearchTool(
  * Build prompt for document content generation
  */
 function buildDocContentPrompt(task: AgentTask, plan: AgentPlan): string {
+  // Handle both snake_case (AgentPlan) and camelCase (TaskPlan) property names
+  const originalRequest = (plan as any).original_request || (plan as any).originalRequest || '';
+
   let prompt = `Generate document content for the following task.
 
 **Plan:** ${plan.title}
-**Original Request:** ${plan.original_request}
-
+${originalRequest ? `**Original Request:** ${originalRequest}\n` : ''}
 **Task:**
 - Target: ${task.target}
 - Description: ${task.description}
@@ -515,11 +578,13 @@ Output markdown content directly.`;
  * Build execution prompt for the executor
  */
 function buildExecutionPrompt(task: AgentTask, plan: AgentPlan): string {
+  // Handle both snake_case (AgentPlan) and camelCase (TaskPlan) property names
+  const originalRequest = (plan as any).original_request || (plan as any).originalRequest || '';
+
   let prompt = `Execute this task as part of a larger plan.
 
 **Plan:** ${plan.title}
-**Original Request:** ${plan.original_request}
-
+${originalRequest ? `**Original Request:** ${originalRequest}\n` : ''}
 **Task to Execute:**
 - ID: ${task.id}
 - Type: ${task.type}

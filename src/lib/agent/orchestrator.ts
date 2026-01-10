@@ -122,13 +122,16 @@ export async function executeAutonomousPlan(
 
     // Mark plan as completed
     updateTaskPlanStatus(planId, 'completed');
-    callbacks?.onPlanCompleted?.(plan, summaryResult.summary || '');
+
+    // Bug fix: Reload plan from database to get fresh data for callback
+    const finalPlan = (getTaskPlan(planId) as unknown as AgentPlan) || plan;
+    callbacks?.onPlanCompleted?.(finalPlan, summaryResult.summary || '');
 
     return {
       success: true,
       plan_id: planId,
       summary: summaryResult.summary,
-      stats: calculatePlanStats(plan),
+      stats: calculatePlanStats(finalPlan),
     };
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
@@ -175,6 +178,9 @@ async function executeTasksInOrder(
     // Reload plan to get latest task states
     const currentPlan = getTaskPlan(plan.id);
     if (!currentPlan) {
+      // Bug fix: Mark plan as failed before returning
+      callbacks?.onError?.('Plan not found during execution');
+      updateTaskPlanStatus(plan.id, 'failed');
       return {
         success: false,
         error: 'Plan not found during execution',
@@ -242,7 +248,23 @@ async function executeTasksInOrder(
       });
     }
 
-    callbacks?.onTaskCompleted?.(nextTask, result);
+    // Bug fix: Check budget AFTER task completion to catch overages
+    const postTaskBudget = budgetTracker.checkBudget();
+    if (postTaskBudget.exceeded) {
+      const errorMsg = `Budget exceeded after task ${nextTask.id}: ${postTaskBudget.message}`;
+      callbacks?.onError?.(errorMsg);
+      updateTaskPlanStatus(plan.id, 'failed');
+      return {
+        success: false,
+        error: errorMsg,
+        plan_id: plan.id,
+      };
+    }
+
+    // Bug fix: Reload task from database to get fresh data for callback
+    const updatedPlan = getTaskPlan(plan.id);
+    const updatedTask = updatedPlan?.tasks?.find((t: AgentTask) => t.id === nextTask.id) || nextTask;
+    callbacks?.onTaskCompleted?.(updatedTask, result);
 
     // Check for errors or review needed
     if (!result.success) {

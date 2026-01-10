@@ -8,6 +8,7 @@ import ArtifactsPanel from '@/components/chat/ArtifactsPanel';
 import AppHeader from '@/components/layout/AppHeader';
 import AppFooter from '@/components/layout/AppFooter';
 import WelcomeScreen from '@/components/chat/WelcomeScreen';
+import { ErrorBoundary } from '@/components/ErrorBoundary';
 import type { Thread, UserSubscription, GeneratedDocumentInfo, GeneratedImageInfo, UrlSource } from '@/types';
 
 export default function Home() {
@@ -143,15 +144,17 @@ export default function Home() {
         {/* Main content area */}
         <main className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
           {activeThread ? (
-            <ChatWindow
-              activeThread={activeThread}
-              onThreadCreated={handleThreadCreated}
-              userSubscriptions={userSubscriptions}
-              brandingName={brandingName}
-              showShareModal={showShareModal}
-              onCloseShareModal={() => setShowShareModal(false)}
-              onArtifactsChange={handleArtifactsChange}
-            />
+            <ErrorBoundary moduleName="ChatWindow">
+              <ChatWindow
+                activeThread={activeThread}
+                onThreadCreated={handleThreadCreated}
+                userSubscriptions={userSubscriptions}
+                brandingName={brandingName}
+                showShareModal={showShareModal}
+                onCloseShareModal={() => setShowShareModal(false)}
+                onArtifactsChange={handleArtifactsChange}
+              />
+            </ErrorBoundary>
           ) : (
             <WelcomeScreen
               userRole={userRole || 'user'}

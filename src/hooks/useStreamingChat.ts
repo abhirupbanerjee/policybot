@@ -68,6 +68,8 @@ export interface StreamingState {
   images: GeneratedImageInfo[];
   /** Autonomous plan state (for autonomous mode) */
   autonomousPlan: AutonomousPlanState | null;
+  /** Budget warning info (for autonomous mode) */
+  budgetWarning: { level: 'medium' | 'high'; percentage: number; message: string } | null;
   /** Error message if any */
   error: string | null;
   /** Whether error is recoverable */
@@ -116,6 +118,7 @@ const initialState: StreamingState = {
   documents: [],
   images: [],
   autonomousPlan: null,
+  budgetWarning: null,
   error: null,
   errorRecoverable: false,
 };
@@ -127,10 +130,11 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
 
   const [state, setState] = useState<StreamingState>(initialState);
 
-  // Refs for chunk batching
+  // Refs for chunk batching and race condition prevention
   const contentBufferRef = useRef('');
   const rafRef = useRef<number | undefined>(undefined);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const messageVersionRef = useRef(0); // Prevents stale updates from aborted streams
 
   // Cleanup on unmount
   useEffect(() => {
@@ -236,16 +240,21 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
         break;
 
       case 'agent_plan_created':
-        // Initialize autonomous plan with tasks
+        // Initialize autonomous plan with tasks from the event
         setState(prev => ({
           ...prev,
           autonomousPlan: {
             planId: event.plan_id,
             title: event.title,
-            tasks: Array.from({ length: event.task_count }, (_, i) => ({
+            tasks: event.tasks?.map(t => ({
+              id: t.id,
+              description: t.description,
+              type: t.type,
+              status: 'pending' as const,
+            })) || Array.from({ length: event.task_count }, (_, i) => ({
               id: i + 1,
               description: `Task ${i + 1}`,
-              type: 'pending',
+              type: 'unknown',
               status: 'pending' as const,
             })),
           },
@@ -300,6 +309,32 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
               : null,
           }));
         }
+        break;
+
+      case 'agent_budget_warning':
+        // Handle budget warning - show warning but continue execution
+        setState(prev => ({
+          ...prev,
+          budgetWarning: {
+            level: event.level,
+            percentage: event.percentage,
+            message: event.message,
+          },
+        }));
+        break;
+
+      case 'agent_budget_exceeded':
+        // Handle budget exceeded - this will stop execution
+        setState(prev => ({
+          ...prev,
+          budgetWarning: {
+            level: 'high',
+            percentage: 100,
+            message: event.message,
+          },
+          error: event.message,
+          errorRecoverable: false,
+        }));
         break;
 
       case 'agent_error':
@@ -368,6 +403,10 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
       abortControllerRef.current.abort();
     }
 
+    // Increment message version to prevent stale updates from aborted streams
+    messageVersionRef.current += 1;
+    const currentVersion = messageVersionRef.current;
+
     // Reset state for new message
     contentBufferRef.current = '';
     if (rafRef.current) {
@@ -426,6 +465,10 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
         buffer = lines.pop() || ''; // Keep incomplete line in buffer
 
         for (const line of lines) {
+          // Skip processing if a newer message has started (prevents stale updates)
+          if (currentVersion !== messageVersionRef.current) {
+            return;
+          }
           if (line.startsWith('data: ')) {
             try {
               const eventData = JSON.parse(line.slice(6)) as StreamEvent;

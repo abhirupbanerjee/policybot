@@ -244,6 +244,7 @@ export async function executeTool(name: string, args: string): Promise<string> {
     // Check if function_api tool is enabled
     if (!isToolEnabled('function_api')) {
       return JSON.stringify({
+        success: false,
         error: `Function APIs are currently disabled`,
         errorCode: 'TOOL_DISABLED',
       });
@@ -256,6 +257,7 @@ export async function executeTool(name: string, args: string): Promise<string> {
     } catch (error) {
       logger.error(`Function API execution error [${name}]`, error);
       return JSON.stringify({
+        success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
         errorCode: 'EXECUTION_ERROR',
       });
@@ -264,6 +266,7 @@ export async function executeTool(name: string, args: string): Promise<string> {
 
   if (!tool) {
     return JSON.stringify({
+      success: false,
       error: `Unknown tool: ${name}`,
       errorCode: 'UNKNOWN_TOOL',
     });
@@ -272,6 +275,7 @@ export async function executeTool(name: string, args: string): Promise<string> {
   // Check if tool is enabled
   if (!isToolEnabled(name)) {
     return JSON.stringify({
+      success: false,
       error: `Tool '${name}' is currently disabled`,
       errorCode: 'TOOL_DISABLED',
     });
@@ -283,6 +287,7 @@ export async function executeTool(name: string, args: string): Promise<string> {
   } catch (error) {
     logger.error(`Tool execution error [${name}]`, error);
     return JSON.stringify({
+      success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
       errorCode: 'EXECUTION_ERROR',
     });

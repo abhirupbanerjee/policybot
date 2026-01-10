@@ -482,13 +482,15 @@ export function transitionTaskState(
 
   const now = new Date().toISOString();
 
-  // Add state history entry
+  // Add state history entry only if status actually changes (idempotency)
   if (!task.state_history) task.state_history = [];
-  task.state_history.push({
-    status: newStatus,
-    timestamp: now,
-    details: extras,
-  });
+  if (task.status !== newStatus) {
+    task.state_history.push({
+      status: newStatus,
+      timestamp: now,
+      details: extras,
+    });
+  }
 
   // Update task status
   task.status = newStatus;

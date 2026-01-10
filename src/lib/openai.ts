@@ -274,55 +274,77 @@ export async function generateResponseWithTools(
         // Check if result indicates an error
         try {
           const parsed = JSON.parse(result);
-          if (parsed.error || parsed.errorCode) {
+
+          // Handle multiple error formats from different tools:
+          // - { error: string } or { error: { code, message } }
+          // - { errorCode: string }
+          // - { success: false, error: ... }
+          const hasError = parsed.error || parsed.errorCode || parsed.success === false;
+          const errorValue = parsed.error;
+
+          if (hasError) {
             success = false;
-            errorMsg = parsed.error || 'Tool execution failed';
+            // Extract error message from various formats
+            if (typeof errorValue === 'string') {
+              errorMsg = errorValue;
+            } else if (typeof errorValue === 'object' && errorValue?.message) {
+              errorMsg = errorValue.message;
+            } else if (parsed.errorCode) {
+              errorMsg = `Tool error: ${parsed.errorCode}`;
+            } else {
+              errorMsg = 'Tool execution failed';
+            }
           } else {
-            // Extract artifacts for streaming callbacks
+            // Extract artifacts for streaming callbacks (wrapped in try-catch for safety)
             if (callbacks?.onArtifact) {
-              // Check for visualization
-              if (parsed.success && parsed.data && parsed.visualizationHint) {
-                const viz: MessageVisualization = {
-                  chartType: parsed.visualizationHint.chartType,
-                  data: parsed.data,
-                  xField: parsed.visualizationHint.xField,
-                  yField: parsed.visualizationHint.yField,
-                  yFields: parsed.visualizationHint.yFields,
-                  groupBy: parsed.visualizationHint.groupBy,
-                  title: parsed.chartTitle,
-                  notes: parsed.notes,
-                  seriesMode: parsed.seriesMode,
-                };
-                callbacks.onArtifact('visualization', viz);
-              }
+              try {
+                // Check for visualization
+                if (parsed.success && parsed.data && parsed.visualizationHint) {
+                  const viz: MessageVisualization = {
+                    chartType: parsed.visualizationHint.chartType,
+                    data: parsed.data,
+                    xField: parsed.visualizationHint.xField,
+                    yField: parsed.visualizationHint.yField,
+                    yFields: parsed.visualizationHint.yFields,
+                    groupBy: parsed.visualizationHint.groupBy,
+                    title: parsed.chartTitle,
+                    notes: parsed.notes,
+                    seriesMode: parsed.seriesMode,
+                  };
+                  callbacks.onArtifact('visualization', viz);
+                }
 
-              // Check for generated document
-              if (parsed.success && parsed.document) {
-                const doc: GeneratedDocumentInfo = {
-                  id: parsed.document.id,
-                  filename: parsed.document.filename,
-                  fileType: parsed.document.fileType,
-                  fileSize: parsed.document.fileSize || 0,
-                  fileSizeFormatted: parsed.document.fileSizeFormatted || '',
-                  downloadUrl: parsed.document.downloadUrl,
-                  expiresAt: parsed.document.expiresAt || null,
-                };
-                callbacks.onArtifact('document', doc);
-              }
+                // Check for generated document
+                if (parsed.success && parsed.document) {
+                  const doc: GeneratedDocumentInfo = {
+                    id: parsed.document.id,
+                    filename: parsed.document.filename,
+                    fileType: parsed.document.fileType,
+                    fileSize: parsed.document.fileSize || 0,
+                    fileSizeFormatted: parsed.document.fileSizeFormatted || '',
+                    downloadUrl: parsed.document.downloadUrl,
+                    expiresAt: parsed.document.expiresAt || null,
+                  };
+                  callbacks.onArtifact('document', doc);
+                }
 
-              // Check for generated image
-              if (parsed.success && parsed.imageHint) {
-                const img: GeneratedImageInfo = {
-                  id: parsed.imageHint.id,
-                  url: parsed.imageHint.url,
-                  thumbnailUrl: parsed.imageHint.thumbnailUrl,
-                  width: parsed.imageHint.width,
-                  height: parsed.imageHint.height,
-                  alt: parsed.imageHint.alt || 'Generated image',
-                  provider: parsed.metadata?.provider,
-                  model: parsed.metadata?.model,
-                };
-                callbacks.onArtifact('image', img);
+                // Check for generated image
+                if (parsed.success && parsed.imageHint) {
+                  const img: GeneratedImageInfo = {
+                    id: parsed.imageHint.id,
+                    url: parsed.imageHint.url,
+                    thumbnailUrl: parsed.imageHint.thumbnailUrl,
+                    width: parsed.imageHint.width,
+                    height: parsed.imageHint.height,
+                    alt: parsed.imageHint.alt || 'Generated image',
+                    provider: parsed.metadata?.provider,
+                    model: parsed.metadata?.model,
+                  };
+                  callbacks.onArtifact('image', img);
+                }
+              } catch (artifactError) {
+                // Log artifact callback error but don't fail the tool execution
+                logger.error(`Artifact callback error for tool ${toolName}:`, artifactError);
               }
             }
 
@@ -332,8 +354,10 @@ export async function generateResponseWithTools(
               terminalToolSucceeded = true;
             }
           }
-        } catch {
-          // Result is not JSON, treat as success
+        } catch (parseError) {
+          // Result is not valid JSON - log warning but don't fail
+          // Plain text results are valid for some tools
+          logger.debug(`Tool ${toolName} returned non-JSON result, treating as text response`);
         }
       } catch (error) {
         success = false;
