@@ -105,6 +105,8 @@ Comprehensive architecture documentation for Policy Bot - an enterprise RAG plat
 | Reverse Proxy | Traefik v3.0 | TLS termination, Let's Encrypt SSL |
 | Deployment | Docker Compose | Container orchestration |
 
+> **⚠️ Docker Version Requirement:** Requires **Docker 27.5.1 exactly**. Docker 28.x/29.x have API compatibility issues with Traefik v3.x. See [INFRASTRUCTURE.md](INFRASTRUCTURE.md#server-requirements) for details.
+
 ---
 
 ## Core Components

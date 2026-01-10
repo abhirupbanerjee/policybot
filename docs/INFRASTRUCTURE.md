@@ -504,11 +504,38 @@ docker compose -f docker-compose.dev.yml down -v
 ### Server Requirements
 
 - Ubuntu 22.04+ or similar Linux
-- Docker 24+
+- **Docker 27.5.1** (see critical note below)
 - Docker Compose v2
 - 4GB RAM minimum
 - 20GB disk space
 - Ports 80, 443 open
+
+> **⚠️ CRITICAL: Docker Version Requirement**
+>
+> Policy Bot requires **Docker version 27.5.1 exactly**. Docker 28.x and 29.x have API compatibility issues with Traefik v3.x and **will not work**. You will see repeated errors like:
+> ```
+> client version 1.24 is too old. Minimum supported API version is 1.44
+> ```
+>
+> **To install Docker 27.5.1:**
+> ```bash
+> # Remove current Docker (if installed)
+> sudo apt-get remove docker-ce docker-ce-cli containerd.io
+>
+> # Install specific version (adjust for your Ubuntu version)
+> sudo apt-get install docker-ce=5:27.5.1-1~ubuntu.24.04~noble \
+>                      docker-ce-cli=5:27.5.1-1~ubuntu.24.04~noble \
+>                      containerd.io
+>
+> # Hold the version to prevent auto-upgrades
+> sudo apt-mark hold docker-ce docker-ce-cli
+> ```
+>
+> **Verify your Docker version:**
+> ```bash
+> docker --version
+> # Should show: Docker version 27.5.1
+> ```
 
 ### DNS Configuration
 
