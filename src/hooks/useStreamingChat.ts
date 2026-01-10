@@ -207,6 +207,17 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
         }));
         break;
 
+      case 'agent_plan_summary':
+        // Handle autonomous mode summary - set the content
+        if (event.summary) {
+          contentBufferRef.current = event.summary;
+          setState(prev => ({
+            ...prev,
+            currentContent: event.summary,
+          }));
+        }
+        break;
+
       case 'chunk':
         // Use RAF batching for smooth updates
         contentBufferRef.current += event.content;
