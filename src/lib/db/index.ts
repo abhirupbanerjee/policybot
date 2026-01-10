@@ -469,6 +469,44 @@ function runMigrations(database: Database.Database): void {
     `);
   }
 
+  // Migrate task_plans table for autonomous mode (add columns if missing)
+  const taskPlansColumns = database.prepare("PRAGMA table_info(task_plans)").all() as Array<{ name: string }>;
+  const taskPlansColumnNames = taskPlansColumns.map(col => col.name);
+
+  if (!taskPlansColumnNames.includes('mode')) {
+    database.exec(`
+      ALTER TABLE task_plans ADD COLUMN mode TEXT DEFAULT 'normal' CHECK (mode IN ('normal', 'autonomous'));
+      ALTER TABLE task_plans ADD COLUMN budget_json TEXT DEFAULT '{"max_llm_calls": 100, "max_tokens": 500000}';
+      ALTER TABLE task_plans ADD COLUMN budget_used_json TEXT DEFAULT '{"llm_calls": 0, "tokens_used": 0, "web_searches": 0}';
+      ALTER TABLE task_plans ADD COLUMN model_config_json TEXT DEFAULT '{}';
+    `);
+  }
+
+  // Migrate messages table for autonomous mode (add columns if missing)
+  const messagesColumnsForMode = database.prepare("PRAGMA table_info(messages)").all() as Array<{ name: string }>;
+  const messagesColumnNames = messagesColumnsForMode.map(col => col.name);
+
+  if (!messagesColumnNames.includes('mode')) {
+    database.exec(`
+      ALTER TABLE messages ADD COLUMN mode TEXT DEFAULT 'normal' CHECK (mode IN ('normal', 'autonomous'));
+      ALTER TABLE messages ADD COLUMN plan_id TEXT REFERENCES task_plans(id);
+    `);
+  }
+
+  // Ensure global budget settings exist
+  const budgetSettings = database.prepare("SELECT key FROM settings WHERE key LIKE 'agent_%'").all();
+  if (budgetSettings.length === 0) {
+    database.exec(`
+      INSERT OR IGNORE INTO settings (key, value, updated_by) VALUES
+        ('agent_budget_max_llm_calls', '500', 'system'),
+        ('agent_budget_max_tokens', '2000000', 'system'),
+        ('agent_budget_max_web_searches', '100', 'system'),
+        ('agent_confidence_threshold', '80', 'system'),
+        ('agent_budget_max_duration_minutes', '30', 'system'),
+        ('agent_task_timeout_minutes', '5', 'system');
+    `);
+  }
+
   // Check and create RAG testing tables for RAG Tuning Dashboard
   const ragTestQueriesTableExists = database.prepare(
     "SELECT name FROM sqlite_master WHERE type='table' AND name='rag_test_queries'"

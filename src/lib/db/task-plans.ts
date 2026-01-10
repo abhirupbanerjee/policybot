@@ -285,6 +285,20 @@ export function cancelPlan(planId: string, reason?: string): TaskPlan | undefine
 }
 
 /**
+ * Update task plan status (wrapper for completePlan/failPlan)
+ */
+export function updateTaskPlanStatus(planId: string, status: 'completed' | 'failed' | 'cancelled'): TaskPlan | undefined {
+  if (status === 'completed') {
+    return completePlan(planId);
+  } else if (status === 'failed') {
+    return failPlan(planId, 'Plan execution failed');
+  } else if (status === 'cancelled') {
+    return cancelPlan(planId, 'Plan cancelled by user');
+  }
+  return undefined;
+}
+
+/**
  * Fail a task plan
  */
 export function failPlan(planId: string, error: string): TaskPlan | undefined {
@@ -335,4 +349,228 @@ export function cleanupOldPlans(daysOld: number = 30): number {
   );
 
   return result.changes;
+}
+
+// ============ Autonomous Mode Operations ============
+
+/**
+ * Create autonomous plan with budget and model config
+ */
+export function createAutonomousPlan(
+  threadId: string,
+  userId: string,
+  title: string,
+  tasks: { id: number; description: string; type: string; target: string; dependencies?: number[] }[],
+  options: {
+    categorySlug?: string;
+    budget?: Record<string, unknown>;
+    modelConfig?: Record<string, unknown>;
+  } = {}
+): string {
+  const id = `plan_${nanoid(12)}`;
+  const now = new Date().toISOString();
+
+  const fullTasks = tasks.map((t) => ({
+    id: t.id,
+    type: t.type || 'analyze',
+    target: t.target || '',
+    description: t.description,
+    status: 'pending' as const,
+    dependencies: t.dependencies || [],
+    priority: 1,
+    state_history: [],
+  }));
+
+  const tasksJson = JSON.stringify({ tasks: fullTasks });
+  const budgetJson = JSON.stringify(options.budget || { max_llm_calls: 100, max_tokens: 500000 });
+  const budgetUsedJson = JSON.stringify({ llm_calls: 0, tokens_used: 0, web_searches: 0 });
+  const modelConfigJson = JSON.stringify(options.modelConfig || {});
+
+  execute(
+    `INSERT INTO task_plans (
+      id, thread_id, user_id, category_slug, title, tasks_json,
+      status, total_tasks, completed_tasks, failed_tasks,
+      mode, budget_json, budget_used_json, model_config_json,
+      created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, 0, 0, 'autonomous', ?, ?, ?, ?, ?)`,
+    [
+      id,
+      threadId,
+      userId,
+      options.categorySlug || null,
+      title,
+      tasksJson,
+      tasks.length,
+      budgetJson,
+      budgetUsedJson,
+      modelConfigJson,
+      now,
+      now,
+    ]
+  );
+
+  return id;
+}
+
+/**
+ * Get budget usage for a plan
+ */
+export function getBudgetUsage(planId: string): { llm_calls: number; tokens_used: number; web_searches: number } {
+  const row = queryOne<{ budget_used_json: string }>(
+    'SELECT budget_used_json FROM task_plans WHERE id = ?',
+    [planId]
+  );
+
+  if (!row) {
+    return { llm_calls: 0, tokens_used: 0, web_searches: 0 };
+  }
+
+  try {
+    return JSON.parse(row.budget_used_json);
+  } catch {
+    return { llm_calls: 0, tokens_used: 0, web_searches: 0 };
+  }
+}
+
+/**
+ * Increment budget usage
+ */
+export function incrementBudgetUsage(
+  planId: string,
+  increment: { llm_calls?: number; tokens_used?: number; web_searches?: number }
+): void {
+  const current = getBudgetUsage(planId);
+
+  const updated = {
+    llm_calls: current.llm_calls + (increment.llm_calls || 0),
+    tokens_used: current.tokens_used + (increment.tokens_used || 0),
+    web_searches: current.web_searches + (increment.web_searches || 0),
+  };
+
+  execute('UPDATE task_plans SET budget_used_json = ?, updated_at = ? WHERE id = ?', [
+    JSON.stringify(updated),
+    new Date().toISOString(),
+    planId,
+  ]);
+}
+
+/**
+ * Idempotent state transition with history tracking
+ */
+export function transitionTaskState(
+  planId: string,
+  taskId: number,
+  newStatus: 'pending' | 'running' | 'done' | 'failed' | 'skipped' | 'needs_review',
+  extras?: {
+    result?: string;
+    error?: string;
+    confidence_score?: number;
+    review_notes?: string;
+    tokens_used?: number;
+    llm_calls?: number;
+  }
+): void {
+  const plan = getTaskPlan(planId);
+  if (!plan) throw new Error('Plan not found');
+
+  const tasksData = JSON.parse(
+    queryOne<{ tasks_json: string }>('SELECT tasks_json FROM task_plans WHERE id = ?', [planId])!.tasks_json
+  ) as { tasks: any[] };
+
+  const task = tasksData.tasks.find((t) => t.id === taskId);
+  if (!task) throw new Error('Task not found');
+
+  const now = new Date().toISOString();
+
+  // Add state history entry
+  if (!task.state_history) task.state_history = [];
+  task.state_history.push({
+    status: newStatus,
+    timestamp: now,
+    details: extras,
+  });
+
+  // Update task status
+  task.status = newStatus;
+  if (newStatus === 'running') {
+    task.execution_started_at = now;
+    task.started_at = now;
+  }
+  if (['done', 'failed', 'skipped', 'needs_review'].includes(newStatus)) {
+    task.completed_at = now;
+  }
+
+  // Update task fields
+  if (extras?.result !== undefined) task.result = extras.result;
+  if (extras?.error !== undefined) task.error = extras.error;
+  if (extras?.confidence_score !== undefined) task.confidence_score = extras.confidence_score;
+  if (extras?.review_notes !== undefined) task.review_notes = extras.review_notes;
+  if (extras?.tokens_used !== undefined) task.tokens_used = extras.tokens_used;
+  if (extras?.llm_calls !== undefined) task.llm_calls = extras.llm_calls;
+
+  // Calculate updated stats
+  const stats = {
+    complete: tasksData.tasks.filter((t) => t.status === 'done').length,
+    failed: tasksData.tasks.filter((t) => t.status === 'failed').length,
+  };
+
+  // Save to DB
+  execute(
+    `UPDATE task_plans SET tasks_json = ?, updated_at = ?, completed_tasks = ?, failed_tasks = ? WHERE id = ?`,
+    [JSON.stringify(tasksData), now, stats.complete, stats.failed, planId]
+  );
+}
+
+/**
+ * Recovery function - called on startup to handle crashed plans
+ */
+export function recoverActivePlans(): number {
+  const activePlans = queryAll<{ id: string; tasks_json: string }>(
+    "SELECT id, tasks_json FROM task_plans WHERE status = 'active' AND mode = 'autonomous'"
+  );
+
+  let recovered = 0;
+
+  for (const planRow of activePlans) {
+    try {
+      const tasksData = JSON.parse(planRow.tasks_json) as { tasks: any[] };
+      let modified = false;
+
+      // Find tasks stuck in 'running' state
+      for (const task of tasksData.tasks) {
+        if (task.status === 'running') {
+          const startedAt = task.state_history?.find((h: any) => h.status === 'running')?.timestamp;
+          if (startedAt) {
+            const elapsed = Date.now() - new Date(startedAt).getTime();
+            // 5 minute timeout
+            if (elapsed > 5 * 60 * 1000) {
+              task.status = 'skipped';
+              task.error = 'Task timeout during crash recovery';
+              task.completed_at = new Date().toISOString();
+              if (!task.state_history) task.state_history = [];
+              task.state_history.push({
+                status: 'skipped',
+                timestamp: new Date().toISOString(),
+                details: { error: 'Task timeout during crash recovery' },
+              });
+              modified = true;
+            }
+          }
+        }
+      }
+
+      if (modified) {
+        execute('UPDATE task_plans SET tasks_json = ?, updated_at = ? WHERE id = ?', [
+          JSON.stringify(tasksData),
+          new Date().toISOString(),
+          planRow.id,
+        ]);
+        recovered++;
+      }
+    } catch (e) {
+      console.error(`[RecoverPlans] Failed to recover plan ${planRow.id}:`, e);
+    }
+  }
+
+  return recovered;
 }

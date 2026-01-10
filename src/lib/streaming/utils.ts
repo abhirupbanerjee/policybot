@@ -71,6 +71,9 @@ const PHASE_MESSAGES: Record<StreamPhase, string> = {
   rag: 'Searching knowledge base...',
   tools: 'Processing tools...',
   generating: 'Generating response...',
+  agent_planning: 'Creating autonomous task plan...',
+  agent_executing: 'Executing autonomous tasks...',
+  agent_summarizing: 'Generating summary...',
   complete: 'Complete',
 };
 

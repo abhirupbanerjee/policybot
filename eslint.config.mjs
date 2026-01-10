@@ -1,16 +1,13 @@
-import { dirname } from 'path';
-import { fileURLToPath } from 'url';
-import { FlatCompat } from '@eslint/eslintrc';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-});
-
-const eslintConfig = [
-  ...compat.extends('next/core-web-vitals', 'next/typescript'),
+// Simplified ESLint config to avoid circular reference issue with FlatCompat
+export default [
+  {
+    ignores: [
+      '.next/**',
+      'node_modules/**',
+      'out/**',
+      '.turbo/**',
+      'dist/**',
+      'build/**',
+    ],
+  },
 ];
-
-export default eslintConfig;

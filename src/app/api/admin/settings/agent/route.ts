@@ -1,0 +1,161 @@
+/**
+ * Autonomous Agent Settings API
+ *
+ * Manages global autonomous mode settings:
+ * - Budget limits (LLM calls, tokens, web searches)
+ * - Confidence threshold
+ * - Task timeouts
+ */
+
+import { NextRequest, NextResponse } from 'next/server';
+import { getCurrentUser } from '@/lib/auth';
+import { getSetting, setSetting } from '@/lib/db/config';
+import { getAgentModelConfigs, setAgentModelConfigs, validateAgentModelConfig } from '@/lib/db/agent-config';
+
+export async function GET() {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    // Get agent settings from database
+    const modelConfigs = getAgentModelConfigs();
+
+    const settings = {
+      budgetMaxLlmCalls: parseInt(getSetting('agent_budget_max_llm_calls', '500'), 10),
+      budgetMaxTokens: parseInt(getSetting('agent_budget_max_tokens', '2000000'), 10),
+      budgetMaxWebSearches: parseInt(getSetting('agent_budget_max_web_searches', '100'), 10),
+      confidenceThreshold: parseInt(getSetting('agent_confidence_threshold', '80'), 10),
+      budgetMaxDurationMinutes: parseInt(getSetting('agent_budget_max_duration_minutes', '30'), 10),
+      taskTimeoutMinutes: parseInt(getSetting('agent_task_timeout_minutes', '5'), 10),
+      plannerModel: modelConfigs.planner,
+      executorModel: modelConfigs.executor,
+      checkerModel: modelConfigs.checker,
+      summarizerModel: modelConfigs.summarizer,
+    };
+
+    return NextResponse.json(settings);
+  } catch (error) {
+    console.error('[Agent Settings API] Error fetching settings:', error);
+    return NextResponse.json(
+      { error: 'Failed to fetch agent settings' },
+      { status: 500 }
+    );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const body = await request.json();
+    const {
+      budgetMaxLlmCalls,
+      budgetMaxTokens,
+      budgetMaxWebSearches,
+      confidenceThreshold,
+      budgetMaxDurationMinutes,
+      taskTimeoutMinutes,
+      plannerModel,
+      executorModel,
+      checkerModel,
+      summarizerModel,
+    } = body;
+
+    // Validate budget inputs
+    if (
+      typeof budgetMaxLlmCalls !== 'number' ||
+      typeof budgetMaxTokens !== 'number' ||
+      typeof budgetMaxWebSearches !== 'number' ||
+      typeof confidenceThreshold !== 'number' ||
+      typeof budgetMaxDurationMinutes !== 'number' ||
+      typeof taskTimeoutMinutes !== 'number'
+    ) {
+      return NextResponse.json(
+        { error: 'Invalid input: all budget fields must be numbers' },
+        { status: 400 }
+      );
+    }
+
+    // Validate model configurations
+    if (
+      !validateAgentModelConfig(plannerModel) ||
+      !validateAgentModelConfig(executorModel) ||
+      !validateAgentModelConfig(checkerModel) ||
+      !validateAgentModelConfig(summarizerModel)
+    ) {
+      return NextResponse.json(
+        { error: 'Invalid model configuration' },
+        { status: 400 }
+      );
+    }
+
+    // Validate ranges
+    if (
+      budgetMaxLlmCalls < 1 ||
+      budgetMaxLlmCalls > 10000 ||
+      budgetMaxTokens < 1000 ||
+      budgetMaxTokens > 100000000 ||
+      budgetMaxWebSearches < 1 ||
+      budgetMaxWebSearches > 1000 ||
+      confidenceThreshold < 0 ||
+      confidenceThreshold > 100 ||
+      budgetMaxDurationMinutes < 1 ||
+      budgetMaxDurationMinutes > 480 ||
+      taskTimeoutMinutes < 1 ||
+      taskTimeoutMinutes > 60
+    ) {
+      return NextResponse.json(
+        { error: 'Values out of valid range' },
+        { status: 400 }
+      );
+    }
+
+    // Save budget settings to database
+    setSetting('agent_budget_max_llm_calls', String(budgetMaxLlmCalls), user.email);
+    setSetting('agent_budget_max_tokens', String(budgetMaxTokens), user.email);
+    setSetting('agent_budget_max_web_searches', String(budgetMaxWebSearches), user.email);
+    setSetting('agent_confidence_threshold', String(confidenceThreshold), user.email);
+    setSetting('agent_budget_max_duration_minutes', String(budgetMaxDurationMinutes), user.email);
+    setSetting('agent_task_timeout_minutes', String(taskTimeoutMinutes), user.email);
+
+    // Save model configurations
+    setAgentModelConfigs(
+      {
+        planner: plannerModel,
+        executor: executorModel,
+        checker: checkerModel,
+        summarizer: summarizerModel,
+      },
+      user.email
+    );
+
+    return NextResponse.json({
+      success: true,
+      settings: {
+        budgetMaxLlmCalls,
+        budgetMaxTokens,
+        budgetMaxWebSearches,
+        confidenceThreshold,
+        budgetMaxDurationMinutes,
+        taskTimeoutMinutes,
+        plannerModel,
+        executorModel,
+        checkerModel,
+        summarizerModel,
+        updatedAt: new Date().toISOString(),
+        updatedBy: user.email,
+      },
+    });
+  } catch (error) {
+    console.error('[Agent Settings API] Error saving settings:', error);
+    return NextResponse.json(
+      { error: 'Failed to save agent settings' },
+      { status: 500 }
+    );
+  }
+}

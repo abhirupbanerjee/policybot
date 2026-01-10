@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 
 type TabType = 'dashboard' | 'documents' | 'categories' | 'users' | 'settings' | 'stats' | 'prompts' | 'tools' | 'workspaces';
-type SettingsSection = 'rag' | 'rag-tuning' | 'llm' | 'reranker' | 'memory' | 'summarization' | 'limits' | 'backup' | 'branding' | 'cache' | 'superuser';
+type SettingsSection = 'rag' | 'rag-tuning' | 'llm' | 'reranker' | 'memory' | 'summarization' | 'limits' | 'backup' | 'branding' | 'cache' | 'superuser' | 'agent';
 type PromptsSection = 'system-prompt' | 'category-prompts' | 'acronyms' | 'skills';
 type ToolsSection = 'management' | 'dependencies' | 'routing';
 
@@ -62,6 +62,7 @@ const SETTINGS_SUBMENU: { id: SettingsSection; label: string }[] = [
   { id: 'memory', label: 'Memory' },
   { id: 'summarization', label: 'Summarization' },
   { id: 'limits', label: 'Limits' },
+  { id: 'agent', label: 'Autonomous Agent' },
   { id: 'superuser', label: 'Superuser' },
   { id: 'backup', label: 'Backup' },
   { id: 'branding', label: 'Branding' },

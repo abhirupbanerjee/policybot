@@ -270,7 +270,17 @@ export type SettingKey =
   | 'token-limits-settings'
   | 'pwa-settings'
   | 'superuser-settings'
-  | 'workspaces-settings';
+  | 'workspaces-settings'
+  | 'agent_budget_max_llm_calls'
+  | 'agent_budget_max_tokens'
+  | 'agent_budget_max_web_searches'
+  | 'agent_confidence_threshold'
+  | 'agent_budget_max_duration_minutes'
+  | 'agent_task_timeout_minutes'
+  | 'agent_model_planner'
+  | 'agent_model_executor'
+  | 'agent_model_checker'
+  | 'agent_model_summarizer';
 
 // ============ Generic Operations ============
 
@@ -284,17 +294,19 @@ interface SettingRow {
 /**
  * Get a setting by key
  */
-export function getSetting<T>(key: SettingKey): T | undefined {
+export function getSetting<T>(key: SettingKey): T | undefined;
+export function getSetting<T>(key: SettingKey, defaultValue: T): T;
+export function getSetting<T>(key: SettingKey, defaultValue?: T): T | undefined {
   const row = queryOne<SettingRow>(
     'SELECT value FROM settings WHERE key = ?',
     [key]
   );
-  if (!row) return undefined;
+  if (!row) return defaultValue;
 
   try {
     return JSON.parse(row.value) as T;
   } catch {
-    return undefined;
+    return defaultValue;
   }
 }
 

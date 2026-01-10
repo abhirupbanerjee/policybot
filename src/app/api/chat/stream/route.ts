@@ -74,10 +74,18 @@ export async function POST(request: NextRequest) {
         }
 
         const body = await request.json() as StreamChatRequest;
-        const { message, threadId } = body;
+        const { message, threadId, mode = 'normal' } = body;
 
         if (!message || !threadId) {
           send({ type: 'error', code: 'VALIDATION_ERROR', message: 'Missing required fields', recoverable: false });
+          cleanup();
+          controller.close();
+          return;
+        }
+
+        // Validate mode
+        if (mode !== 'normal' && mode !== 'autonomous') {
+          send({ type: 'error', code: 'VALIDATION_ERROR', message: 'Invalid mode', recoverable: false });
           cleanup();
           controller.close();
           return;
@@ -110,6 +118,99 @@ export async function POST(request: NextRequest) {
         };
         await addMessage(user.id, threadId, userMessage);
         updateThreadTokenCount(threadId, countTokens(message));
+
+        // ============ AUTONOMOUS MODE BRANCH ============
+        if (mode === 'autonomous') {
+          const { executeAutonomousWithStreaming } = await import('@/lib/agent/streaming-executor');
+
+          // Get conversation history and category context
+          const conversationHistory = await getMessages(user.id, threadId, 50);
+          const categorySlugs = await getThreadCategorySlugsForQuery(threadId);
+          const categoryIds = thread.categories?.map(c => c.id) || [];
+
+          // Get memory and summary context
+          let memoryContext = '';
+          if (memorySettings.enabled && dbUser) {
+            memoryContext = getMemoryContext(dbUser.id, categoryIds);
+          }
+
+          let summaryContext = '';
+          const existingSummary = getThreadSummary(threadId);
+          if (existingSummary) {
+            summaryContext = formatSummaryForContext(existingSummary.summary);
+          }
+
+          // Prepare RAG context (simplified - no document extraction in autonomous mode for now)
+          const ragContext = memoryContext || summaryContext ? `${memoryContext}\n\n${summaryContext}`.trim() : '';
+
+          const assistantMessageId = uuidv4();
+
+          await runWithContextAsync(
+            {
+              threadId,
+              messageId: assistantMessageId,
+              categoryId: categoryIds[0],
+              userId: user.id,
+            },
+            async () => {
+              try {
+                // Execute autonomous plan with streaming
+                const summary = await executeAutonomousWithStreaming(
+                  message,
+                  {
+                    ragContext,
+                    conversationHistory: conversationHistory
+                      .slice(-10)
+                      .map(m => `${m.role}: ${m.content}`)
+                      .join('\n'),
+                    categoryContext: categorySlugs.join(', '),
+                  },
+                  {
+                    threadId,
+                    userId: user.id,
+                    categorySlug: categorySlugs[0],
+                  },
+                  send
+                );
+
+                // Save assistant message with summary
+                const assistantMessage: Message = {
+                  id: assistantMessageId,
+                  role: 'assistant',
+                  content: summary,
+                  timestamp: new Date(),
+                };
+
+                await addMessage(user.id, threadId, assistantMessage);
+                updateThreadTokenCount(threadId, countTokens(summary));
+
+                // Background tasks (non-blocking)
+                if (summarizationSettings.enabled && shouldSummarize(threadId)) {
+                  summarizeThread(threadId).catch(() => {});
+                }
+
+                if (memorySettings.enabled && memorySettings.autoExtractOnThreadEnd && dbUser) {
+                  const recentMessages = conversationHistory.slice(-10).map(m => ({
+                    role: m.role,
+                    content: m.content,
+                  }));
+                  processConversationForMemory(dbUser.id, categoryIds[0] || null, recentMessages).catch(() => {});
+                }
+
+                // Send completion
+                send({ type: 'done', messageId: assistantMessageId, threadId });
+              } catch (error) {
+                const errorMsg = error instanceof Error ? error.message : 'Autonomous execution failed';
+                send({ type: 'error', code: 'UNKNOWN_ERROR', message: errorMsg, recoverable: false });
+              }
+            }
+          );
+
+          // Autonomous mode complete - cleanup and return
+          cleanup();
+          controller.close();
+          return;
+        }
 
         // Get conversation history
         const conversationHistory = await getMessages(user.id, threadId, 50);

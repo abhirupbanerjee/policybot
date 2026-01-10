@@ -131,7 +131,7 @@ interface ModelPreset {
 }
 
 type TabType = 'dashboard' | 'documents' | 'categories' | 'users' | 'settings' | 'stats' | 'prompts' | 'tools' | 'workspaces';
-type SettingsSection = 'rag' | 'rag-tuning' | 'llm' | 'reranker' | 'memory' | 'summarization' | 'limits' | 'backup' | 'branding' | 'cache' | 'superuser';
+type SettingsSection = 'rag' | 'rag-tuning' | 'llm' | 'reranker' | 'memory' | 'summarization' | 'limits' | 'backup' | 'branding' | 'cache' | 'superuser' | 'agent';
 type PromptsSection = 'system-prompt' | 'category-prompts' | 'acronyms' | 'skills';
 type ToolsSection = 'management' | 'dependencies' | 'routing';
 
@@ -239,6 +239,27 @@ interface OptimizationResult {
   optimized: string;
   changes: string[];
   tokensUsed: number;
+}
+
+interface AgentModelConfig {
+  provider: 'openai' | 'gemini' | 'mistral';
+  model: string;
+  temperature: number;
+}
+
+interface AgentSettings {
+  budgetMaxLlmCalls: number;
+  budgetMaxTokens: number;
+  budgetMaxWebSearches: number;
+  confidenceThreshold: number;
+  budgetMaxDurationMinutes: number;
+  taskTimeoutMinutes: number;
+  plannerModel: AgentModelConfig;
+  executorModel: AgentModelConfig;
+  checkerModel: AgentModelConfig;
+  summarizerModel: AgentModelConfig;
+  updatedAt?: string;
+  updatedBy?: string;
 }
 
 interface EmbeddingSettings {
@@ -426,6 +447,8 @@ export default function AdminPage() {
   const [editedSummarization, setEditedSummarization] = useState<Omit<SummarizationSettings, 'updatedAt' | 'updatedBy'> | null>(null);
   const [limitsSettings, setLimitsSettingsState] = useState<LimitsSettings | null>(null);
   const [editedLimits, setEditedLimits] = useState<Omit<LimitsSettings, 'updatedAt' | 'updatedBy'> | null>(null);
+  const [agentSettings, setAgentSettings] = useState<AgentSettings | null>(null);
+  const [editedAgent, setEditedAgent] = useState<Omit<AgentSettings, 'updatedAt' | 'updatedBy'> | null>(null);
   const [uploadSettings, setUploadSettingsState] = useState<UploadSettings | null>(null);
   const [editedUpload, setEditedUpload] = useState<Omit<UploadSettings, 'updatedAt' | 'updatedBy'> | null>(null);
   const [modelTokenLimits, setModelTokenLimits] = useState<ModelTokenLimitsState | null>(null);
@@ -459,6 +482,7 @@ export default function AdminPage() {
   const [summarizationModified, setSummarizationModified] = useState(false);
   const [limitsModified, setLimitsModified] = useState(false);
   const [uploadModified, setUploadModified] = useState(false);
+  const [agentModified, setAgentModified] = useState(false);
   const [tokenLimitsSettings, setTokenLimitsSettingsState] = useState<TokenLimitsSettings | null>(null);
   const [editedTokenLimits, setEditedTokenLimits] = useState<Omit<TokenLimitsSettings, 'updatedAt' | 'updatedBy'> | null>(null);
   const [tokenLimitsModified, setTokenLimitsModified] = useState(false);
@@ -720,6 +744,29 @@ export default function AdminPage() {
         }
       } catch (err) {
         console.error('Failed to load superuser settings:', err);
+      }
+
+      // Load agent settings separately
+      try {
+        const agentResponse = await fetch('/api/admin/settings/agent');
+        if (agentResponse.ok) {
+          const agentData = await agentResponse.json();
+          setAgentSettings(agentData);
+          setEditedAgent({
+            budgetMaxLlmCalls: agentData.budgetMaxLlmCalls,
+            budgetMaxTokens: agentData.budgetMaxTokens,
+            budgetMaxWebSearches: agentData.budgetMaxWebSearches,
+            confidenceThreshold: agentData.confidenceThreshold,
+            budgetMaxDurationMinutes: agentData.budgetMaxDurationMinutes,
+            taskTimeoutMinutes: agentData.taskTimeoutMinutes,
+            plannerModel: agentData.plannerModel,
+            executorModel: agentData.executorModel,
+            checkerModel: agentData.checkerModel,
+            summarizerModel: agentData.summarizerModel,
+          });
+        }
+      } catch (err) {
+        console.error('Failed to load agent settings:', err);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load settings');
@@ -2151,6 +2198,51 @@ export default function AdminPage() {
       : [...currentTypes, type];
     setEditedUpload({ ...editedUpload, allowedTypes: newTypes });
     setUploadModified(true);
+  };
+
+  // Agent settings handlers
+  const handleSaveAgent = async () => {
+    if (!editedAgent || !agentModified) return;
+    setSavingSettings(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/admin/settings/agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(editedAgent),
+      });
+
+      if (!response.ok) {
+        const data = await response.json();
+        throw new Error(data.error || 'Failed to save agent settings');
+      }
+
+      const data = await response.json();
+      setAgentSettings(data.settings);
+      setAgentModified(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save agent settings');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
+  const handleResetAgent = () => {
+    if (agentSettings) {
+      setEditedAgent({
+        budgetMaxLlmCalls: agentSettings.budgetMaxLlmCalls,
+        budgetMaxTokens: agentSettings.budgetMaxTokens,
+        budgetMaxWebSearches: agentSettings.budgetMaxWebSearches,
+        confidenceThreshold: agentSettings.confidenceThreshold,
+        budgetMaxDurationMinutes: agentSettings.budgetMaxDurationMinutes,
+        taskTimeoutMinutes: agentSettings.taskTimeoutMinutes,
+        plannerModel: agentSettings.plannerModel,
+        executorModel: agentSettings.executorModel,
+        checkerModel: agentSettings.checkerModel,
+        summarizerModel: agentSettings.summarizerModel,
+      });
+      setAgentModified(false);
+    }
   };
 
   const handleSaveTokenLimits = async () => {
@@ -4982,6 +5074,445 @@ export default function AdminPage() {
                     </div>
                   ) : null}
                 </div>
+                </div>
+              )}
+
+              {/* Agent Settings Section */}
+              {settingsSection === 'agent' && (
+                <div className="bg-white rounded-lg border shadow-sm">
+                  <div className="px-6 py-4 border-b">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h2 className="font-semibold text-gray-900">Autonomous Agent Settings</h2>
+                        <p className="text-sm text-gray-500">Configure autonomous mode budget limits and behavior</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {agentModified && (
+                          <Button variant="secondary" onClick={handleResetAgent} disabled={savingSettings}>
+                            Reset
+                          </Button>
+                        )}
+                        <Button onClick={handleSaveAgent} disabled={!agentModified || savingSettings} loading={savingSettings}>
+                          <Save size={18} className="mr-2" />
+                          Save
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                  {settingsLoading ? (
+                    <div className="px-6 py-12 flex justify-center"><Spinner size="lg" /></div>
+                  ) : editedAgent ? (
+                    <div className="p-6 space-y-6">
+                      {/* Budget Limits Section */}
+                      <div className="space-y-4">
+                        <h3 className="text-sm font-semibold text-gray-900 border-b pb-2">Budget Limits</h3>
+
+                        {/* Max LLM Calls */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-900 mb-1">
+                            Max LLM Calls (Global)
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            max="10000"
+                            value={editedAgent.budgetMaxLlmCalls}
+                            onChange={(e) => {
+                              setEditedAgent({ ...editedAgent, budgetMaxLlmCalls: parseInt(e.target.value) || 1 });
+                              setAgentModified(true);
+                            }}
+                            className="w-full max-w-xs px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                          />
+                          <p className="mt-1 text-sm text-gray-500">
+                            Maximum LLM API calls across all active autonomous plans (1-10,000).
+                          </p>
+                          <p className="mt-1 text-xs text-gray-400">
+                            Warnings at 50% and 75%, hard stop at 100%. Default: 500
+                          </p>
+                        </div>
+
+                        {/* Max Tokens */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-900 mb-1">
+                            Max Tokens (Global)
+                          </label>
+                          <input
+                            type="number"
+                            min="1000"
+                            max="100000000"
+                            step="1000"
+                            value={editedAgent.budgetMaxTokens}
+                            onChange={(e) => {
+                              setEditedAgent({ ...editedAgent, budgetMaxTokens: parseInt(e.target.value) || 1000 });
+                              setAgentModified(true);
+                            }}
+                            className="w-full max-w-xs px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                          />
+                          <p className="mt-1 text-sm text-gray-500">
+                            Maximum tokens consumed across all active autonomous plans (1,000-100,000,000).
+                          </p>
+                          <p className="mt-1 text-xs text-gray-400">
+                            Includes input and output tokens. Default: 2,000,000
+                          </p>
+                        </div>
+
+                        {/* Max Web Searches */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-900 mb-1">
+                            Max Web Searches (Global)
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            max="1000"
+                            value={editedAgent.budgetMaxWebSearches}
+                            onChange={(e) => {
+                              setEditedAgent({ ...editedAgent, budgetMaxWebSearches: parseInt(e.target.value) || 1 });
+                              setAgentModified(true);
+                            }}
+                            className="w-full max-w-xs px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                          />
+                          <p className="mt-1 text-sm text-gray-500">
+                            Maximum web searches across all active autonomous plans (1-1,000).
+                          </p>
+                          <p className="mt-1 text-xs text-gray-400">
+                            Future enhancement. Default: 100
+                          </p>
+                        </div>
+
+                        {/* Max Duration */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-900 mb-1">
+                            Max Duration (Minutes)
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            max="480"
+                            value={editedAgent.budgetMaxDurationMinutes}
+                            onChange={(e) => {
+                              setEditedAgent({ ...editedAgent, budgetMaxDurationMinutes: parseInt(e.target.value) || 1 });
+                              setAgentModified(true);
+                            }}
+                            className="w-full max-w-xs px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                          />
+                          <p className="mt-1 text-sm text-gray-500">
+                            Maximum duration for autonomous plan execution (1-480 minutes).
+                          </p>
+                          <p className="mt-1 text-xs text-gray-400">
+                            Plans exceeding this duration will be terminated. Default: 30 minutes
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Model Configuration Section */}
+                      <div className="space-y-4">
+                        <h3 className="text-sm font-semibold text-gray-900 border-b pb-2">Model Configuration</h3>
+                        <p className="text-xs text-gray-600 -mt-2">Configure LLM models for each agent role</p>
+
+                        {/* Planner Model */}
+                        <div className="grid grid-cols-3 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">Planner Provider</label>
+                            <select
+                              value={editedAgent.plannerModel.provider}
+                              onChange={(e) => {
+                                setEditedAgent({
+                                  ...editedAgent,
+                                  plannerModel: { ...editedAgent.plannerModel, provider: e.target.value as 'openai' | 'gemini' | 'mistral' }
+                                });
+                                setAgentModified(true);
+                              }}
+                              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                            >
+                              <option value="openai">OpenAI</option>
+                              <option value="gemini">Gemini</option>
+                              <option value="mistral">Mistral</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">Planner Model</label>
+                            <input
+                              type="text"
+                              value={editedAgent.plannerModel.model}
+                              onChange={(e) => {
+                                setEditedAgent({
+                                  ...editedAgent,
+                                  plannerModel: { ...editedAgent.plannerModel, model: e.target.value }
+                                });
+                                setAgentModified(true);
+                              }}
+                              placeholder="gpt-4o-mini"
+                              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">Temperature</label>
+                            <input
+                              type="number"
+                              min="0"
+                              max="2"
+                              step="0.1"
+                              value={editedAgent.plannerModel.temperature}
+                              onChange={(e) => {
+                                setEditedAgent({
+                                  ...editedAgent,
+                                  plannerModel: { ...editedAgent.plannerModel, temperature: parseFloat(e.target.value) || 0 }
+                                });
+                                setAgentModified(true);
+                              }}
+                              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Executor Model */}
+                        <div className="grid grid-cols-3 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">Executor Provider</label>
+                            <select
+                              value={editedAgent.executorModel.provider}
+                              onChange={(e) => {
+                                setEditedAgent({
+                                  ...editedAgent,
+                                  executorModel: { ...editedAgent.executorModel, provider: e.target.value as 'openai' | 'gemini' | 'mistral' }
+                                });
+                                setAgentModified(true);
+                              }}
+                              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                            >
+                              <option value="openai">OpenAI</option>
+                              <option value="gemini">Gemini</option>
+                              <option value="mistral">Mistral</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">Executor Model</label>
+                            <input
+                              type="text"
+                              value={editedAgent.executorModel.model}
+                              onChange={(e) => {
+                                setEditedAgent({
+                                  ...editedAgent,
+                                  executorModel: { ...editedAgent.executorModel, model: e.target.value }
+                                });
+                                setAgentModified(true);
+                              }}
+                              placeholder="gpt-4o-mini"
+                              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">Temperature</label>
+                            <input
+                              type="number"
+                              min="0"
+                              max="2"
+                              step="0.1"
+                              value={editedAgent.executorModel.temperature}
+                              onChange={(e) => {
+                                setEditedAgent({
+                                  ...editedAgent,
+                                  executorModel: { ...editedAgent.executorModel, temperature: parseFloat(e.target.value) || 0 }
+                                });
+                                setAgentModified(true);
+                              }}
+                              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Checker Model */}
+                        <div className="grid grid-cols-3 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">Checker Provider</label>
+                            <select
+                              value={editedAgent.checkerModel.provider}
+                              onChange={(e) => {
+                                setEditedAgent({
+                                  ...editedAgent,
+                                  checkerModel: { ...editedAgent.checkerModel, provider: e.target.value as 'openai' | 'gemini' | 'mistral' }
+                                });
+                                setAgentModified(true);
+                              }}
+                              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                            >
+                              <option value="openai">OpenAI</option>
+                              <option value="gemini">Gemini</option>
+                              <option value="mistral">Mistral</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">Checker Model</label>
+                            <input
+                              type="text"
+                              value={editedAgent.checkerModel.model}
+                              onChange={(e) => {
+                                setEditedAgent({
+                                  ...editedAgent,
+                                  checkerModel: { ...editedAgent.checkerModel, model: e.target.value }
+                                });
+                                setAgentModified(true);
+                              }}
+                              placeholder="gpt-4o-mini"
+                              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">Temperature</label>
+                            <input
+                              type="number"
+                              min="0"
+                              max="2"
+                              step="0.1"
+                              value={editedAgent.checkerModel.temperature}
+                              onChange={(e) => {
+                                setEditedAgent({
+                                  ...editedAgent,
+                                  checkerModel: { ...editedAgent.checkerModel, temperature: parseFloat(e.target.value) || 0 }
+                                });
+                                setAgentModified(true);
+                              }}
+                              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Summarizer Model */}
+                        <div className="grid grid-cols-3 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">Summarizer Provider</label>
+                            <select
+                              value={editedAgent.summarizerModel.provider}
+                              onChange={(e) => {
+                                setEditedAgent({
+                                  ...editedAgent,
+                                  summarizerModel: { ...editedAgent.summarizerModel, provider: e.target.value as 'openai' | 'gemini' | 'mistral' }
+                                });
+                                setAgentModified(true);
+                              }}
+                              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                            >
+                              <option value="openai">OpenAI</option>
+                              <option value="gemini">Gemini</option>
+                              <option value="mistral">Mistral</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">Summarizer Model</label>
+                            <input
+                              type="text"
+                              value={editedAgent.summarizerModel.model}
+                              onChange={(e) => {
+                                setEditedAgent({
+                                  ...editedAgent,
+                                  summarizerModel: { ...editedAgent.summarizerModel, model: e.target.value }
+                                });
+                                setAgentModified(true);
+                              }}
+                              placeholder="gpt-4o-mini"
+                              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">Temperature</label>
+                            <input
+                              type="number"
+                              min="0"
+                              max="2"
+                              step="0.1"
+                              value={editedAgent.summarizerModel.temperature}
+                              onChange={(e) => {
+                                setEditedAgent({
+                                  ...editedAgent,
+                                  summarizerModel: { ...editedAgent.summarizerModel, temperature: parseFloat(e.target.value) || 0 }
+                                });
+                                setAgentModified(true);
+                              }}
+                              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Quality & Behavior Section */}
+                      <div className="space-y-4">
+                        <h3 className="text-sm font-semibold text-gray-900 border-b pb-2">Quality & Behavior</h3>
+
+                        {/* Confidence Threshold */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-900 mb-1">
+                            Confidence Threshold (%)
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            value={editedAgent.confidenceThreshold}
+                            onChange={(e) => {
+                              setEditedAgent({ ...editedAgent, confidenceThreshold: parseInt(e.target.value) || 0 });
+                              setAgentModified(true);
+                            }}
+                            className="w-full max-w-xs px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                          />
+                          <p className="mt-1 text-sm text-gray-500">
+                            Minimum confidence score for auto-approval (0-100%).
+                          </p>
+                          <p className="mt-1 text-xs text-gray-400">
+                            Tasks below this threshold are flagged for manual review. Default: 80%
+                          </p>
+                        </div>
+
+                        {/* Task Timeout */}
+                        <div>
+                          <label className="block text-sm font-medium text-gray-900 mb-1">
+                            Task Timeout (Minutes)
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            max="60"
+                            value={editedAgent.taskTimeoutMinutes}
+                            onChange={(e) => {
+                              setEditedAgent({ ...editedAgent, taskTimeoutMinutes: parseInt(e.target.value) || 1 });
+                              setAgentModified(true);
+                            }}
+                            className="w-full max-w-xs px-4 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                          />
+                          <p className="mt-1 text-sm text-gray-500">
+                            Maximum time for a single task execution (1-60 minutes).
+                          </p>
+                          <p className="mt-1 text-xs text-gray-400">
+                            Tasks exceeding this timeout will be skipped during crash recovery. Default: 5 minutes
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Info Box */}
+                      <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+                        <div className="flex gap-3">
+                          <AlertCircle size={20} className="text-purple-600 flex-shrink-0 mt-0.5" />
+                          <div className="text-sm text-purple-900">
+                            <p className="font-medium mb-1">Autonomous Mode Behavior</p>
+                            <ul className="space-y-1 text-xs text-purple-800">
+                              <li>• <strong>Fail-Fast:</strong> No retries on task failure, skip and continue</li>
+                              <li>• <strong>Budget Warnings:</strong> Alerts at 50% and 75%, hard stop at 100%</li>
+                              <li>• <strong>Quality Assurance:</strong> Checker agent validates all task results</li>
+                              <li>• <strong>Crash Recovery:</strong> Idempotent state transitions allow resumption</li>
+                              <li>• <strong>Model Presets:</strong> Users can select: Default, Quality, Economy, Compliance</li>
+                            </ul>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Last Updated */}
+                      {agentSettings?.updatedAt && (
+                        <p className="text-xs text-gray-500">
+                          Last updated: {formatDate(agentSettings.updatedAt)} by {agentSettings.updatedBy}
+                        </p>
+                      )}
+                    </div>
+                  ) : null}
                 </div>
               )}
 

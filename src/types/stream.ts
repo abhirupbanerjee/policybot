@@ -17,6 +17,9 @@ export type StreamPhase =
   | 'rag'         // RAG retrieval in progress
   | 'tools'       // Executing tool calls
   | 'generating'  // Streaming LLM response
+  | 'agent_planning'   // Autonomous mode: Creating task plan
+  | 'agent_executing'  // Autonomous mode: Executing tasks
+  | 'agent_summarizing' // Autonomous mode: Generating summary
   | 'complete';   // All done
 
 // ============ Skill & Tool Tracking ============
@@ -39,6 +42,18 @@ export interface ToolExecutionState {
   startTime?: number;
   duration?: number;
   error?: string;
+}
+
+/**
+ * Agent plan statistics for summary display
+ */
+export interface AgentPlanStats {
+  total_tasks: number;
+  completed_tasks: number;
+  failed_tasks: number;
+  skipped_tasks: number;
+  needs_review_tasks: number;
+  average_confidence: number;
 }
 
 // ============ Stream Events ============
@@ -72,7 +87,16 @@ export type StreamEvent =
   | { type: 'done'; messageId: string; threadId: string }
 
   // Error
-  | { type: 'error'; code: StreamErrorCode; message: string; recoverable: boolean };
+  | { type: 'error'; code: StreamErrorCode; message: string; recoverable: boolean }
+
+  // Autonomous mode events
+  | { type: 'agent_plan_created'; plan_id: string; title: string; task_count: number }
+  | { type: 'agent_task_started'; task_id: number; description: string; task_type: string }
+  | { type: 'agent_task_completed'; task_id: number; status: 'done' | 'skipped' | 'needs_review'; confidence?: number }
+  | { type: 'agent_budget_warning'; level: 'medium' | 'high'; percentage: number; message: string }
+  | { type: 'agent_budget_exceeded'; message: string }
+  | { type: 'agent_plan_summary'; summary: string; stats: AgentPlanStats }
+  | { type: 'agent_error'; error: string };
 
 /**
  * Stream error codes
@@ -103,6 +127,8 @@ export type StreamErrorCode =
 export interface StreamChatRequest {
   message: string;
   threadId: string;
+  mode?: 'normal' | 'autonomous'; // Optional mode selection (defaults to 'normal')
+  modelConfigPreset?: string; // For autonomous mode: 'default', 'quality', 'economy', 'compliance'
 }
 
 /**
