@@ -418,6 +418,7 @@ export function queryCSVDataWithAggregation(
   filters?: DataFilter[]
 ): DataQueryResponse {
   const startTime = Date.now();
+  console.log('[CSV] queryCSVDataWithAggregation called:', { filePath, aggregation, filters });
 
   try {
     // Check if file exists
@@ -447,10 +448,13 @@ export function queryCSVDataWithAggregation(
 
     // Apply filters first
     if (filters && filters.length > 0) {
+      console.log('[CSV] Applying filters, data count before:', data.length);
       data = applyFilters(data, filters);
+      console.log('[CSV] Data count after filters:', data.length);
     }
 
     const totalRecords = data.length;
+    console.log('[CSV] Total records for aggregation:', totalRecords);
 
     // Aggregate the data
     const aggregatedData = aggregateData(data, aggregation);

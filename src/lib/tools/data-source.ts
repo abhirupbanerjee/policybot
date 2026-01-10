@@ -600,6 +600,7 @@ IMPORTANT FOR LARGE DATASETS:
   configSchema: dataSourceConfigSchema,
 
   execute: async (args: DataSourceToolArgs) => {
+    console.log('[DataSource] Tool called with args:', JSON.stringify(args, null, 2));
     const toolConfig = getDataSourceToolConfig();
 
     // Validate required arguments
