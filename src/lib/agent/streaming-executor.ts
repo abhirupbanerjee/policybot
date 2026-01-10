@@ -59,6 +59,15 @@ export async function executeAutonomousWithStreaming(
       },
       {
         onPlanCreated: (plan: AgentPlan) => {
+          // Count document generation tasks to estimate output count
+          const generateTasks = plan.tasks.filter(t => t.type === 'generate');
+          const docGenTasks = generateTasks.filter(t =>
+            t.target?.toLowerCase().includes('document') ||
+            t.target?.toLowerCase().includes('report') ||
+            t.target?.toLowerCase().includes('word') ||
+            t.target?.toLowerCase().includes('pdf')
+          );
+
           sendEvent({
             type: 'agent_plan_created',
             plan_id: plan.id,
@@ -70,10 +79,27 @@ export async function executeAutonomousWithStreaming(
               type: t.type,
             })),
           });
+
+          // Provide informative status message based on plan complexity
+          let statusMessage = `Executing ${plan.tasks.length} tasks...`;
+
+          if (plan.tasks.length > 30) {
+            // Large batch - explain what's happening
+            statusMessage = `Processing large request: ${plan.tasks.length} tasks planned. `;
+            if (docGenTasks.length > 1) {
+              statusMessage += `Will generate ${docGenTasks.length} individual documents. This may take several minutes.`;
+            } else {
+              statusMessage += `This may take several minutes to complete.`;
+            }
+          } else if (docGenTasks.length > 1) {
+            // Multiple documents
+            statusMessage = `Executing ${plan.tasks.length} tasks to generate ${docGenTasks.length} documents...`;
+          }
+
           sendEvent({
             type: 'status',
             phase: 'agent_executing',
-            content: `Executing ${plan.tasks.length} tasks...`,
+            content: statusMessage,
           });
         },
 

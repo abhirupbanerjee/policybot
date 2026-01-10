@@ -112,6 +112,13 @@ function buildPlannerPrompt(
 ${userRequest}
 `;
 
+  // Add conversation history so planner can see data from previous turns
+  if (context.conversationHistory) {
+    prompt += `\n**Recent Conversation (for context - may contain data referenced by user):**
+${context.conversationHistory}
+`;
+  }
+
   if (context.ragContext) {
     prompt += `\n**Available Knowledge:**
 ${context.ragContext.substring(0, 1000)}...
@@ -127,19 +134,26 @@ ${context.categoryContext}
   prompt += `
 **CRITICAL INSTRUCTIONS:**
 
-1. **FIRST: Check if the user has provided data in their message.** If the user's message contains:
-   - A list of items (e.g., "SOE1, SOE2, SOE3")
-   - Structured data (e.g., names, descriptions, values)
-   - Specific information to process
+1. **FIRST: Check if the user has provided data in their message OR in the recent conversation.**
+   - Look in BOTH the user request AND the recent conversation for lists/data
+   - If the user references "the above list" or "each item", look in the conversation history
+   - If you find a list of items, structured data, or specific information - use it!
 
-   Then **DO NOT search the web for this data** - use "extract" type first to extract the provided data, then process it.
+2. **DO NOT search the web** for data that is already in the message or conversation history.
 
-2. **ONLY use web search** when the user is asking for information that is NOT in their message.
+3. **PER-ITEM PROCESSING:** When the user asks for SEPARATE/INDIVIDUAL outputs for multiple items:
+   - If user says "for each", "individual reports", "separate analysis", etc.
+   - Create a SEPARATE task for EACH item in the list
+   - You may create up to 50 tasks if needed for per-item processing
+   - Example: 20 SOEs = 20 analyze tasks + 20 generate tasks
+   - **LARGE LISTS (25+ items):** If the list has more than 25 items, process the FIRST 25 items only.
+     Include a final "summarize" task explaining: "Processed 25 of X items. The bot has limitations to execute a large query as it requires multiple LLM calls which generates huge number of tokens and blocks server and APIs. To continue with remaining items, please make another request."
 
-3. Create 3-10 tasks that break down the request into logical steps
-4. Each task should be specific and measurable
-5. Use dependencies to define execution order (task IDs)
-6. Ensure no circular dependencies
+4. For consolidated outputs (single report covering all items): Create 3-10 tasks
+
+5. Each task should be specific and measurable
+6. Use dependencies to define execution order (task IDs)
+7. Ensure no circular dependencies
 
 **Task Types:**
 - **extract**: Pull out specific information from the user's provided data - USE THIS FIRST if user provided data
@@ -187,7 +201,74 @@ Correct response:
   ]
 }
 
-**Example 2: User asks for external information**
+**Example 2: User asks for INDIVIDUAL reports (per-item processing)**
+Previous conversation: "Here are the SOEs: 1. T&TEC, 2. WASA, 3. NGC"
+User: "Create a separate assessment report for each SOE in the above list"
+
+Correct response (creates per-item tasks):
+{
+  "title": "Individual SOE Assessment Reports",
+  "tasks": [
+    {
+      "id": 1,
+      "type": "extract",
+      "target": "SOE list from conversation",
+      "description": "Extract the 3 SOEs from conversation: T&TEC, WASA, NGC",
+      "priority": 1,
+      "dependencies": []
+    },
+    {
+      "id": 2,
+      "type": "analyze",
+      "target": "T&TEC assessment",
+      "description": "Analyze T&TEC (Trinidad and Tobago Electricity Commission)",
+      "priority": 1,
+      "dependencies": [1]
+    },
+    {
+      "id": 3,
+      "type": "generate",
+      "target": "Word document report for T&TEC",
+      "description": "Generate Word document assessment report for T&TEC",
+      "priority": 1,
+      "dependencies": [2]
+    },
+    {
+      "id": 4,
+      "type": "analyze",
+      "target": "WASA assessment",
+      "description": "Analyze WASA (Water and Sewerage Authority)",
+      "priority": 1,
+      "dependencies": [1]
+    },
+    {
+      "id": 5,
+      "type": "generate",
+      "target": "Word document report for WASA",
+      "description": "Generate Word document assessment report for WASA",
+      "priority": 1,
+      "dependencies": [4]
+    },
+    {
+      "id": 6,
+      "type": "analyze",
+      "target": "NGC assessment",
+      "description": "Analyze NGC (National Gas Company)",
+      "priority": 1,
+      "dependencies": [1]
+    },
+    {
+      "id": 7,
+      "type": "generate",
+      "target": "Word document report for NGC",
+      "description": "Generate Word document assessment report for NGC",
+      "priority": 1,
+      "dependencies": [6]
+    }
+  ]
+}
+
+**Example 3: User asks for external information**
 User: "Research the latest compliance regulations for financial services"
 
 Correct response (uses web search):
@@ -220,7 +301,9 @@ Key principles:
 - Create clear, specific tasks
 - Define proper dependencies (no circular references)
 - Use appropriate task types
-- Keep plans concise (3-10 tasks)
+- Look for data in BOTH the user message AND recent conversation history
+- For per-item requests ("for each", "individual", "separate"): create separate tasks per item (up to 50 tasks)
+- For consolidated requests: keep plans concise (3-10 tasks)
 - Ensure logical execution order
 
 Output valid JSON matching the schema provided.`;
