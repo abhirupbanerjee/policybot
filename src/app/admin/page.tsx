@@ -5718,7 +5718,7 @@ export default function AdminPage() {
                       </div>
                       <div className="bg-gray-50 rounded-lg p-4">
                         <div className="text-lg font-bold text-gray-900">{systemStats.storage.globalDocsDir.totalSizeMB} MB</div>
-                        <div className="text-sm text-gray-500">Global Documents</div>
+                        <div className="text-sm text-gray-500">Uploaded Documents</div>
                         <div className="mt-1 text-xs text-gray-400">
                           {systemStats.storage.globalDocsDir.fileCount} files
                         </div>
