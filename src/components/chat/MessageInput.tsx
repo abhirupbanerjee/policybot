@@ -65,11 +65,6 @@ export default function MessageInput({
 
   return (
     <div className="bg-white p-4 safe-area-bottom">
-      {/* Mode Toggle - appears above input box */}
-      <div className="mb-3">
-        <ModeToggle mode={mode} onModeChange={setMode} disabled={disabled} />
-      </div>
-
       {/* Claude-style contained input card */}
       <div className="bg-gray-50 rounded-2xl border border-gray-200 p-3">
         {/* Uploads indicator */}
@@ -110,6 +105,7 @@ export default function MessageInput({
               onUrlSourceAdded={onUrlSourceAdded}
               disabled={disabled}
             />
+            <ModeToggle mode={mode} onModeChange={setMode} disabled={disabled} />
           </div>
 
           {/* Right actions */}

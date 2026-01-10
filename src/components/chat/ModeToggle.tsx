@@ -1,6 +1,7 @@
 'use client';
 
-import { Bot, MessageSquare } from 'lucide-react';
+import { useState } from 'react';
+import { Bot } from 'lucide-react';
 
 export type ChatMode = 'normal' | 'autonomous';
 
@@ -15,43 +16,48 @@ export default function ModeToggle({
   onModeChange,
   disabled,
 }: ModeToggleProps) {
-  return (
-    <div className="flex items-center gap-2">
-      {/* Mode Toggle */}
-      <div className="flex items-center bg-white rounded-lg border border-gray-200 p-1">
-        <button
-          type="button"
-          onClick={() => onModeChange('normal')}
-          disabled={disabled}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-            mode === 'normal'
-              ? 'bg-gray-100 text-gray-900'
-              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-          } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-        >
-          <MessageSquare size={16} />
-          <span>Normal</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => onModeChange('autonomous')}
-          disabled={disabled}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-            mode === 'autonomous'
-              ? 'bg-purple-100 text-purple-900'
-              : 'text-gray-600 hover:text-gray-900 hover:bg-gray-50'
-          } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
-        >
-          <Bot size={16} />
-          <span>Autonomous</span>
-        </button>
-      </div>
+  const [showTooltip, setShowTooltip] = useState(false);
+  const isAutonomous = mode === 'autonomous';
 
-      {/* Info tooltip for autonomous mode */}
-      {mode === 'autonomous' && (
-        <span className="text-xs text-purple-600">
-          Models configured by admin
-        </span>
+  const handleToggle = () => {
+    onModeChange(isAutonomous ? 'normal' : 'autonomous');
+  };
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={handleToggle}
+        disabled={disabled}
+        onMouseEnter={() => setShowTooltip(true)}
+        onMouseLeave={() => setShowTooltip(false)}
+        className={`p-2 rounded-lg transition-colors ${
+          isAutonomous
+            ? 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+            : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700'
+        } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+      >
+        <Bot size={20} />
+      </button>
+
+      {/* Tooltip */}
+      {showTooltip && (
+        <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-900 text-white text-xs rounded-lg whitespace-nowrap z-50 shadow-lg">
+          {isAutonomous ? (
+            <>
+              <span className="font-medium text-purple-300">Autonomous mode</span>
+              <span className="text-gray-300"> enabled</span>
+              <p className="text-gray-400 mt-0.5">Click to disable</p>
+            </>
+          ) : (
+            <>
+              <span className="font-medium">Autonomous mode</span>
+              <p className="text-gray-400 mt-0.5">AI plans and executes multi-step tasks</p>
+            </>
+          )}
+          {/* Tooltip arrow */}
+          <div className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-gray-900" />
+        </div>
       )}
     </div>
   );
