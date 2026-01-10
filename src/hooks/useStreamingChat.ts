@@ -24,6 +24,31 @@ import type {
 
 // ============ Types ============
 
+/** Autonomous task state for UI display */
+export interface AutonomousTaskState {
+  id: number;
+  description: string;
+  type: string;
+  status: 'pending' | 'running' | 'done' | 'skipped' | 'needs_review' | 'error';
+  confidence?: number;
+  result?: string;
+}
+
+/** Autonomous plan state for UI display */
+export interface AutonomousPlanState {
+  planId: string;
+  title: string;
+  tasks: AutonomousTaskState[];
+  stats?: {
+    total_tasks: number;
+    completed_tasks: number;
+    failed_tasks: number;
+    skipped_tasks: number;
+    needs_review_tasks: number;
+    average_confidence: number;
+  };
+}
+
 export interface StreamingState {
   /** Whether streaming is in progress */
   isStreaming: boolean;
@@ -41,6 +66,8 @@ export interface StreamingState {
   documents: GeneratedDocumentInfo[];
   /** Generated images from tools */
   images: GeneratedImageInfo[];
+  /** Autonomous plan state (for autonomous mode) */
+  autonomousPlan: AutonomousPlanState | null;
   /** Error message if any */
   error: string | null;
   /** Whether error is recoverable */
@@ -88,6 +115,7 @@ const initialState: StreamingState = {
   visualizations: [],
   documents: [],
   images: [],
+  autonomousPlan: null,
   error: null,
   errorRecoverable: false,
 };
@@ -207,15 +235,80 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
         }));
         break;
 
+      case 'agent_plan_created':
+        // Initialize autonomous plan with tasks
+        setState(prev => ({
+          ...prev,
+          autonomousPlan: {
+            planId: event.plan_id,
+            title: event.title,
+            tasks: Array.from({ length: event.task_count }, (_, i) => ({
+              id: i + 1,
+              description: `Task ${i + 1}`,
+              type: 'pending',
+              status: 'pending' as const,
+            })),
+          },
+        }));
+        break;
+
+      case 'agent_task_started':
+        // Update task to running status
+        setState(prev => {
+          if (!prev.autonomousPlan) return prev;
+          return {
+            ...prev,
+            autonomousPlan: {
+              ...prev.autonomousPlan,
+              tasks: prev.autonomousPlan.tasks.map(task =>
+                task.id === event.task_id
+                  ? { ...task, description: event.description, type: event.task_type, status: 'running' as const }
+                  : task
+              ),
+            },
+          };
+        });
+        break;
+
+      case 'agent_task_completed':
+        // Update task to completed status
+        setState(prev => {
+          if (!prev.autonomousPlan) return prev;
+          return {
+            ...prev,
+            autonomousPlan: {
+              ...prev.autonomousPlan,
+              tasks: prev.autonomousPlan.tasks.map(task =>
+                task.id === event.task_id
+                  ? { ...task, status: event.status, confidence: event.confidence }
+                  : task
+              ),
+            },
+          };
+        });
+        break;
+
       case 'agent_plan_summary':
-        // Handle autonomous mode summary - set the content
+        // Handle autonomous mode summary - set the content and stats
         if (event.summary) {
           contentBufferRef.current = event.summary;
           setState(prev => ({
             ...prev,
             currentContent: event.summary,
+            autonomousPlan: prev.autonomousPlan
+              ? { ...prev.autonomousPlan, stats: event.stats }
+              : null,
           }));
         }
+        break;
+
+      case 'agent_error':
+        // Handle autonomous mode error
+        setState(prev => ({
+          ...prev,
+          error: event.error,
+          errorRecoverable: true,
+        }));
         break;
 
       case 'chunk':

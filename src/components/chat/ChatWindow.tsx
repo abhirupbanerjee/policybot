@@ -8,6 +8,7 @@ import MessageInput from './MessageInput';
 import Spinner from '@/components/ui/Spinner';
 import StarterButtons, { StarterPrompt } from './StarterButtons';
 import ProcessingIndicator from './ProcessingIndicator';
+import AutonomousTaskList from './AutonomousTaskList';
 import ShareModal from '@/components/sharing/ShareModal';
 import { useStreamingChat } from '@/hooks/useStreamingChat';
 
@@ -442,6 +443,16 @@ export default function ChatWindow({
                 setLoading(false);
               }}
             />
+
+            {/* Autonomous Task List */}
+            {streamingState.autonomousPlan && (
+              <div className="mb-4">
+                <AutonomousTaskList
+                  plan={streamingState.autonomousPlan}
+                  toolsExecuted={streamingState.processingDetails.toolsExecuted}
+                />
+              </div>
+            )}
 
             {streamingState.currentContent && (
               <MessageBubble

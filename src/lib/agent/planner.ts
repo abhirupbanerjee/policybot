@@ -129,43 +129,57 @@ ${context.categoryContext}
 1. Create 3-10 tasks that break down the request into logical steps
 2. Each task should be specific and measurable
 3. Use dependencies to define execution order (task IDs)
-4. Assign appropriate task types: analyze, search, compare, generate, summarize, extract, validate
+4. Assign appropriate task types based on the work needed
 5. Ensure no circular dependencies
+6. IMPORTANT: When creating documents, use "generate" type with target mentioning "Word document", "PDF", or "report"
+7. IMPORTANT: When creating images/visuals, use "generate" type with target mentioning "infographic", "image", or "visual"
+8. IMPORTANT: When searching the web, use "search" type with target mentioning "web search"
 
 **Task Types:**
-- **analyze**: Examine and interpret information
-- **search**: Find information (web search, document search)
+- **analyze**: Examine and interpret information (LLM-based analysis)
+- **search**: Find information - use target "web search" for internet searches, otherwise searches internal documents
 - **compare**: Compare multiple items or options
-- **generate**: Create new content (documents, reports)
+- **generate**: Create new content - TRIGGERS TOOLS based on target:
+  - Target contains "document", "report", "Word", "PDF", "docx" → Creates downloadable Word/PDF document
+  - Target contains "infographic", "image", "visual", "diagram", "chart" → Creates AI-generated image
+  - Otherwise → LLM text generation
 - **summarize**: Condense information into a summary
 - **extract**: Pull out specific information
 - **validate**: Check correctness or compliance
 
-**Example Response:**
+**Example Response with Tool Usage:**
 {
-  "title": "Policy Compliance Analysis for New Hires",
+  "title": "SOE Assessment Report Generation",
   "tasks": [
     {
       "id": 1,
       "type": "search",
-      "target": "HR policies",
-      "description": "Search for onboarding policies",
+      "target": "web search SOE information",
+      "description": "Search the web for information about the SOE",
       "priority": 1,
       "dependencies": []
     },
     {
       "id": 2,
       "type": "analyze",
-      "target": "Compliance requirements",
-      "description": "Analyze compliance requirements from policies",
+      "target": "SOE assessment criteria",
+      "description": "Analyze the SOE based on standard assessment criteria",
       "priority": 1,
       "dependencies": [1]
     },
     {
       "id": 3,
-      "type": "summarize",
-      "target": "Final report",
-      "description": "Summarize findings and recommendations",
+      "type": "generate",
+      "target": "Word document report",
+      "description": "Generate a Word document with the SOE assessment report",
+      "priority": 1,
+      "dependencies": [2]
+    },
+    {
+      "id": 4,
+      "type": "generate",
+      "target": "infographic visualization",
+      "description": "Create an infographic visualizing the SOE assessment results",
       "priority": 1,
       "dependencies": [2]
     }

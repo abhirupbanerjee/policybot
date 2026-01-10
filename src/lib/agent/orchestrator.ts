@@ -17,8 +17,9 @@ import type {
   ExecutionResult,
   OrchestratorResult,
 } from '@/types/agent';
+import type { StreamEvent } from '@/types/stream';
 import { createPlan } from './planner';
-import { executeTask } from './executor';
+import { executeTask, type ExecutorCallbacks } from './executor';
 import { generateSummary } from './summarizer';
 import { GlobalBudgetTracker } from './budget-tracker';
 import { detectStuckPlan } from './dependency-validator';
@@ -36,6 +37,9 @@ export interface OrchestratorCallbacks {
   onPlanCreated?: (plan: AgentPlan) => void;
   onTaskStarted?: (task: AgentTask) => void;
   onTaskCompleted?: (task: AgentTask, result: ExecutionResult) => void;
+  onToolStart?: (name: string, displayName: string) => void;
+  onToolEnd?: (name: string, success: boolean, duration: number, error?: string) => void;
+  onArtifact?: (event: StreamEvent) => void;
   onBudgetWarning?: (message: string, percentage: number) => void;
   onBudgetExceeded?: (message: string) => void;
   onError?: (error: string) => void;
@@ -221,7 +225,14 @@ async function executeTasksInOrder(
     // Execute the task
     callbacks?.onTaskStarted?.(nextTask);
 
-    const result = await executeTask(nextTask, currentPlan, modelConfig);
+    // Create executor callbacks from orchestrator callbacks
+    const executorCallbacks: ExecutorCallbacks = {
+      onToolStart: callbacks?.onToolStart,
+      onToolEnd: callbacks?.onToolEnd,
+      onArtifact: callbacks?.onArtifact,
+    };
+
+    const result = await executeTask(nextTask, currentPlan, modelConfig, executorCallbacks);
 
     // Update budget usage
     if (result.tokens_used || result.llm_calls) {

@@ -6,12 +6,61 @@
  * - Fail-fast (no retries)
  * - Task timeout enforcement
  * - Quality checking (80% threshold)
+ * - Tool execution (document generation, image generation, web search)
  */
 
 import type { AgentTask, AgentPlan, ExecutionResult, AgentModelConfig } from '@/types/agent';
+import type { StreamEvent } from '@/types/stream';
+import type { GeneratedDocumentInfo, GeneratedImageInfo } from '@/types';
 import { generateWithModel, getModelForRole } from './llm-router';
 import { checkTaskQuality } from './checker';
 import { transitionTaskState, incrementBudgetUsage } from '../db/task-plans';
+import { documentGenerationTool } from '../tools/docgen';
+import { imageGenTool } from '../tools/image-gen';
+import { tavilyWebSearch } from '../tools/tavily';
+import { runWithContextAsync } from '../request-context';
+
+// ============ Tool Detection ============
+
+/**
+ * Detect which tool (if any) should be used for this task
+ */
+function detectToolForTask(task: AgentTask): 'doc_gen' | 'image_gen' | 'web_search' | null {
+  const typeLC = task.type.toLowerCase();
+  const targetLC = task.target.toLowerCase();
+  const descLC = task.description.toLowerCase();
+
+  // Document generation detection
+  const docKeywords = ['document', 'report', 'word', 'docx', 'pdf', 'file', 'export', 'download'];
+  const isDocTask = typeLC === 'generate' &&
+    (docKeywords.some(kw => targetLC.includes(kw)) ||
+     docKeywords.some(kw => descLC.includes(kw)));
+  if (isDocTask) return 'doc_gen';
+
+  // Image generation detection
+  const imageKeywords = ['image', 'infographic', 'visual', 'diagram', 'chart', 'picture', 'graphic', 'illustration'];
+  const isImageTask = typeLC === 'generate' &&
+    (imageKeywords.some(kw => targetLC.includes(kw)) ||
+     imageKeywords.some(kw => descLC.includes(kw)));
+  if (isImageTask) return 'image_gen';
+
+  // Web search detection
+  const searchKeywords = ['search', 'web', 'internet', 'online', 'lookup', 'find'];
+  const isSearchTask = typeLC === 'search' &&
+    (searchKeywords.some(kw => targetLC.includes(kw)) ||
+     searchKeywords.some(kw => descLC.includes(kw)));
+  if (isSearchTask) return 'web_search';
+
+  return null;
+}
+
+// ============ Tool Execution Callbacks ============
+
+export interface ExecutorCallbacks {
+  onToolStart?: (name: string, displayName: string) => void;
+  onToolEnd?: (name: string, success: boolean, duration: number, error?: string) => void;
+  onArtifact?: (event: StreamEvent) => void;
+}
 
 /**
  * Execute a single task
@@ -19,12 +68,14 @@ import { transitionTaskState, incrementBudgetUsage } from '../db/task-plans';
  * @param task - The task to execute
  * @param plan - The parent plan (for context and budget tracking)
  * @param modelConfig - Model configuration
+ * @param callbacks - Optional callbacks for streaming progress
  * @returns Execution result
  */
 export async function executeTask(
   task: AgentTask,
   plan: AgentPlan,
-  modelConfig: AgentModelConfig
+  modelConfig: AgentModelConfig,
+  callbacks?: ExecutorCallbacks
 ): Promise<ExecutionResult> {
   // Check if already executed (idempotency)
   if (task.status !== 'pending') {
@@ -46,8 +97,8 @@ export async function executeTask(
   }
 
   try {
-    // Perform task execution
-    const result = await performTaskExecution(task, plan, modelConfig);
+    // Perform task execution (with tool detection)
+    const result = await performTaskExecution(task, plan, modelConfig, callbacks);
 
     // Track LLM usage
     if (result.tokens_used) {
@@ -121,13 +172,22 @@ export async function executeTask(
 }
 
 /**
- * Perform actual task execution (LLM call)
+ * Perform actual task execution (LLM call or tool execution)
  */
 async function performTaskExecution(
   task: AgentTask,
   plan: AgentPlan,
-  modelConfig: AgentModelConfig
+  modelConfig: AgentModelConfig,
+  callbacks?: ExecutorCallbacks
 ): Promise<{ content: string; tokens_used?: number; llm_calls?: number }> {
+  // Detect if this task requires a tool
+  const toolType = detectToolForTask(task);
+
+  if (toolType) {
+    return executeToolForTask(task, plan, modelConfig, toolType, callbacks);
+  }
+
+  // Default: LLM-based execution
   const prompt = buildExecutionPrompt(task, plan);
 
   // Get executor model
@@ -145,6 +205,311 @@ async function performTaskExecution(
     llm_calls: 1,
   };
 }
+
+/**
+ * Execute a tool for the task
+ */
+async function executeToolForTask(
+  task: AgentTask,
+  plan: AgentPlan,
+  modelConfig: AgentModelConfig,
+  toolType: 'doc_gen' | 'image_gen' | 'web_search',
+  callbacks?: ExecutorCallbacks
+): Promise<{ content: string; tokens_used?: number; llm_calls?: number }> {
+  const startTime = Date.now();
+
+  // Get display name for the tool
+  const toolDisplayNames: Record<string, string> = {
+    doc_gen: 'Document Generation',
+    image_gen: 'Image Generation',
+    web_search: 'Web Search',
+  };
+
+  const displayName = toolDisplayNames[toolType];
+  callbacks?.onToolStart?.(toolType, displayName);
+
+  try {
+    let result: string;
+
+    switch (toolType) {
+      case 'doc_gen':
+        result = await executeDocGenTool(task, plan, modelConfig, callbacks);
+        break;
+      case 'image_gen':
+        result = await executeImageGenTool(task, plan, modelConfig, callbacks);
+        break;
+      case 'web_search':
+        result = await executeWebSearchTool(task, callbacks);
+        break;
+      default:
+        throw new Error(`Unknown tool type: ${toolType}`);
+    }
+
+    const duration = Date.now() - startTime;
+    callbacks?.onToolEnd?.(toolType, true, duration);
+
+    return {
+      content: result,
+      tokens_used: 0, // Tools don't use tokens directly
+      llm_calls: toolType === 'doc_gen' || toolType === 'image_gen' ? 1 : 0, // Content generation uses LLM
+    };
+  } catch (error) {
+    const duration = Date.now() - startTime;
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    callbacks?.onToolEnd?.(toolType, false, duration, errorMsg);
+    throw error;
+  }
+}
+
+/**
+ * Execute document generation tool
+ */
+async function executeDocGenTool(
+  task: AgentTask,
+  plan: AgentPlan,
+  modelConfig: AgentModelConfig,
+  callbacks?: ExecutorCallbacks
+): Promise<string> {
+  // First, generate the document content using LLM
+  const contentPrompt = buildDocContentPrompt(task, plan);
+  const executorModel = getModelForRole('executor', modelConfig);
+
+  const contentResponse = await generateWithModel(executorModel, contentPrompt, {
+    systemPrompt: DOC_CONTENT_SYSTEM_PROMPT,
+    temperature: 0.4,
+  });
+
+  const generatedContent = contentResponse.content;
+
+  // Determine format from task description
+  let format: 'docx' | 'pdf' | 'md' = 'docx';
+  const descLower = task.description.toLowerCase();
+  if (descLower.includes('pdf')) format = 'pdf';
+  else if (descLower.includes('markdown') || descLower.includes('.md')) format = 'md';
+
+  // Generate document title from task
+  const title = task.target || `${plan.title} - Task ${task.id}`;
+
+  // Execute the doc_gen tool with request context
+  const result = await runWithContextAsync(
+    { threadId: plan.thread_id, userId: plan.user_id },
+    async () => {
+      return await documentGenerationTool.execute({
+        title,
+        content: generatedContent,
+        format,
+      });
+    }
+  );
+
+  // Parse result and emit artifact event
+  try {
+    const parsed = JSON.parse(result);
+    if (parsed.success && parsed.document) {
+      const docInfo: GeneratedDocumentInfo = {
+        id: parsed.document.id,
+        filename: parsed.document.filename,
+        fileType: parsed.document.fileType,
+        fileSize: parsed.document.fileSize,
+        fileSizeFormatted: parsed.document.fileSizeFormatted,
+        downloadUrl: parsed.document.downloadUrl,
+        expiresAt: parsed.document.expiresAt || null,
+      };
+
+      callbacks?.onArtifact?.({
+        type: 'artifact',
+        subtype: 'document',
+        data: docInfo,
+      });
+
+      return `Document generated: ${parsed.document.filename} (${parsed.document.fileSizeFormatted})\nDownload: ${parsed.document.downloadUrl}`;
+    } else {
+      return `Document generation failed: ${parsed.error || 'Unknown error'}`;
+    }
+  } catch {
+    return result;
+  }
+}
+
+/**
+ * Execute image generation tool
+ */
+async function executeImageGenTool(
+  task: AgentTask,
+  plan: AgentPlan,
+  _modelConfig: AgentModelConfig,
+  callbacks?: ExecutorCallbacks
+): Promise<string> {
+  // Build image prompt from task and context
+  const imagePrompt = buildImagePrompt(task, plan);
+
+  // Determine style from task
+  let style: 'infographic' | 'diagram' | 'illustration' | 'chart' = 'infographic';
+  const descLower = task.description.toLowerCase();
+  if (descLower.includes('diagram')) style = 'diagram';
+  else if (descLower.includes('chart')) style = 'chart';
+  else if (descLower.includes('illustration')) style = 'illustration';
+
+  // Execute image generation
+  const result = await imageGenTool.execute({
+    prompt: imagePrompt,
+    style,
+    aspectRatio: '16:9',
+  });
+
+  // Parse result and emit artifact event
+  try {
+    const parsed = JSON.parse(result);
+    if (parsed.success && parsed.image) {
+      const imageInfo: GeneratedImageInfo = {
+        id: parsed.image.id || `img-${Date.now()}`,
+        url: parsed.image.url,
+        thumbnailUrl: parsed.image.thumbnailUrl,
+        alt: `${style} visualization: ${task.description.substring(0, 100)}`,
+        provider: parsed.image.provider,
+        model: parsed.image.model,
+        width: parsed.image.width || 1024,
+        height: parsed.image.height || 1024,
+      };
+
+      callbacks?.onArtifact?.({
+        type: 'artifact',
+        subtype: 'image',
+        data: imageInfo,
+      });
+
+      return `Image generated: ${style} style\nURL: ${parsed.image.url}`;
+    } else {
+      return `Image generation failed: ${parsed.error?.message || parsed.error || 'Unknown error'}`;
+    }
+  } catch {
+    return result;
+  }
+}
+
+/**
+ * Execute web search tool
+ */
+async function executeWebSearchTool(
+  task: AgentTask,
+  _callbacks?: ExecutorCallbacks
+): Promise<string> {
+  // Build search query from task
+  const query = task.target || task.description;
+
+  // Execute web search
+  const result = await tavilyWebSearch.execute({
+    query,
+    max_results: 5,
+    search_depth: 'basic',
+  });
+
+  // Parse and format results
+  try {
+    const parsed = JSON.parse(result);
+    if (parsed.error) {
+      return `Web search failed: ${parsed.error}`;
+    }
+
+    // Format search results
+    const results = parsed.results || [];
+    if (results.length === 0) {
+      return 'No search results found.';
+    }
+
+    let formatted = `Found ${results.length} results:\n\n`;
+    for (const r of results.slice(0, 5)) {
+      formatted += `**${r.title}**\n${r.url}\n${r.content?.substring(0, 200)}...\n\n`;
+    }
+
+    // Include AI answer if available
+    if (parsed.answer) {
+      formatted = `**Summary:** ${parsed.answer}\n\n${formatted}`;
+    }
+
+    return formatted;
+  } catch {
+    return result;
+  }
+}
+
+/**
+ * Build prompt for document content generation
+ */
+function buildDocContentPrompt(task: AgentTask, plan: AgentPlan): string {
+  let prompt = `Generate document content for the following task.
+
+**Plan:** ${plan.title}
+**Original Request:** ${plan.original_request}
+
+**Task:**
+- Target: ${task.target}
+- Description: ${task.description}
+`;
+
+  // Add dependency results
+  if (task.dependencies.length > 0) {
+    prompt += `\n**Information from previous tasks:**\n`;
+    for (const depId of task.dependencies) {
+      const dep = plan.tasks.find((t) => t.id === depId);
+      if (dep && dep.result) {
+        prompt += `\n--- Task ${depId}: ${dep.description} ---\n${dep.result}\n`;
+      }
+    }
+  }
+
+  prompt += `\n**Instructions:**
+Generate well-structured content in markdown format that can be converted to a document.
+Include:
+- Clear headings and sections
+- Key findings or information
+- Any relevant data or analysis
+- Professional formatting suitable for a business document
+
+Output the document content directly in markdown format.`;
+
+  return prompt;
+}
+
+/**
+ * Build prompt for image generation
+ */
+function buildImagePrompt(task: AgentTask, plan: AgentPlan): string {
+  let prompt = `Create a professional ${task.target.toLowerCase()} visualization for: ${task.description}`;
+
+  // Add context from dependencies
+  if (task.dependencies.length > 0) {
+    const depResults: string[] = [];
+    for (const depId of task.dependencies) {
+      const dep = plan.tasks.find((t) => t.id === depId);
+      if (dep && dep.result) {
+        depResults.push(dep.result.substring(0, 300));
+      }
+    }
+    if (depResults.length > 0) {
+      prompt += `\n\nKey information to visualize:\n${depResults.join('\n')}`;
+    }
+  }
+
+  prompt += '\n\nStyle: Professional, clean, suitable for business presentation. Use clear typography and modern design.';
+
+  return prompt;
+}
+
+/**
+ * System prompt for document content generation
+ */
+const DOC_CONTENT_SYSTEM_PROMPT = `You are a professional document writer. Generate well-structured content in markdown format.
+
+Key principles:
+- Use clear headings (##, ###) to organize content
+- Include executive summary for longer documents
+- Use bullet points and numbered lists for clarity
+- Include relevant data and findings
+- Maintain professional tone
+- Format for easy conversion to Word/PDF
+
+Output markdown content directly.`;
 
 /**
  * Build execution prompt for the executor

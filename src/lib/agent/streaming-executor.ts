@@ -98,6 +98,30 @@ export async function executeAutonomousWithStreaming(
           });
         },
 
+        // Tool execution callbacks for streaming artifacts
+        onToolStart: (name: string, displayName: string) => {
+          sendEvent({
+            type: 'tool_start',
+            name,
+            displayName,
+          });
+        },
+
+        onToolEnd: (name: string, success: boolean, duration?: number, error?: string) => {
+          sendEvent({
+            type: 'tool_end',
+            name,
+            success,
+            duration,
+            error,
+          });
+        },
+
+        onArtifact: (event: StreamEvent) => {
+          // Forward artifact events directly to client
+          sendEvent(event);
+        },
+
         onBudgetWarning: (message: string, percentage: number) => {
           const level = percentage >= 75 ? 'high' : 'medium';
           sendEvent({
