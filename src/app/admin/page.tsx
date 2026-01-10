@@ -5211,40 +5211,36 @@ export default function AdminPage() {
                         <p className="text-xs text-gray-600 -mt-2">Configure LLM models for each agent role</p>
 
                         {/* Planner Model */}
-                        <div className="grid grid-cols-3 gap-4">
+                        <div className="grid grid-cols-2 gap-4">
                           <div>
-                            <label className="block text-sm font-medium text-gray-900 mb-1">Planner Provider</label>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">Planner Model</label>
                             <select
-                              value={editedAgent.plannerModel.provider}
+                              value={`${editedAgent.plannerModel.provider}:${editedAgent.plannerModel.model}`}
                               onChange={(e) => {
+                                const [provider, model] = e.target.value.split(':');
                                 setEditedAgent({
                                   ...editedAgent,
-                                  plannerModel: { ...editedAgent.plannerModel, provider: e.target.value as 'openai' | 'gemini' | 'mistral' }
+                                  plannerModel: { ...editedAgent.plannerModel, provider: provider as 'openai' | 'gemini' | 'mistral', model }
                                 });
                                 setAgentModified(true);
                               }}
                               className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                             >
-                              <option value="openai">OpenAI</option>
-                              <option value="gemini">Gemini</option>
-                              <option value="mistral">Mistral</option>
+                              <optgroup label="OpenAI GPT-4.1 Family">
+                                <option value="openai:gpt-4.1">GPT-4.1 (High Performance)</option>
+                                <option value="openai:gpt-4.1-mini">GPT-4.1 Mini (Balanced)</option>
+                                <option value="openai:gpt-4.1-nano">GPT-4.1 Nano (Cost-Effective)</option>
+                              </optgroup>
+                              <optgroup label="Gemini 2.5 Family">
+                                <option value="gemini:gemini-2.5-pro">Gemini 2.5 Pro</option>
+                                <option value="gemini:gemini-2.5-flash">Gemini 2.5 Flash (Balanced)</option>
+                                <option value="gemini:gemini-2.5-flash-lite">Gemini 2.5 Flash-Lite (Cost-Effective)</option>
+                              </optgroup>
+                              <optgroup label="Mistral">
+                                <option value="mistral:mistral-large-3">Mistral Large 3</option>
+                                <option value="mistral:mistral-small-3.2">Mistral Small 3.2 (Cost-Effective)</option>
+                              </optgroup>
                             </select>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-900 mb-1">Planner Model</label>
-                            <input
-                              type="text"
-                              value={editedAgent.plannerModel.model}
-                              onChange={(e) => {
-                                setEditedAgent({
-                                  ...editedAgent,
-                                  plannerModel: { ...editedAgent.plannerModel, model: e.target.value }
-                                });
-                                setAgentModified(true);
-                              }}
-                              placeholder="gpt-4o-mini"
-                              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                            />
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-gray-900 mb-1">Temperature</label>
@@ -5267,40 +5263,36 @@ export default function AdminPage() {
                         </div>
 
                         {/* Executor Model */}
-                        <div className="grid grid-cols-3 gap-4">
+                        <div className="grid grid-cols-2 gap-4">
                           <div>
-                            <label className="block text-sm font-medium text-gray-900 mb-1">Executor Provider</label>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">Executor Model</label>
                             <select
-                              value={editedAgent.executorModel.provider}
+                              value={`${editedAgent.executorModel.provider}:${editedAgent.executorModel.model}`}
                               onChange={(e) => {
+                                const [provider, model] = e.target.value.split(':');
                                 setEditedAgent({
                                   ...editedAgent,
-                                  executorModel: { ...editedAgent.executorModel, provider: e.target.value as 'openai' | 'gemini' | 'mistral' }
+                                  executorModel: { ...editedAgent.executorModel, provider: provider as 'openai' | 'gemini' | 'mistral', model }
                                 });
                                 setAgentModified(true);
                               }}
                               className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                             >
-                              <option value="openai">OpenAI</option>
-                              <option value="gemini">Gemini</option>
-                              <option value="mistral">Mistral</option>
+                              <optgroup label="OpenAI GPT-4.1 Family">
+                                <option value="openai:gpt-4.1">GPT-4.1 (High Performance)</option>
+                                <option value="openai:gpt-4.1-mini">GPT-4.1 Mini (Balanced)</option>
+                                <option value="openai:gpt-4.1-nano">GPT-4.1 Nano (Cost-Effective)</option>
+                              </optgroup>
+                              <optgroup label="Gemini 2.5 Family">
+                                <option value="gemini:gemini-2.5-pro">Gemini 2.5 Pro</option>
+                                <option value="gemini:gemini-2.5-flash">Gemini 2.5 Flash (Balanced)</option>
+                                <option value="gemini:gemini-2.5-flash-lite">Gemini 2.5 Flash-Lite (Cost-Effective)</option>
+                              </optgroup>
+                              <optgroup label="Mistral">
+                                <option value="mistral:mistral-large-3">Mistral Large 3</option>
+                                <option value="mistral:mistral-small-3.2">Mistral Small 3.2 (Cost-Effective)</option>
+                              </optgroup>
                             </select>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-900 mb-1">Executor Model</label>
-                            <input
-                              type="text"
-                              value={editedAgent.executorModel.model}
-                              onChange={(e) => {
-                                setEditedAgent({
-                                  ...editedAgent,
-                                  executorModel: { ...editedAgent.executorModel, model: e.target.value }
-                                });
-                                setAgentModified(true);
-                              }}
-                              placeholder="gpt-4o-mini"
-                              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                            />
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-gray-900 mb-1">Temperature</label>
@@ -5323,40 +5315,36 @@ export default function AdminPage() {
                         </div>
 
                         {/* Checker Model */}
-                        <div className="grid grid-cols-3 gap-4">
+                        <div className="grid grid-cols-2 gap-4">
                           <div>
-                            <label className="block text-sm font-medium text-gray-900 mb-1">Checker Provider</label>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">Checker Model</label>
                             <select
-                              value={editedAgent.checkerModel.provider}
+                              value={`${editedAgent.checkerModel.provider}:${editedAgent.checkerModel.model}`}
                               onChange={(e) => {
+                                const [provider, model] = e.target.value.split(':');
                                 setEditedAgent({
                                   ...editedAgent,
-                                  checkerModel: { ...editedAgent.checkerModel, provider: e.target.value as 'openai' | 'gemini' | 'mistral' }
+                                  checkerModel: { ...editedAgent.checkerModel, provider: provider as 'openai' | 'gemini' | 'mistral', model }
                                 });
                                 setAgentModified(true);
                               }}
                               className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                             >
-                              <option value="openai">OpenAI</option>
-                              <option value="gemini">Gemini</option>
-                              <option value="mistral">Mistral</option>
+                              <optgroup label="OpenAI GPT-4.1 Family">
+                                <option value="openai:gpt-4.1">GPT-4.1 (High Performance)</option>
+                                <option value="openai:gpt-4.1-mini">GPT-4.1 Mini (Balanced)</option>
+                                <option value="openai:gpt-4.1-nano">GPT-4.1 Nano (Cost-Effective)</option>
+                              </optgroup>
+                              <optgroup label="Gemini 2.5 Family">
+                                <option value="gemini:gemini-2.5-pro">Gemini 2.5 Pro</option>
+                                <option value="gemini:gemini-2.5-flash">Gemini 2.5 Flash (Balanced)</option>
+                                <option value="gemini:gemini-2.5-flash-lite">Gemini 2.5 Flash-Lite (Cost-Effective)</option>
+                              </optgroup>
+                              <optgroup label="Mistral">
+                                <option value="mistral:mistral-large-3">Mistral Large 3</option>
+                                <option value="mistral:mistral-small-3.2">Mistral Small 3.2 (Cost-Effective)</option>
+                              </optgroup>
                             </select>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-900 mb-1">Checker Model</label>
-                            <input
-                              type="text"
-                              value={editedAgent.checkerModel.model}
-                              onChange={(e) => {
-                                setEditedAgent({
-                                  ...editedAgent,
-                                  checkerModel: { ...editedAgent.checkerModel, model: e.target.value }
-                                });
-                                setAgentModified(true);
-                              }}
-                              placeholder="gpt-4o-mini"
-                              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                            />
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-gray-900 mb-1">Temperature</label>
@@ -5379,40 +5367,36 @@ export default function AdminPage() {
                         </div>
 
                         {/* Summarizer Model */}
-                        <div className="grid grid-cols-3 gap-4">
+                        <div className="grid grid-cols-2 gap-4">
                           <div>
-                            <label className="block text-sm font-medium text-gray-900 mb-1">Summarizer Provider</label>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">Summarizer Model</label>
                             <select
-                              value={editedAgent.summarizerModel.provider}
+                              value={`${editedAgent.summarizerModel.provider}:${editedAgent.summarizerModel.model}`}
                               onChange={(e) => {
+                                const [provider, model] = e.target.value.split(':');
                                 setEditedAgent({
                                   ...editedAgent,
-                                  summarizerModel: { ...editedAgent.summarizerModel, provider: e.target.value as 'openai' | 'gemini' | 'mistral' }
+                                  summarizerModel: { ...editedAgent.summarizerModel, provider: provider as 'openai' | 'gemini' | 'mistral', model }
                                 });
                                 setAgentModified(true);
                               }}
                               className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                             >
-                              <option value="openai">OpenAI</option>
-                              <option value="gemini">Gemini</option>
-                              <option value="mistral">Mistral</option>
+                              <optgroup label="OpenAI GPT-4.1 Family">
+                                <option value="openai:gpt-4.1">GPT-4.1 (High Performance)</option>
+                                <option value="openai:gpt-4.1-mini">GPT-4.1 Mini (Balanced)</option>
+                                <option value="openai:gpt-4.1-nano">GPT-4.1 Nano (Cost-Effective)</option>
+                              </optgroup>
+                              <optgroup label="Gemini 2.5 Family">
+                                <option value="gemini:gemini-2.5-pro">Gemini 2.5 Pro</option>
+                                <option value="gemini:gemini-2.5-flash">Gemini 2.5 Flash (Balanced)</option>
+                                <option value="gemini:gemini-2.5-flash-lite">Gemini 2.5 Flash-Lite (Cost-Effective)</option>
+                              </optgroup>
+                              <optgroup label="Mistral">
+                                <option value="mistral:mistral-large-3">Mistral Large 3</option>
+                                <option value="mistral:mistral-small-3.2">Mistral Small 3.2 (Cost-Effective)</option>
+                              </optgroup>
                             </select>
-                          </div>
-                          <div>
-                            <label className="block text-sm font-medium text-gray-900 mb-1">Summarizer Model</label>
-                            <input
-                              type="text"
-                              value={editedAgent.summarizerModel.model}
-                              onChange={(e) => {
-                                setEditedAgent({
-                                  ...editedAgent,
-                                  summarizerModel: { ...editedAgent.summarizerModel, model: e.target.value }
-                                });
-                                setAgentModified(true);
-                              }}
-                              placeholder="gpt-4o-mini"
-                              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                            />
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-gray-900 mb-1">Temperature</label>

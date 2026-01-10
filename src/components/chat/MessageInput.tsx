@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react';
 import { ArrowUp } from 'lucide-react';
 import VoiceInput from './VoiceInput';
 import FileUpload from './FileUpload';
+import ModeToggle, { ChatMode } from './ModeToggle';
 
 interface UrlSourceInfo {
   filename: string;
@@ -13,7 +14,7 @@ interface UrlSourceInfo {
 }
 
 interface MessageInputProps {
-  onSend: (message: string) => void;
+  onSend: (message: string, mode?: ChatMode) => void;
   disabled?: boolean;
   threadId: string | null;
   currentUploads: string[];
@@ -30,6 +31,7 @@ export default function MessageInput({
   onUrlSourceAdded,
 }: MessageInputProps) {
   const [message, setMessage] = useState('');
+  const [mode, setMode] = useState<ChatMode>('normal');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // Auto-resize textarea
@@ -42,8 +44,10 @@ export default function MessageInput({
 
   const handleSubmit = () => {
     if (message.trim() && !disabled) {
-      onSend(message.trim());
+      onSend(message.trim(), mode);
       setMessage('');
+      // Reset mode to normal after sending
+      setMode('normal');
     }
   };
 
@@ -61,6 +65,11 @@ export default function MessageInput({
 
   return (
     <div className="bg-white p-4 safe-area-bottom">
+      {/* Mode Toggle - appears above input box */}
+      <div className="mb-3">
+        <ModeToggle mode={mode} onModeChange={setMode} disabled={disabled} />
+      </div>
+
       {/* Claude-style contained input card */}
       <div className="bg-gray-50 rounded-2xl border border-gray-200 p-3">
         {/* Uploads indicator */}

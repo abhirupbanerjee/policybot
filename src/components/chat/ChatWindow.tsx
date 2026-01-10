@@ -306,7 +306,7 @@ export default function ChatWindow({
     return null;
   }, [onThreadCreated]);
 
-  const sendMessage = useCallback(async (content: string) => {
+  const sendMessage = useCallback(async (content: string, mode?: 'normal' | 'autonomous') => {
     setError(null);
 
     let currentThreadId = threadId;
@@ -327,7 +327,7 @@ export default function ChatWindow({
     setMessages((prev) => [...prev, userMessage]);
     setLoading(true);
 
-    await sendStreamingMessage(content, currentThreadId);
+    await sendStreamingMessage(content, currentThreadId, mode);
   }, [threadId, createThread, sendStreamingMessage]);
 
   const handleUploadComplete = (filename: string) => {

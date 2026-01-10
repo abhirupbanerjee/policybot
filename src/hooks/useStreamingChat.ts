@@ -60,7 +60,7 @@ export interface UseStreamingChatReturn {
   /** Current streaming state */
   state: StreamingState;
   /** Send a message and start streaming */
-  sendMessage: (message: string, threadId: string) => Promise<void>;
+  sendMessage: (message: string, threadId: string, mode?: 'normal' | 'autonomous') => Promise<void>;
   /** Abort current streaming */
   abort: () => void;
   /** Toggle processing details expansion */
@@ -258,7 +258,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
   /**
    * Send message and start streaming
    */
-  const sendMessage = useCallback(async (message: string, threadId: string) => {
+  const sendMessage = useCallback(async (message: string, threadId: string, mode: 'normal' | 'autonomous' = 'normal') => {
     // Abort any existing stream
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -290,7 +290,7 @@ export function useStreamingChat(options: UseStreamingChatOptions = {}): UseStre
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ message, threadId }),
+        body: JSON.stringify({ message, threadId, mode }),
         signal: abortControllerRef.current.signal,
       });
 
