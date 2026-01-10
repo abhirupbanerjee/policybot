@@ -23,22 +23,22 @@ export interface StoredAgentModelConfigs {
 const DEFAULT_CONFIGS: StoredAgentModelConfigs = {
   planner: {
     provider: 'gemini',
-    model: 'gemini-2.0-flash-exp',
+    model: 'gemini-2.5-flash',
     temperature: 0.3,
   },
   executor: {
     provider: 'openai',
-    model: 'gpt-4o-mini',
+    model: 'gpt-4.1-mini',
     temperature: 0.4,
   },
   checker: {
     provider: 'openai',
-    model: 'gpt-4o-mini',
+    model: 'gpt-4.1-mini',
     temperature: 0.2,
   },
   summarizer: {
     provider: 'openai',
-    model: 'gpt-4o-mini',
+    model: 'gpt-4.1-mini',
     temperature: 0.5,
   },
 };

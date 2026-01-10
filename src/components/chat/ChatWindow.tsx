@@ -175,6 +175,7 @@ export default function ChatWindow({
     sendMessage: sendStreamingMessage,
     toggleProcessingDetails,
     reset: resetStreaming,
+    abort: abortStreaming,
   } = useStreamingChat({
     onComplete: handleStreamComplete,
     onError: handleStreamError,
@@ -436,6 +437,10 @@ export default function ChatWindow({
             <ProcessingIndicator
               details={streamingState.processingDetails}
               onToggleExpand={toggleProcessingDetails}
+              onAbort={() => {
+                abortStreaming();
+                setLoading(false);
+              }}
             />
 
             {streamingState.currentContent && (

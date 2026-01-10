@@ -20,12 +20,14 @@ import {
   XCircle,
   Loader2,
   Zap,
+  StopCircle,
 } from 'lucide-react';
 import type { ProcessingDetails, StreamPhase, ToolExecutionState } from '@/types';
 
 interface ProcessingIndicatorProps {
   details: ProcessingDetails;
   onToggleExpand: () => void;
+  onAbort?: () => void;
 }
 
 /**
@@ -100,6 +102,7 @@ function formatDuration(ms?: number): string {
 export default function ProcessingIndicator({
   details,
   onToggleExpand,
+  onAbort,
 }: ProcessingIndicatorProps) {
   const phaseInfo = getPhaseInfo(details.phase);
 
@@ -116,7 +119,7 @@ export default function ProcessingIndicator({
   }, [details.toolsExecuted]);
 
   return (
-    <div className="bg-gray-50 border border-gray-200 rounded-xl overflow-hidden mb-4">
+    <div className="bg-gray-50 border border-gray-200 rounded-xl overflow-hidden mb-4 relative">
       {/* Collapsed Bar */}
       <button
         onClick={onToggleExpand}
@@ -150,6 +153,20 @@ export default function ProcessingIndicator({
           )}
         </div>
       </button>
+
+      {/* Stop Button */}
+      {onAbort && details.phase !== 'complete' && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onAbort();
+          }}
+          className="absolute right-12 top-1/2 -translate-y-1/2 p-1.5 rounded-lg text-red-500 hover:bg-red-50 hover:text-red-600 transition-colors"
+          title="Stop processing"
+        >
+          <StopCircle size={18} />
+        </button>
+      )}
 
       {/* Expanded Details */}
       {details.isExpanded && (
