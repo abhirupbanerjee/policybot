@@ -34,6 +34,7 @@ export const collectionNames = {
 } as const;
 
 let client: ChromaClient | null = null;
+let connectionPromise: Promise<ChromaClient> | null = null;
 
 // Cache for collections
 const collectionCache: Map<string, Collection> = new Map();
@@ -42,14 +43,33 @@ const collectionCache: Map<string, Collection> = new Map();
  * Get or create the ChromaDB client
  */
 export async function getChromaClient(): Promise<ChromaClient> {
-  if (!client) {
+  // Return existing client if already connected
+  if (client) return client;
+
+  // Return existing connection promise to prevent race conditions
+  if (connectionPromise) return connectionPromise;
+
+  // Create new connection promise
+  connectionPromise = (async () => {
     const host = process.env.CHROMA_HOST || 'localhost';
     const port = process.env.CHROMA_PORT || '8000';
-    client = new ChromaClient({
+    const newClient = new ChromaClient({
       path: `http://${host}:${port}`,
     });
-  }
-  return client;
+
+    // Verify connection with heartbeat
+    try {
+      await newClient.heartbeat();
+    } catch (error) {
+      connectionPromise = null;
+      throw new Error(`ChromaDB connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+
+    client = newClient;
+    return newClient;
+  })();
+
+  return connectionPromise;
 }
 
 /**

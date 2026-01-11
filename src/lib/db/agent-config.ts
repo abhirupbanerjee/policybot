@@ -10,6 +10,7 @@ export interface AgentModelConfig {
   provider: 'openai' | 'gemini' | 'mistral';
   model: string;
   temperature: number;
+  max_tokens?: number;
 }
 
 export interface StoredAgentModelConfigs {
@@ -25,21 +26,25 @@ const DEFAULT_CONFIGS: StoredAgentModelConfigs = {
     provider: 'gemini',
     model: 'gemini-2.5-flash',
     temperature: 0.3,
+    max_tokens: 8192, // Planner needs large output for per-item task lists
   },
   executor: {
     provider: 'openai',
     model: 'gpt-4.1-mini',
     temperature: 0.4,
+    max_tokens: 4096,
   },
   checker: {
     provider: 'openai',
     model: 'gpt-4.1-mini',
     temperature: 0.2,
+    max_tokens: 2048, // Checker outputs are small
   },
   summarizer: {
     provider: 'openai',
     model: 'gpt-4.1-mini',
     temperature: 0.5,
+    max_tokens: 4096,
   },
 };
 

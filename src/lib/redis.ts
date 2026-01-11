@@ -2,20 +2,31 @@ import { createClient, RedisClientType } from 'redis';
 import crypto from 'crypto';
 
 let client: RedisClientType | null = null;
+let connectionPromise: Promise<RedisClientType> | null = null;
 
 export async function getRedisClient(): Promise<RedisClientType> {
-  if (!client) {
-    client = createClient({
+  // Return existing client if already connected
+  if (client) return client;
+
+  // Return existing connection promise to prevent race conditions
+  if (connectionPromise) return connectionPromise;
+
+  // Create new connection promise
+  connectionPromise = (async (): Promise<RedisClientType> => {
+    const newClient: RedisClientType = createClient({
       url: process.env.REDIS_URL || 'redis://localhost:6379',
     });
 
-    client.on('error', (err) => {
+    newClient.on('error', (err) => {
       console.error('Redis error:', err);
     });
 
-    await client.connect();
-  }
-  return client;
+    await newClient.connect();
+    client = newClient;
+    return newClient;
+  })();
+
+  return connectionPromise;
 }
 
 export function hashQuery(query: string): string {
