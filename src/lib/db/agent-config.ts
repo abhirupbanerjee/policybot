@@ -50,6 +50,7 @@ const DEFAULT_CONFIGS: StoredAgentModelConfigs = {
 
 /**
  * Get agent model configurations from database
+ * Merges stored configs with defaults to ensure all fields (including max_tokens) are present
  */
 export function getAgentModelConfigs(): StoredAgentModelConfigs {
   try {
@@ -58,11 +59,23 @@ export function getAgentModelConfigs(): StoredAgentModelConfigs {
     const checkerJson = getSetting('agent_model_checker', '');
     const summarizerJson = getSetting('agent_model_summarizer', '');
 
+    // Merge stored configs with defaults to ensure max_tokens is always present
+    // Order: defaults first, then stored values override (except max_tokens which uses default if not stored)
+    const mergeConfig = (stored: string, defaults: AgentModelConfig): AgentModelConfig => {
+      if (!stored) return defaults;
+      const parsed = JSON.parse(stored);
+      return {
+        ...defaults,           // Start with defaults (includes max_tokens)
+        ...parsed,             // Override with stored values
+        max_tokens: parsed.max_tokens ?? defaults.max_tokens, // Ensure max_tokens has a value
+      };
+    };
+
     return {
-      planner: plannerJson ? JSON.parse(plannerJson) : DEFAULT_CONFIGS.planner,
-      executor: executorJson ? JSON.parse(executorJson) : DEFAULT_CONFIGS.executor,
-      checker: checkerJson ? JSON.parse(checkerJson) : DEFAULT_CONFIGS.checker,
-      summarizer: summarizerJson ? JSON.parse(summarizerJson) : DEFAULT_CONFIGS.summarizer,
+      planner: mergeConfig(plannerJson, DEFAULT_CONFIGS.planner),
+      executor: mergeConfig(executorJson, DEFAULT_CONFIGS.executor),
+      checker: mergeConfig(checkerJson, DEFAULT_CONFIGS.checker),
+      summarizer: mergeConfig(summarizerJson, DEFAULT_CONFIGS.summarizer),
     };
   } catch (error) {
     console.error('[Agent Config] Error loading model configs:', error);

@@ -36,8 +36,9 @@ export const collectionNames = {
 let client: ChromaClient | null = null;
 let connectionPromise: Promise<ChromaClient> | null = null;
 
-// Cache for collections
+// Cache for collections with size limit to prevent unbounded memory growth
 const collectionCache: Map<string, Collection> = new Map();
+const MAX_CACHED_COLLECTIONS = 50;
 
 /**
  * Get or create the ChromaDB client
@@ -84,6 +85,12 @@ export async function getCollectionByName(name: string): Promise<Collection> {
     name,
     metadata: { 'hnsw:space': 'cosine' },
   });
+
+  // Evict oldest entry if cache is full
+  if (collectionCache.size >= MAX_CACHED_COLLECTIONS) {
+    const firstKey = collectionCache.keys().next().value;
+    if (firstKey) collectionCache.delete(firstKey);
+  }
 
   collectionCache.set(name, collection);
   return collection;

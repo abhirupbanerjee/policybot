@@ -313,38 +313,39 @@ return (
 
 ## Configuration
 
+### Default Model Configuration
+
+The default models used at runtime are defined in [src/lib/db/agent-config.ts](src/lib/db/agent-config.ts):
+
+| Agent Role | Provider | Model | Temperature |
+|------------|----------|-------|-------------|
+| Planner | Gemini | gemini-2.5-flash | 0.3 |
+| Executor | OpenAI | gpt-4.1-mini | 0.4 |
+| Checker | OpenAI | gpt-4.1-mini | 0.2 |
+| Summarizer | OpenAI | gpt-4.1-mini | 0.5 |
+
 ### Model Presets
 
-Model presets are defined in [src/types/agent.ts](src/types/agent.ts):
+Additional presets for different use cases are defined in [src/types/agent.ts](src/types/agent.ts):
 
-```typescript
-export const MODEL_PRESETS: Record<string, AgentModelConfig> = {
-  default: {
-    planner: { provider: 'gemini', model: 'gemini-2.0-flash-exp', temperature: 0.3 },
-    executor: { provider: 'openai', model: 'gpt-4o-mini', temperature: 0.4 },
-    checker: { provider: 'gemini', model: 'gemini-2.0-flash-exp', temperature: 0.2 },
-    summarizer: { provider: 'gemini', model: 'gemini-2.0-flash-exp', temperature: 0.5 },
-  },
-  quality: {
-    planner: { provider: 'gemini', model: 'gemini-2.0-flash-exp', temperature: 0.3 },
-    executor: { provider: 'openai', model: 'gpt-4o', temperature: 0.4 },
-    checker: { provider: 'openai', model: 'gpt-4o', temperature: 0.2 },
-    summarizer: { provider: 'openai', model: 'gpt-4o', temperature: 0.5 },
-  },
-  economy: {
-    planner: { provider: 'mistral', model: 'mistral-large-latest', temperature: 0.3 },
-    executor: { provider: 'openai', model: 'gpt-4o-mini', temperature: 0.4 },
-    checker: { provider: 'mistral', model: 'mistral-medium-latest', temperature: 0.2 },
-    summarizer: { provider: 'openai', model: 'gpt-4o-mini', temperature: 0.5 },
-  },
-  compliance: {
-    planner: { provider: 'gemini', model: 'gemini-2.0-flash-exp', temperature: 0.2 },
-    executor: { provider: 'gemini', model: 'gemini-2.0-flash-exp', temperature: 0.3 },
-    checker: { provider: 'openai', model: 'gpt-4o', temperature: 0.1 },
-    summarizer: { provider: 'openai', model: 'gpt-4o', temperature: 0.4 },
-  },
-};
-```
+| Preset | Use Case | Planner | Executor | Checker | Summarizer |
+|--------|----------|---------|----------|---------|------------|
+| **quality** | Best results | gemini-2.0-flash-exp | gpt-4o | gpt-4o | gpt-4o |
+| **economy** | Lower cost | mistral-large-latest | gpt-4o-mini | mistral-medium-latest | gpt-4o-mini |
+| **compliance** | Regulatory work | gemini-2.0-flash-exp | gemini-2.0-flash-exp | gpt-4o | gpt-4o |
+
+### Token Limits
+
+Each agent role has a configured maximum token limit for LLM responses:
+
+| Agent Role | Max Tokens | Purpose |
+|------------|------------|---------|
+| Planner | 8192 | Supports large per-item task breakdowns (up to 50 tasks) |
+| Executor | 4096 | Task execution responses |
+| Checker | 2048 | Quality validation (small outputs) |
+| Summarizer | 4096 | Final plan summaries |
+
+These limits are defined in `src/lib/db/agent-config.ts` and can be customized via database settings.
 
 ### Budget Configuration
 
@@ -461,6 +462,57 @@ Final Response to User
 
 ---
 
+## Known Issues & Resolutions
+
+This section documents bugs and issues encountered during autonomous mode development and their resolutions.
+
+### Resolved Issues
+
+#### 1. Conversation History Not Accessible
+**Symptom:** When referencing data from previous messages (e.g., "Create reports for each item in the above list"), the planner would fail to find the data and either search the web unnecessarily or create incorrect tasks.
+
+**Status:** ✅ RESOLVED
+
+**Resolution:** The planner now receives recent conversation history and explicitly checks both the current user message AND previous messages for referenced data.
+
+---
+
+#### 2. Large Task Plans Failing
+**Symptom:** Plans with many items (e.g., 20+ SOEs requiring individual reports) would fail during the planning phase with truncated or malformed output.
+
+**Status:** ✅ RESOLVED
+
+**Resolution:** Token limits for the planner were increased to support larger task breakdowns. The planner can now generate up to 50 tasks for per-item processing.
+
+---
+
+#### 3. No Way to Cancel Long-Running Plans
+**Symptom:** Users had no way to stop a long-running autonomous plan and were forced to wait for completion or refresh the page.
+
+**Status:** ✅ RESOLVED
+
+**Resolution:** A kill button was added to the processing indicator, allowing users to cancel autonomous plans at any time.
+
+---
+
+#### 4. Unclear Progress for Large Batches
+**Symptom:** During execution of large plans (30+ tasks), users received no feedback about progress or expected duration.
+
+**Status:** ✅ RESOLVED
+
+**Resolution:** Status messages now indicate plan complexity, expected duration for large batches, and the number of documents being generated.
+
+---
+
+### Current Limitations
+
+#### Per-Item Processing Limit
+**Behavior:** When requesting individual outputs for many items using phrases like "for each" or "create separate reports", the system processes a maximum of **25 items** per request.
+
+**Workaround:** For lists with more than 25 items, make additional requests for the remaining items. The system will include a message explaining this limitation when it truncates a large list.
+
+---
+
 ## Troubleshooting
 
 ### Common Issues
@@ -531,6 +583,6 @@ All core functionality has been implemented:
 
 ---
 
-**Last Updated:** 2026-01-09
+**Last Updated:** 2026-01-10
 **Implementation Time:** ~18-20 hours
-**Version:** 1.0 (Autonomous Mode MVP)
+**Version:** 1.1 (Bug Fixes & Improvements)

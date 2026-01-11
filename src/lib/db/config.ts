@@ -179,76 +179,33 @@ export const BRANDING_ICONS = [
   { key: 'policy', label: 'Policy', lucideIcon: 'ScrollText', png192: '/icons/bot/policy-192.png', png512: '/icons/bot/policy-512.png' },
 ] as const;
 
-// ============ Preset Configurations ============
+// ============ Available Models ============
 
-export interface ModelPreset {
+export interface AvailableModel {
   id: string;
   name: string;
   description: string;
-  model: string;
-  llmSettings: LlmSettings;
-  ragSettings: RagSettings;
+  provider: 'openai' | 'mistral' | 'gemini' | 'ollama';
+  defaultMaxTokens: number;
 }
 
 /**
- * Convert config preset to ModelPreset format
+ * Get available models from JSON config
+ * Each model preset in config becomes an available model option
  */
-function configToPreset(id: string, config: ModelPresetConfig): ModelPreset {
-  return {
+export function getAvailableModels(): AvailableModel[] {
+  const configPresets = getModelPresetsFromConfig();
+  return Object.entries(configPresets).map(([id, config]) => ({
     id,
     name: config.name,
     description: config.description,
-    model: id,
-    llmSettings: {
-      model: id,
-      temperature: config.temperature,
-      maxTokens: config.maxTokens,
-      promptOptimizationMaxTokens: 2000, // Default for prompt optimization
-    },
-    ragSettings: {
-      topKChunks: config.topKChunks,
-      maxContextChunks: config.maxContextChunks,
-      similarityThreshold: config.similarityThreshold,
-      chunkSize: config.chunkSize,
-      chunkOverlap: config.chunkOverlap,
-      queryExpansionEnabled: config.queryExpansionEnabled,
-      cacheEnabled: config.cacheEnabled,
-      cacheTTLSeconds: config.cacheTTLSeconds,
-    },
-  };
+    provider: config.provider as 'openai' | 'mistral' | 'gemini' | 'ollama',
+    defaultMaxTokens: config.maxTokens,
+  }));
 }
 
-/**
- * Get model presets from JSON config
- * Falls back to hardcoded defaults if config unavailable
- */
-export function getModelPresets(): ModelPreset[] {
-  const configPresets = getModelPresetsFromConfig();
-  return Object.entries(configPresets).map(([id, config]) => configToPreset(id, config));
-}
-
-// For backward compatibility - lazy loaded from config
-let _cachedPresets: ModelPreset[] | null = null;
-export const MODEL_PRESETS: ModelPreset[] = new Proxy([] as ModelPreset[], {
-  get(_target, prop) {
-    if (_cachedPresets === null) {
-      _cachedPresets = getModelPresets();
-    }
-    if (prop === 'length') return _cachedPresets.length;
-    if (typeof prop === 'string' && !isNaN(Number(prop))) {
-      return _cachedPresets[Number(prop)];
-    }
-    if (prop === Symbol.iterator) {
-      return function* () {
-        for (const preset of _cachedPresets!) yield preset;
-      };
-    }
-    return Reflect.get(_cachedPresets, prop);
-  },
-});
-
-// Default preset ID (loaded from config)
-export const DEFAULT_PRESET_ID = getDefaultPresetId();
+// Default model ID (loaded from config)
+export const DEFAULT_MODEL_ID = getDefaultPresetId();
 
 // Setting keys
 export type SettingKey =
@@ -616,7 +573,7 @@ export function getModelTokenLimits(): ModelTokenLimits {
 
 /**
  * Get the effective max tokens for a specific model
- * Priority: Admin override > Model preset > Default fallback
+ * Priority: Admin override > Model default > Fallback
  */
 export function getEffectiveMaxTokens(model: string): number {
   // Check for admin override
@@ -627,11 +584,11 @@ export function getEffectiveMaxTokens(model: string): number {
     return override;
   }
 
-  // Fall back to model preset
-  const presets = getModelPresets();
-  const preset = presets.find(p => p.id === model);
-  if (preset) {
-    return preset.llmSettings.maxTokens;
+  // Fall back to model's default max tokens
+  const models = getAvailableModels();
+  const modelConfig = models.find(m => m.id === model);
+  if (modelConfig) {
+    return modelConfig.defaultMaxTokens;
   }
 
   // Default fallback

@@ -73,54 +73,6 @@ export interface AgentModelConfig {
   summarizer: ModelSpec;
 }
 
-export const DEFAULT_MODEL_CONFIG: AgentModelConfig = {
-  planner: {
-    provider: 'gemini',
-    model: 'gemini-2.0-flash-exp',
-    temperature: 0.3,
-  },
-  executor: {
-    provider: 'openai',
-    model: 'gpt-4o',
-    temperature: 0.4,
-  },
-  checker: {
-    provider: 'openai',
-    model: 'gpt-4o-mini',
-    temperature: 0.2,
-  },
-  summarizer: {
-    provider: 'openai',
-    model: 'gpt-4o-mini',
-    temperature: 0.5,
-  },
-};
-
-// Model presets for different use cases
-export const MODEL_PRESETS: Record<string, AgentModelConfig> = {
-  default: DEFAULT_MODEL_CONFIG,
-
-  quality: {
-    planner: { provider: 'gemini', model: 'gemini-2.0-flash-exp', temperature: 0.3 },
-    executor: { provider: 'openai', model: 'gpt-4o', temperature: 0.4 },
-    checker: { provider: 'openai', model: 'gpt-4o', temperature: 0.2 },
-    summarizer: { provider: 'openai', model: 'gpt-4o', temperature: 0.5 },
-  },
-
-  economy: {
-    planner: { provider: 'mistral', model: 'mistral-large-latest', temperature: 0.3 },
-    executor: { provider: 'openai', model: 'gpt-4o-mini', temperature: 0.4 },
-    checker: { provider: 'mistral', model: 'mistral-medium-latest', temperature: 0.2 },
-    summarizer: { provider: 'openai', model: 'gpt-4o-mini', temperature: 0.5 },
-  },
-
-  compliance: {
-    planner: { provider: 'gemini', model: 'gemini-2.0-flash-exp', temperature: 0.2 },
-    executor: { provider: 'gemini', model: 'gemini-2.0-flash-exp', temperature: 0.3 },
-    checker: { provider: 'openai', model: 'gpt-4o', temperature: 0.1 },
-    summarizer: { provider: 'openai', model: 'gpt-4o', temperature: 0.4 },
-  },
-};
 
 // ============ Task & Plan Types ============
 

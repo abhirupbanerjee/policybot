@@ -304,6 +304,14 @@ export async function ragQuery(
   memoryContext?: string,
   summaryContext?: string
 ): Promise<RAGResponse> {
+  // Input validation
+  if (!userMessage?.trim()) {
+    throw new Error('User message is required');
+  }
+  if (userMessage.length > 10000) {
+    throw new Error('Message exceeds maximum length (10000 characters)');
+  }
+
   // Get RAG settings from SQLite config
   const ragSettings = getRagSettings();
   const { cacheEnabled, cacheTTLSeconds, queryExpansionEnabled } = ragSettings;

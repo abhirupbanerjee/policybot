@@ -32,9 +32,8 @@ import {
   setTokenLimitsSettings,
   getSettingMetadata,
   deleteSetting,
-  MODEL_PRESETS,
+  getAvailableModels,
   BRANDING_ICONS,
-  DEFAULT_PRESET_ID,
   getDefaultSystemPrompt,
   setPWASettings,
 } from '@/lib/db/config';
@@ -42,26 +41,7 @@ import { getConfigValue } from '@/lib/config-loader';
 import { invalidateQueryCache, invalidateTavilyCache } from '@/lib/redis';
 import type { ApiError } from '@/types';
 
-// Dynamically generate available models from MODEL_PRESETS (single source of truth)
-// Each preset becomes an available model option
-// Note: Must be a function because MODEL_PRESETS is a lazy-loaded Proxy
-function getAvailableModels() {
-  return Array.from(MODEL_PRESETS).map(preset => ({
-    id: preset.model,
-    name: preset.name,
-    description: preset.description,
-    provider: getProviderFromModel(preset.model),
-  }));
-}
-
-// Helper to determine provider from model name
-function getProviderFromModel(model: string): 'openai' | 'mistral' | 'ollama' | 'azure' | 'gemini' {
-  if (model.startsWith('ollama-')) return 'ollama';
-  if (model.startsWith('mistral') || model.startsWith('ministral')) return 'mistral';
-  if (model.startsWith('azure-')) return 'azure';
-  if (model.startsWith('gemini')) return 'gemini';
-  return 'openai';
-}
+// Available models are now loaded from getAvailableModels() in db/config
 
 export async function GET() {
   try {
@@ -183,17 +163,12 @@ export async function GET() {
       },
       retentionSettings,
       availableModels: getAvailableModels(),
-      modelPresets: MODEL_PRESETS,
       brandingIcons: BRANDING_ICONS,
       models: {
         transcription: getConfigValue('models.transcription', 'whisper-1'),
       },
       defaults: {
-        // Return true hardcoded defaults from the default preset
-        rag: MODEL_PRESETS.find(p => p.id === DEFAULT_PRESET_ID)?.ragSettings,
-        llm: MODEL_PRESETS.find(p => p.id === DEFAULT_PRESET_ID)?.llmSettings,
         systemPrompt: getDefaultSystemPrompt(),
-        presetId: DEFAULT_PRESET_ID,
         acronyms: { mappings: {} },
         tavily: getTavilySettings(),
         branding: getBrandingSettings(),
@@ -537,30 +512,6 @@ export async function PUT(request: NextRequest) {
           threadRetentionDays,
           storageAlertThreshold,
         }, user.email);
-        break;
-      }
-
-      case 'preset': {
-        // Apply a model preset (updates both LLM and RAG settings)
-        const { presetId } = settings;
-
-        const preset = MODEL_PRESETS.find(p => p.id === presetId);
-        if (!preset) {
-          return NextResponse.json<ApiError>(
-            { error: 'Invalid preset selected', code: 'VALIDATION_ERROR' },
-            { status: 400 }
-          );
-        }
-
-        // Apply both LLM and RAG settings from the preset
-        const updatedLlm = setLlmSettings(preset.llmSettings, user.email);
-        const updatedRag = setRagSettings(preset.ragSettings, user.email);
-
-        result = {
-          preset: preset,
-          llm: updatedLlm,
-          rag: updatedRag,
-        };
         break;
       }
 

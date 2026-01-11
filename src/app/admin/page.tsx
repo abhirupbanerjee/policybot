@@ -74,13 +74,6 @@ interface AcronymMappings {
   updatedBy: string;
 }
 
-interface AvailableModel {
-  id: string;
-  name: string;
-  description: string;
-  provider?: 'openai' | 'mistral' | 'ollama' | 'azure';
-}
-
 interface ProviderStatus {
   provider: string;
   available: boolean;
@@ -108,26 +101,12 @@ interface RerankerProviderStatus {
   latency?: number;
 }
 
-interface ModelPreset {
+interface AvailableModel {
   id: string;
   name: string;
   description: string;
-  model: string;
-  llmSettings: {
-    model: string;
-    temperature: number;
-    maxTokens: number;
-  };
-  ragSettings: {
-    topKChunks: number;
-    maxContextChunks: number;
-    similarityThreshold: number;
-    chunkSize: number;
-    chunkOverlap: number;
-    queryExpansionEnabled: boolean;
-    cacheEnabled: boolean;
-    cacheTTLSeconds: number;
-  };
+  provider: 'openai' | 'mistral' | 'gemini' | 'ollama';
+  defaultMaxTokens: number;
 }
 
 type TabType = 'dashboard' | 'documents' | 'categories' | 'users' | 'settings' | 'stats' | 'prompts' | 'tools' | 'workspaces';
@@ -245,6 +224,7 @@ interface AgentModelConfig {
   provider: 'openai' | 'gemini' | 'mistral';
   model: string;
   temperature: number;
+  max_tokens?: number;
 }
 
 interface AgentSettings {
@@ -428,7 +408,6 @@ export default function AdminPage() {
   const [toolsSection, setToolsSection] = useState<ToolsSection>('management');
 
   // LLM collapse state
-  const [llmPresetsExpanded, setLlmPresetsExpanded] = useState(true);
   const [llmSettingsExpanded, setLlmSettingsExpanded] = useState(true);
   const [llmTokenLimitsExpanded, setLlmTokenLimitsExpanded] = useState(false);
   const [ragSettings, setRagSettings] = useState<RAGSettings | null>(null);
@@ -459,7 +438,6 @@ export default function AdminPage() {
   const [editedSuperuser, setEditedSuperuser] = useState<Omit<SuperuserSettingsState, 'updatedAt' | 'updatedBy'> | null>(null);
   const [transcriptionModel, setTranscriptionModel] = useState<string>('whisper-1');
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
-  const [modelPresets, setModelPresets] = useState<ModelPreset[]>([]);
   const [providerStatus, setProviderStatus] = useState<Record<string, ProviderStatus>>({});
   const [serviceStatus, setServiceStatus] = useState<ServiceStatus[]>([]);
 
@@ -468,7 +446,6 @@ export default function AdminPage() {
   const [dashboardProviderFilter, setDashboardProviderFilter] = useState<string>('all');
   const [dashboardSearch, setDashboardSearch] = useState<string>('');
   const [providersLoading, setProvidersLoading] = useState(true);
-  const [applyingPreset, setApplyingPreset] = useState(false);
   const [restoringDefaults, setRestoringDefaults] = useState(false);
   const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
   const [settingsLoading, setSettingsLoading] = useState(true);
@@ -720,7 +697,6 @@ export default function AdminPage() {
         setTranscriptionModel(data.models.transcription);
       }
       setAvailableModels((data.availableModels || []).filter(Boolean));
-      setModelPresets((data.modelPresets || []).filter(Boolean));
       setRagModified(false);
       setLlmModified(false);
       setAcronymsModified(false);
@@ -1817,51 +1793,7 @@ export default function AdminPage() {
     handleModelTokenChange(model, 'default');
   };
 
-  // Preset handlers
-  const handleApplyPreset = async (presetId: string) => {
-    setApplyingPreset(true);
-    setError(null);
-
-    try {
-      const response = await fetch('/api/admin/settings', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: 'preset', settings: { presetId } }),
-      });
-
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to apply preset');
-      }
-
-      const result = await response.json();
-
-      // Update LLM settings
-      setLlmSettings({
-        ...result.settings.llm,
-        updatedAt: new Date().toISOString(),
-        updatedBy: 'admin',
-      });
-      setEditedLlm(result.settings.llm);
-
-      // Update RAG settings
-      setRagSettings({
-        ...result.settings.rag,
-        updatedAt: new Date().toISOString(),
-        updatedBy: 'admin',
-      });
-      setEditedRag(result.settings.rag);
-
-      setLlmModified(false);
-      setRagModified(false);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to apply preset');
-    } finally {
-      setApplyingPreset(false);
-    }
-  };
-
-  // Restore all settings to defaults (gpt-4.1-mini preset + default system prompt)
+  // Restore all settings to defaults
   const handleRestoreAllDefaults = async () => {
     setRestoringDefaults(true);
     setError(null);
@@ -3389,92 +3321,7 @@ export default function AdminPage() {
               {/* LLM Settings Section */}
               {settingsSection === 'llm' && (
                 <div className="space-y-4">
-                  {/* Model Presets Card */}
-                  <div className="bg-white rounded-lg border shadow-sm">
-                    <div
-                      className="px-6 py-4 border-b cursor-pointer hover:bg-gray-50 transition-colors"
-                      onClick={() => setLlmPresetsExpanded(!llmPresetsExpanded)}
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <button className="p-1 hover:bg-gray-100 rounded">
-                            {llmPresetsExpanded ? <ChevronUp size={18} className="text-gray-500" /> : <ChevronDown size={18} className="text-gray-500" />}
-                          </button>
-                          <div>
-                            <h2 className="font-semibold text-gray-900">Quick Presets</h2>
-                            <p className="text-sm text-gray-500">Apply recommended model + RAG configurations</p>
-                          </div>
-                        </div>
-                        <Button
-                          variant="secondary"
-                          onClick={(e) => { e.stopPropagation(); setShowRestoreConfirm(true); }}
-                          disabled={restoringDefaults || applyingPreset}
-                          className="text-orange-600 border-orange-300 hover:bg-orange-50"
-                        >
-                          <RefreshCw size={16} className="mr-2" />
-                          Reset to JSON Defaults
-                        </Button>
-                      </div>
-                    </div>
-                    {llmPresetsExpanded && <div className="p-6">
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        {modelPresets.filter(Boolean).map((preset) => {
-                          const provider = getModelProvider(preset.model);
-                          const status = providerStatus[provider];
-                          const available = status?.available ?? true;
-                          const configured = status?.configured ?? true;
-
-                          return (
-                            <div
-                              key={preset.id}
-                              className={`relative p-4 rounded-lg border-2 transition-all ${
-                                !available
-                                  ? 'border-gray-200 bg-gray-50 opacity-60 cursor-not-allowed'
-                                  : editedLlm?.model === preset.model
-                                  ? 'border-blue-500 bg-blue-50 cursor-pointer'
-                                  : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50 cursor-pointer'
-                              }`}
-                              onClick={() => available && !applyingPreset && handleApplyPreset(preset.id)}
-                              title={!available ? (status?.error || 'Provider not available') : undefined}
-                            >
-                              {/* Status badges */}
-                              <div className="absolute top-2 right-2 flex gap-1">
-                                {editedLlm?.model === preset.model && (
-                                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
-                                    Active
-                                  </span>
-                                )}
-                                {!providersLoading && (
-                                  <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                                    available
-                                      ? 'bg-green-100 text-green-700'
-                                      : configured
-                                      ? 'bg-yellow-100 text-yellow-700'
-                                      : 'bg-gray-100 text-gray-500'
-                                  }`}>
-                                    {available ? '✓' : configured ? '!' : '—'}
-                                  </span>
-                                )}
-                              </div>
-                              <h3 className="font-medium text-gray-900 pr-16">{preset.name}</h3>
-                              <p className="text-sm text-gray-500 mt-1">{preset.description}</p>
-                              <div className="mt-3 text-xs text-gray-400 space-y-1">
-                                <div>Temp: {preset.llmSettings.temperature} | Tokens: {preset.llmSettings.maxTokens}</div>
-                                <div>Chunks: {preset.ragSettings.topKChunks}/{preset.ragSettings.maxContextChunks}</div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                      {applyingPreset && (
-                        <div className="mt-4 flex items-center justify-center text-sm text-gray-500">
-                          <Spinner size="sm" /> <span className="ml-2">Applying preset...</span>
-                        </div>
-                      )}
-                    </div>}
-                  </div>
-
-                  {/* Manual LLM Settings Card */}
+                  {/* LLM Settings Card */}
                   <div className="bg-white rounded-lg border shadow-sm">
                     <div
                       className="px-6 py-4 border-b cursor-pointer hover:bg-gray-50 transition-colors"
@@ -3487,10 +3334,19 @@ export default function AdminPage() {
                           </button>
                           <div>
                             <h2 className="font-semibold text-gray-900">LLM Settings</h2>
-                            <p className="text-sm text-gray-500">Fine-tune the language model parameters manually</p>
+                            <p className="text-sm text-gray-500">Configure the language model parameters</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+                          <Button
+                            variant="secondary"
+                            onClick={() => setShowRestoreConfirm(true)}
+                            disabled={restoringDefaults}
+                            className="text-orange-600 border-orange-300 hover:bg-orange-50"
+                          >
+                            <RefreshCw size={16} className="mr-2" />
+                            Reset All
+                          </Button>
                           {llmModified && (
                             <Button variant="secondary" onClick={handleResetLlm} disabled={savingSettings}>
                               Reset
@@ -3515,8 +3371,7 @@ export default function AdminPage() {
                           className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         >
                           {availableModels.filter(Boolean).map((model) => {
-                            const provider = model.provider || getModelProvider(model.id);
-                            const status = providerStatus[provider];
+                            const status = providerStatus[model.provider];
                             const available = status?.available ?? true;
                             return (
                               <option
@@ -3638,9 +3493,9 @@ export default function AdminPage() {
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-gray-200">
-                              {modelPresets.filter(Boolean).map((preset) => {
-                                const modelId = preset.model;
-                                const presetDefault = preset.llmSettings?.maxTokens ?? 3000;
+                              {availableModels.filter(Boolean).map((model) => {
+                                const modelId = model.id;
+                                const modelDefault = model.defaultMaxTokens;
                                 const currentValue = editedModelTokens[modelId];
                                 const isCustom = currentValue !== undefined && currentValue !== 'default';
                                 const savedValue = modelTokenLimits?.limits?.[modelId];
@@ -3649,11 +3504,11 @@ export default function AdminPage() {
                                 return (
                                   <tr key={modelId} className="hover:bg-gray-50">
                                     <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                                      {preset.name}
+                                      {model.name}
                                       <span className="text-xs text-gray-400 ml-2">({modelId})</span>
                                     </td>
                                     <td className="px-4 py-3 text-sm text-gray-500">
-                                      {presetDefault.toLocaleString()}
+                                      {modelDefault.toLocaleString()}
                                     </td>
                                     <td className="px-4 py-3">
                                       <div className="flex items-center gap-2">
@@ -3662,13 +3517,13 @@ export default function AdminPage() {
                                           min="100"
                                           max="16000"
                                           value={isCustom ? currentValue : ''}
-                                          placeholder={presetDefault.toString()}
+                                          placeholder={modelDefault.toString()}
                                           onChange={(e) => {
                                             const val = e.target.value;
                                             if (val === '') {
                                               handleModelTokenChange(modelId, 'default');
                                             } else {
-                                              handleModelTokenChange(modelId, parseInt(val) || presetDefault);
+                                              handleModelTokenChange(modelId, parseInt(val) || modelDefault);
                                             }
                                           }}
                                           className="w-24 px-2 py-1 text-sm border rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
@@ -5211,7 +5066,7 @@ export default function AdminPage() {
                         <p className="text-xs text-gray-600 -mt-2">Configure LLM models for each agent role</p>
 
                         {/* Planner Model */}
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-3 gap-4">
                           <div>
                             <label className="block text-sm font-medium text-gray-900 mb-1">Planner Model</label>
                             <select
@@ -5260,10 +5115,28 @@ export default function AdminPage() {
                               className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                             />
                           </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">Max Tokens</label>
+                            <input
+                              type="number"
+                              min="1024"
+                              max="32768"
+                              step="1024"
+                              value={editedAgent.plannerModel.max_tokens || 8192}
+                              onChange={(e) => {
+                                setEditedAgent({
+                                  ...editedAgent,
+                                  plannerModel: { ...editedAgent.plannerModel, max_tokens: parseInt(e.target.value) || 8192 }
+                                });
+                                setAgentModified(true);
+                              }}
+                              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                            />
+                          </div>
                         </div>
 
                         {/* Executor Model */}
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-3 gap-4">
                           <div>
                             <label className="block text-sm font-medium text-gray-900 mb-1">Executor Model</label>
                             <select
@@ -5312,10 +5185,28 @@ export default function AdminPage() {
                               className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                             />
                           </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">Max Tokens</label>
+                            <input
+                              type="number"
+                              min="1024"
+                              max="32768"
+                              step="1024"
+                              value={editedAgent.executorModel.max_tokens || 4096}
+                              onChange={(e) => {
+                                setEditedAgent({
+                                  ...editedAgent,
+                                  executorModel: { ...editedAgent.executorModel, max_tokens: parseInt(e.target.value) || 4096 }
+                                });
+                                setAgentModified(true);
+                              }}
+                              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                            />
+                          </div>
                         </div>
 
                         {/* Checker Model */}
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-3 gap-4">
                           <div>
                             <label className="block text-sm font-medium text-gray-900 mb-1">Checker Model</label>
                             <select
@@ -5364,10 +5255,28 @@ export default function AdminPage() {
                               className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
                             />
                           </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">Max Tokens</label>
+                            <input
+                              type="number"
+                              min="1024"
+                              max="32768"
+                              step="1024"
+                              value={editedAgent.checkerModel.max_tokens || 2048}
+                              onChange={(e) => {
+                                setEditedAgent({
+                                  ...editedAgent,
+                                  checkerModel: { ...editedAgent.checkerModel, max_tokens: parseInt(e.target.value) || 2048 }
+                                });
+                                setAgentModified(true);
+                              }}
+                              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                            />
+                          </div>
                         </div>
 
                         {/* Summarizer Model */}
-                        <div className="grid grid-cols-2 gap-4">
+                        <div className="grid grid-cols-3 gap-4">
                           <div>
                             <label className="block text-sm font-medium text-gray-900 mb-1">Summarizer Model</label>
                             <select
@@ -5410,6 +5319,24 @@ export default function AdminPage() {
                                 setEditedAgent({
                                   ...editedAgent,
                                   summarizerModel: { ...editedAgent.summarizerModel, temperature: parseFloat(e.target.value) || 0 }
+                                });
+                                setAgentModified(true);
+                              }}
+                              className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-900 mb-1">Max Tokens</label>
+                            <input
+                              type="number"
+                              min="1024"
+                              max="32768"
+                              step="1024"
+                              value={editedAgent.summarizerModel.max_tokens || 4096}
+                              onChange={(e) => {
+                                setEditedAgent({
+                                  ...editedAgent,
+                                  summarizerModel: { ...editedAgent.summarizerModel, max_tokens: parseInt(e.target.value) || 4096 }
                                 });
                                 setAgentModified(true);
                               }}
